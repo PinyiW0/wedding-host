@@ -1,0 +1,282 @@
+# UI Configuration for AI Code Generation
+# 此設定檔定義專案的 UI 風格與行為規範，AI 產生程式碼時必須遵循
+
+# =============================================================================
+# 專案資訊（必填）
+# =============================================================================
+project:
+  name: "" # 網站名稱
+  description: "" # 網站描述
+  locale: "zh-TW" # 語系
+  favicon: "/favicon.ico" # 網站圖示
+
+# =============================================================================
+# SEO 與社群分享（從 ui-config-pm.yaml 同步）
+# Phase 1 讀取後寫入 nuxt.config.ts 的 app.head
+# =============================================================================
+meta:
+  keywords: "" # SEO 關鍵字（逗號分隔）
+  author: "Osense" # 網站作者或團隊名稱
+  og:
+    image: "/og-image.png" # 社群分享預覽圖（建議 1200x630 px）
+    type: "website" # 網站類型：website | article
+
+# =============================================================================
+# 色彩主題
+# 參考：https://ui.nuxt.com/getting-started/theme#colors
+#
+# NuxtUI 支援 7 個語義色名：primary, secondary, success, info, warning, error, neutral
+# Nuxt UI 自動處理 light/dark：light 取 500 色階，dark 取 400 色階
+#
+# 格式說明：
+#   - "#hex"   → 自訂色碼，Phase 1 會用 https://uicolors.app 產生 50-950 色階
+#                 寫入 main.css 的 @theme static { --color-{名稱}-* }
+#                 app.config.ts 映射 {名稱}: '{名稱}'
+#   - "名稱"   → Tailwind 內建色（如 emerald, amber, red, blue）
+#                 不需產生 CSS，app.config.ts 映射 {名稱}: '{Tailwind色名}'
+#   - ""（空值）→ 不產生 CSS，app.config.ts 映射到預設 Tailwind 內建色
+#
+# 空值預設對應：
+#   primary → green | secondary → sky | success → green
+#   warning → amber | error → red | info → blue | neutral → neutral
+#
+# Phase 1 實作方式：
+#   - 有 "#hex" → @theme static { --color-{色名}-50~950 } 寫入 main.css
+#   - 有 "名稱" 或空值 → 不產生 CSS
+#   - app.config.ts：有自訂色階 → 映射自身名稱；沒有 → 映射 Tailwind 內建色名
+#   - Nuxt UI plugin 自動從 --color-* 橋接 --ui-color-* 和 --ui-*（不需手動處理）
+# =============================================================================
+theme:
+  colors:
+    primary: ""      # 主色
+    secondary: ""    # 輔色
+    neutral: ""      # 中性色
+    success: ""             # 成功狀態
+    warning: ""             # 警告狀態
+    error: ""               # 錯誤狀態
+    info: ""                # 資訊提示
+
+# =============================================================================
+# 測試帳號（從 ui-config-pm.yaml 同步）
+# =============================================================================
+testAccounts:
+  - username: ""
+    password: ""
+    role: ""
+    description: ""
+
+# =============================================================================
+# Toast 通知設定
+# 參考：https://ui.nuxt.com/components/toast
+# =============================================================================
+toast:
+  duration: 3000
+  position: "top-right"
+  closable: true
+
+# 重要：UApp 組件內建 toaster，不要再額外放 UToaster 組件！
+# 正確：<UApp :toaster="{ position: 'top-right' }">
+# 錯誤：<UApp> + <UToaster />（toast 會出現兩次）
+
+# =============================================================================
+# 表格與列表設定
+# 參考：https://ui.nuxt.com/components/table
+# =============================================================================
+table:
+  pagination:
+    enabled: true
+    defaultPageSize: 10
+    pageSizeOptions: [10, 20, 50]
+    showPageSizeSelector: false
+    position: "bottom-right"
+    alwaysShow: true
+  row:
+    hover: true
+    cursorPointer: true
+    clickable: true
+    fixedHeight: true
+  emptyState:
+    icon: "i-heroicons-circle-stack"
+    label: "目前沒有資料"
+
+
+# =============================================================================
+# 表單設定
+# =============================================================================
+form:
+  requiredIndicator: "*"
+  fieldWidth: "full"
+  preventDoubleSubmit: true
+  errorMessage:
+    fixedHeight: true
+    position: "absolute"
+
+  # UFormField 錯誤訊息必須用：
+  # class="relative mb-8" :ui="{ error: 'absolute top-full left-0 mt-1' }"
+
+  password:
+    showToggle: true
+    toggleIcon:
+      show: "i-heroicons-eye"
+      hide: "i-heroicons-eye-slash"
+
+  search:
+    icon: "i-heroicons-magnifying-glass"
+    placeholder: "搜尋..."
+    debounceMs: 300
+
+# =============================================================================
+# 查詢功能設定
+# =============================================================================
+query:
+  searchBox:
+    enabled: true
+    position: "top-right"
+    width: "w-64"
+  filters:
+    style: "inline"
+
+# =============================================================================
+# 刪除操作設定
+# =============================================================================
+delete:
+  confirmation:
+    required: true
+    title: "確認刪除"
+    description: "此操作無法復原，確定要刪除嗎？"
+    confirmButton:
+      label: "刪除"
+      color: "error"
+    cancelButton:
+      label: "取消"
+      color: "neutral"
+
+# =============================================================================
+# Modal 對話框設定
+# =============================================================================
+modal:
+  size: "md"
+  closeOnClickOutside: true
+  closeOnEsc: true
+
+# =============================================================================
+# 按鈕設定
+# =============================================================================
+button:
+  primary:
+    color: "primary"
+    variant: "solid"
+  secondary:
+    color: "neutral"
+    variant: "outline"
+  danger:
+    color: "error"
+    variant: "solid"
+  loading:
+    icon: "i-heroicons-arrow-path"
+    animation: "animate-spin"
+
+# =============================================================================
+# 載入狀態設定
+# =============================================================================
+loading:
+  fullPage:
+    enabled: true
+    overlay: true
+  skeleton:
+    enabled: true
+    animation: "pulse"
+
+# =============================================================================
+# 響應式設計（RWD）規範
+# =============================================================================
+responsive:
+  enabled: true
+  strategy: "desktop-first"
+  breakpoints:
+    xs: "425px"
+    sm: "640px"
+    md: "768px"
+    lg: "1024px"
+    xl: "1280px"
+    2xl: "1536px"
+  sidebar:
+    hideBelow: "lg"
+    mobileMenu: "drawer"
+    collapsible: true
+    expandedWidth: "w-64"
+    collapsedWidth: "w-16"
+    togglePosition: "sidebar"
+    bottomSection:
+      colorModeToggle: true
+      userDisplay: true
+      logoutButton: true
+  table:
+    cardViewBelow: "md"
+    hideSecondaryColumnsBelow: "sm"
+  form:
+    stackBelow: "sm"
+  grid:
+    default: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+
+# =============================================================================
+# 深淺模式
+# 配色策略、無障礙對比色、深淺模式實作規範 → 詳見 rules.md
+# =============================================================================
+colorMode:
+  enabled: true
+  default: "light"
+
+# =============================================================================
+# Icon 設定
+# =============================================================================
+icons:
+  collection: "heroicons"
+  common:
+    add: "i-heroicons-plus"
+    edit: "i-heroicons-pencil"
+    delete: "i-heroicons-trash"
+    search: "i-heroicons-magnifying-glass"
+    filter: "i-heroicons-funnel"
+    close: "i-heroicons-x-mark"
+    check: "i-heroicons-check"
+    warning: "i-heroicons-exclamation-triangle"
+    error: "i-heroicons-exclamation-circle"
+    info: "i-heroicons-information-circle"
+    user: "i-heroicons-user"
+    settings: "i-heroicons-cog-6-tooth"
+    logout: "i-heroicons-arrow-right-on-rectangle"
+    loading: "i-heroicons-arrow-path"
+    chevronDown: "i-heroicons-chevron-down"
+    chevronRight: "i-heroicons-chevron-right"
+    menu: "i-heroicons-bars-3"
+
+# =============================================================================
+# 額外功能需求
+# =============================================================================
+# ⚠️ 套件版本以 features.md 為準，此區塊僅供參考
+additionalFeatures:
+  charts:
+    required: false
+    package: "vue-chartjs chart.js"
+    useCase: "數據視覺化、統計圖表"
+  dragAndDrop:
+    required: false
+    package: "vuedraggable@next"
+    useCase: "列表拖拽排序、看板拖拽"
+  richTextEditor:
+    required: false
+    package: "@tiptap/vue-3 @tiptap/starter-kit @tiptap/extension-placeholder"
+    useCase: "文章編輯、格式化內容"
+  advancedDatePicker:
+    required: false
+    package: "@vuepic/vue-datepicker"
+    useCase: "日期範圍選擇、時間選擇"
+  fileUpload:
+    required: false
+    package: "(無需額外套件)"
+    useCase: "圖片上傳、檔案拖放上傳"
+  infiniteScroll:
+    required: false
+    package: "(無需額外套件，使用 IntersectionObserver)"
+    useCase: "無限滾動列表"

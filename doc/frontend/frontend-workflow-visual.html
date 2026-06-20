@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>前端工作流程視覺化說明</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --border: #475569;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+    --green: #4ade80;
+    --orange: #fb923c;
+    --pink: #f472b6;
+    --purple: #a78bfa;
+    --red: #f87171;
+    --yellow: #facc15;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    margin-bottom: 3rem;
+    font-size: 1.05rem;
+  }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2.5rem;
+  }
+
+  section h2 {
+    font-size: 1.4rem;
+    margin-bottom: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  section h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .desc {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  .mermaid {
+    display: flex;
+    justify-content: center;
+    margin: 1.5rem 0;
+  }
+
+  /* 三原則卡片 */
+  .principles {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .principle-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border-top: 4px solid;
+    text-align: center;
+  }
+
+  .principle-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .principle-card p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  .principle-card.p1 { border-color: var(--accent); }
+  .principle-card.p1 h3 { color: var(--accent); }
+  .principle-card.p2 { border-color: var(--green); }
+  .principle-card.p2 h3 { color: var(--green); }
+  .principle-card.p3 { border-color: var(--orange); }
+  .principle-card.p3 h3 { color: var(--orange); }
+
+  /* Phase 卡片 */
+  .phases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .phase-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border-left: 4px solid;
+  }
+
+  .phase-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .phase-card p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  .phase-card .cmd {
+    display: inline-block;
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    margin-top: 0.5rem;
+  }
+
+  .phase-card.pa { border-color: var(--accent); }
+  .phase-card.pa h3 { color: var(--accent); }
+  .phase-card.pb { border-color: var(--green); }
+  .phase-card.pb h3 { color: var(--green); }
+  .phase-card.pc { border-color: var(--orange); }
+  .phase-card.pc h3 { color: var(--orange); }
+  .phase-card.pd { border-color: var(--pink); }
+  .phase-card.pd h3 { color: var(--pink); }
+
+  /* Phase C 子步驟 */
+  .ui-steps {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.8rem;
+    margin: 1.5rem 0;
+  }
+
+  .ui-step {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    position: relative;
+  }
+
+  .ui-step .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    background: var(--orange);
+    color: var(--bg);
+  }
+
+  .ui-step .name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--orange);
+    margin-bottom: 0.2rem;
+  }
+
+  .ui-step .detail {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .ui-step .output {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--green);
+    margin-top: 0.5rem;
+    text-align: left;
+  }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+
+  .tl-item {
+    position: relative;
+    margin-bottom: 1.2rem;
+    padding: 1rem 1.2rem;
+    background: var(--surface2);
+    border-radius: 10px;
+  }
+
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -1.65rem;
+    top: 1.2rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+  }
+
+  .tl-item .label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.3rem;
+  }
+
+  .tl-item:nth-child(1) .label { color: var(--text-muted); }
+  .tl-item:nth-child(1)::before { border-color: var(--text-muted); }
+  .tl-item:nth-child(2) .label { color: var(--accent); }
+  .tl-item:nth-child(2)::before { border-color: var(--accent); }
+  .tl-item:nth-child(3) .label { color: var(--accent); }
+  .tl-item:nth-child(3)::before { border-color: var(--accent); }
+  .tl-item:nth-child(4) .label { color: var(--green); }
+  .tl-item:nth-child(4)::before { border-color: var(--green); }
+  .tl-item:nth-child(5) .label { color: var(--orange); }
+  .tl-item:nth-child(5)::before { border-color: var(--orange); }
+  .tl-item:nth-child(6) .label { color: var(--pink); }
+  .tl-item:nth-child(6)::before { border-color: var(--pink); }
+
+  .tl-item code {
+    display: block;
+    background: var(--bg);
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    margin-top: 0.4rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--green);
+    white-space: pre;
+  }
+
+  /* SSoT 鏈 */
+  .ssot-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .ssot-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border-top: 3px solid;
+  }
+
+  .ssot-card h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ssot-card ul {
+    list-style: none;
+    font-size: 0.85rem;
+  }
+
+  .ssot-card ul li {
+    padding: 0.2rem 0;
+    color: var(--text-muted);
+  }
+
+  .ssot-card ul li::before {
+    content: '→ ';
+    color: var(--accent);
+  }
+
+  .ssot-card.s1 { border-color: var(--accent); }
+  .ssot-card.s1 h3 { color: var(--accent); }
+  .ssot-card.s2 { border-color: var(--green); }
+  .ssot-card.s2 h3 { color: var(--green); }
+  .ssot-card.s3 { border-color: var(--purple); }
+  .ssot-card.s3 h3 { color: var(--purple); }
+
+  /* VS 比較 */
+  .vs-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 1rem;
+    align-items: center;
+    margin: 1rem 0;
+  }
+
+  .vs-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .vs-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .vs-card ul {
+    list-style: none;
+    font-size: 0.88rem;
+  }
+
+  .vs-card ul li {
+    padding: 0.3rem 0;
+    color: var(--text-muted);
+  }
+
+  .vs-badge {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--border);
+  }
+
+  .vs-card.old { border-top: 3px solid var(--text-muted); }
+  .vs-card.old h3 { color: var(--text-muted); }
+  .vs-card.new { border-top: 3px solid var(--green); }
+  .vs-card.new h3 { color: var(--green); }
+
+  .highlight-box {
+    background: linear-gradient(135deg, rgba(56,189,248,0.1), rgba(167,139,250,0.1));
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin-top: 1.5rem;
+    font-size: 0.92rem;
+  }
+
+  .highlight-box strong { color: var(--accent); }
+
+  /* 指令速查 */
+  .cmd-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.88rem;
+  }
+
+  .cmd-table th {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .cmd-table td {
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid rgba(71,85,105,0.4);
+    color: var(--text-muted);
+  }
+
+  .cmd-table td:first-child {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--green);
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .cmd-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  @media (max-width: 700px) {
+    .principles, .phases, .ui-steps, .ssot-grid, .vs-grid {
+      grid-template-columns: 1fr;
+    }
+    body { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>前端工作流程視覺化說明</h1>
+<p class="subtitle">SDD + AI Codegen + TDD</p>
+
+<!-- ========== Section 1: 核心理念 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--accent);color:var(--bg)">1</span> 核心理念 — 三個原則</h2>
+  <p class="desc">上游 repo 產出規格，本專案 AI 生成程式碼，測試守護合約。每個產出都有明確的真相來源。</p>
+
+  <div class="principles">
+    <div class="principle-card p1">
+      <h3>規格是唯一真相</h3>
+      <p>上游 EventStorming skill → .dsl.feature<br/>AI 與操作者問答釐清 → .flow.md<br>手動放入本專案，驅動一切</p>
+    </div>
+    <div class="principle-card p2">
+      <h3>合約先行</h3>
+      <p>先定義型別和 API 合約<br>再寫測試合約<br>最後才寫 UI</p>
+    </div>
+    <div class="principle-card p3">
+      <h3>骨架優先</h3>
+      <p>UI 分階段建構<br>先搭骨架（路由、Layout）<br>再填細節（元件、頁面邏輯）</p>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  ES["<b>上游 repo</b><br/>EventStorming skill<br/>→ .dsl.feature"] --> SC["<b>AI + 操作者問答</b><br/>釐清後產出 .flow.md"]
+  SC --> A["<b>本專案 AI</b><br/>生成程式碼"]
+  A --> T["<b>測試</b><br/>守護合約"]
+  T -.->|"不過？回去修"| A
+
+  style ES fill:#1e1e3f,stroke:#a78bfa,color:#e2e8f0
+  style SC fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style A fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style T fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 2: 四大階段總覽 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--accent);color:var(--bg)">2</span> 四大階段 — 從規格到綠燈</h2>
+  <p class="desc">整個流程分四大階段依序執行，每個階段的產出是下一階段的輸入。</p>
+
+  <div class="phases">
+    <div class="phase-card pa">
+      <h3>Phase A：API 合約</h3>
+      <p>分析 .feature，建立型別定義、路由對照表、Mock 資料和 API 端點。是所有後續步驟的基礎建設。</p>
+      <span class="cmd">/feature-to-api</span>
+    </div>
+    <div class="phase-card pb">
+      <h3>Phase B：測試合約</h3>
+      <p>從 .flow.md 生成 Playwright spec。定義每個 testid、互動模式和斷言預期。是 UI 的驗收標準。</p>
+      <span class="cmd">/test e2e spec</span>
+    </div>
+    <div class="phase-card pc">
+      <h3>Phase C：UI 實作</h3>
+      <p>分 5 個 Phase 建構完整 UI — 主題 → 骨架 → Layout → 元件 → 頁面。為通過 spec 而建。</p>
+      <span class="cmd">/feature-to-ui</span>
+    </div>
+    <div class="phase-card pd">
+      <h3>Phase D：綠燈</h3>
+      <p>跑 E2E 測試，找出失敗項目，修 UI/Mock/API 直到所有 spec 通過。</p>
+      <span class="cmd">/test e2e green</span>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+  IN["<b>.dsl.feature + .flow.md</b><br/>上游 repo 產出，手動放入 spec/"]
+
+  PA["<b>Phase A：API 合約</b><br/>/feature-to-api<br/>types + route-map + mock + API"]
+  PB["<b>Phase B：測試合約</b><br/>/test e2e spec<br/>.spec.ts（Playwright）"]
+  PC["<b>Phase C：UI 實作</b><br/>/feature-to-ui<br/>完整 Nuxt 前端應用"]
+  PD["<b>Phase D：綠燈</b><br/>/test e2e green<br/>全部 spec 通過"]
+
+  IN --> PA
+  PA --> PB
+  PB --> PC
+  PC --> PD
+  PD -.->|"失敗？回去修 UI"| PC
+
+  style IN fill:#334155,stroke:#475569,color:#e2e8f0
+  style PA fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style PB fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style PC fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style PD fill:#831843,stroke:#f472b6,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 3: Phase A 詳解 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--accent);color:var(--bg)">3</span> Phase A：API 合約 — 基礎建設</h2>
+  <p class="desc">分兩步：Phase 0 分析規格建立型別和路由對照，Phase 1 建立 Mock 資料和 API 端點。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant F as .dsl.feature
+    participant PM as ui-config-pm.yaml
+    participant P0 as Phase 0<br/>準備工作
+    participant P1 as Phase 1<br/>Mock API
+
+    F->>P0: 掃描所有 feature
+    PM->>P0: PM 設定同步
+
+    Note over P0: ① 分析功能清單 + 資料模型
+    Note over P0: ② 規劃路由結構
+    Note over P0: ③ 建立 TypeScript 型別
+    Note over P0: ④ 產出 route-map.yaml
+
+    P0->>P1: types + route-map
+
+    Note over P1: ① 提取 mock 資料
+    Note over P1: ② 比對 .flow.md 實體值
+    Note over P1: ③ 建立 mock data（≥ 11 筆）
+    Note over P1: ④ 建立 API 端點
+  </div>
+
+  <div class="highlight-box">
+    <strong>關鍵產出：</strong>
+    <code>app/types/api/*.ts</code>（型別 SSoT）和
+    <code>spec/report/route-map.yaml</code>（路由對照 SSoT）—
+    後續所有 Phase 都依賴這兩個產出。
+  </div>
+</section>
+
+<!-- ========== Section 4: Phase B 詳解 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--green);color:var(--bg)">4</span> Phase B：測試合約 — UI 的驗收標準</h2>
+  <p class="desc">從 .flow.md 生成 Playwright spec，定義 UI 必須通過的所有條件。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  FLOW[".flow.md<br/><i>操作流程</i>"]
+  SPEC[".spec.ts<br/><i>Playwright 測試</i>"]
+  UI["UI 頁面<br/><i>Phase C 產出</i>"]
+
+  FLOW -->|"/test e2e spec"| SPEC
+  SPEC -->|"testid + 互動 + 斷言"| UI
+
+  style FLOW fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style SPEC fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style UI fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin:1.5rem 0">
+    <div style="background:var(--surface2);border-radius:12px;padding:1.2rem;text-align:center">
+      <div style="font-size:1.8rem;margin-bottom:0.3rem">🏷️</div>
+      <div style="font-weight:700;color:var(--accent);margin-bottom:0.2rem">testid</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)">getByTestId() 定義<br/>UI 必須有的元素</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:1.2rem;text-align:center">
+      <div style="font-size:1.8rem;margin-bottom:0.3rem">👆</div>
+      <div style="font-weight:700;color:var(--green);margin-bottom:0.2rem">互動模式</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)">.click()、.fill() 等<br/>使用者怎麼操作</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:1.2rem;text-align:center">
+      <div style="font-size:1.8rem;margin-bottom:0.3rem">✅</div>
+      <div style="font-weight:700;color:var(--orange);margin-bottom:0.2rem">斷言預期</div>
+      <div style="font-size:0.82rem;color:var(--text-muted)">toContainText() 等<br/>操作後的預期結果</div>
+    </div>
+  </div>
+
+  <div class="highlight-box">
+    <strong>Phase 5 的規則：</strong>testid 直接從 .spec.ts 的 <code>getByTestId()</code> 複製，不讀 .flow.md。確保 UI 和測試合約 100% 一致。
+  </div>
+</section>
+
+<!-- ========== Section 5: Phase C 五步驟 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--orange);color:var(--bg)">5</span> Phase C：UI 實作 — 骨架優先，細節後填</h2>
+  <p class="desc">分五個 Phase 逐步建構完整的 Nuxt 前端應用，每個 Phase 只載入必要的規範。</p>
+
+  <div class="ui-steps">
+    <div class="ui-step">
+      <div class="step-num">1</div>
+      <div class="name">主題</div>
+      <div class="detail">色彩映射 + SEO</div>
+      <div class="output">app.config.ts
+main.css
+nuxt.config.ts</div>
+    </div>
+    <div class="ui-step">
+      <div class="step-num">2</div>
+      <div class="name">骨架</div>
+      <div class="detail">頁面空殼 + testid</div>
+      <div class="output">pages/
+├── index.vue
+└── {resource}/
+    └── index.vue</div>
+    </div>
+    <div class="ui-step">
+      <div class="step-num">3</div>
+      <div class="name">Layout</div>
+      <div class="detail">Sidebar + 導航</div>
+      <div class="output">layouts/
+├── default.vue
+└── auth.vue
+app.vue</div>
+    </div>
+    <div class="ui-step">
+      <div class="step-num">4</div>
+      <div class="name">元件</div>
+      <div class="detail">共用 UI 元件</div>
+      <div class="output">components/common/
+├── ListContainer
+├── ConfirmModal
+├── PageHeader
+└── EmptyState</div>
+    </div>
+    <div class="ui-step">
+      <div class="step-num">5</div>
+      <div class="name">頁面</div>
+      <div class="detail">逐一填充功能</div>
+      <div class="output">一次一頁
+讀 .spec.ts
+import types/api
+useFetch + $fetch</div>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  P1["Phase 1<br/><b>主題</b><br/>ui-config.yaml"]
+  P2["Phase 2<br/><b>骨架</b><br/>route-map.yaml"]
+  P3["Phase 3<br/><b>Layout</b><br/>ui-config + routes"]
+  P4["Phase 4<br/><b>元件</b><br/>ui-config + features"]
+  P5["Phase 5<br/><b>頁面</b><br/>.spec.ts（唯一合約）"]
+
+  P1 --> P2 --> P3 --> P4 --> P5
+
+  style P1 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style P2 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style P3 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style P4 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style P5 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  </div>
+
+  <div class="highlight-box">
+    <strong>Phase 5 核心規則：</strong>一次只做一個頁面。完成後輸出確認格式，等待用戶回覆才做下一個。testid 從 .spec.ts 複製，型別從 types/api/ import。
+  </div>
+</section>
+
+<!-- ========== Section 6: 完整資料流 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--purple);color:var(--bg)">6</span> 完整資料流 — 一個 Feature 從頭到尾</h2>
+  <p class="desc">以一個新功能為例，資料如何流過每個階段。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant UP as 上游 repo<br/>EventStorming
+    participant PA as Phase A<br/>API 合約
+    participant PB as Phase B<br/>測試合約
+    participant PC as Phase C<br/>UI 實作
+    participant PD as Phase D<br/>綠燈
+
+    UP->>UP: ES skill → .dsl.feature
+    UP->>UP: AI 與操作者問答釐清 → .flow.md
+
+    Note over PA: /feature-to-api
+    UP-->>PA: 手動放入 spec/
+    PA->>PA: ① 分析 feature → types/api/
+    PA->>PA: ② 產出 route-map.yaml
+    PA->>PA: ③ 建立 mock data + API
+
+    Note over PB: /test e2e spec
+    PA-->>PB: types + mock API 就緒
+    PB->>PB: ① .flow.md → .spec.ts
+
+    Note over PC: /feature-to-ui 1→5
+    PB-->>PC: .spec.ts 就緒
+    PC->>PC: ① 主題 + 骨架 + Layout
+    PC->>PC: ② 共用元件
+    PC->>PC: ③ 逐頁實作（讀 spec 抄 testid）
+
+    Note over PD: /test e2e green
+    PC-->>PD: UI 就緒
+    PD->>PD: ① 跑測試、收集失敗
+    PD->>PC: ② 修 UI（若失敗）
+    PC-->>PD: ③ 重跑直到全過
+    PD-->>UP: 所有 spec 通過 ✅
+  </div>
+</section>
+
+<!-- ========== Section 7: SSoT 鏈 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--pink);color:var(--bg)">7</span> SSoT 鏈 — 真相來源的傳播路徑</h2>
+  <p class="desc">每個產出都有明確的真相來源。變更時沿鏈傳播，不存在「兩個版本不一致」的問題。</p>
+
+  <div class="ssot-grid">
+    <div class="ssot-card s1">
+      <h3>.dsl.feature</h3>
+      <ul>
+        <li>app/types/api/*.ts</li>
+        <li>route-map.yaml</li>
+        <li>server/mock/data/</li>
+        <li>server/api/</li>
+      </ul>
+    </div>
+    <div class="ssot-card s2">
+      <h3>.flow.md</h3>
+      <ul>
+        <li>test/e2e/specs/*.spec.ts</li>
+        <li>mock 資料的實體名稱</li>
+      </ul>
+    </div>
+    <div class="ssot-card s3">
+      <h3>.spec.ts</h3>
+      <ul>
+        <li>UI 的 data-testid</li>
+        <li>互動模式</li>
+        <li>斷言預期</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+  F[".dsl.feature<br/><i>上游 ES skill 推導</i>"]
+  FL[".flow.md<br/><i>AI 與操作者問答釐清</i>"]
+  T["types/api/*.ts<br/><i>型別 SSoT</i>"]
+  RM["route-map.yaml<br/><i>路由 SSoT</i>"]
+  M["mock/data/<br/><i>測試資料</i>"]
+  API["server/api/<br/><i>API 端點</i>"]
+  SP[".spec.ts<br/><i>測試合約</i>"]
+  UI["UI 頁面<br/><i>pages/*.vue</i>"]
+
+  F --> T
+  F --> RM
+  T --> M
+  T --> API
+  T --> UI
+  RM --> UI
+  FL --> SP
+  FL --> M
+  SP --> UI
+
+  style F fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style FL fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style T fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style RM fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style M fill:#334155,stroke:#475569,color:#e2e8f0
+  style API fill:#334155,stroke:#475569,color:#e2e8f0
+  style SP fill:#3b0764,stroke:#a78bfa,color:#e2e8f0
+  style UI fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 8: Sync 模式 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--yellow);color:var(--bg)">8</span> Sync 模式 — 增量更新</h2>
+  <p class="desc">Feature 變更時不需從頭跑。透過 content_hash 偵測變更，只更新受影響的部分。</p>
+
+  <div class="vs-grid">
+    <div class="vs-card old">
+      <h3>全量模式（首次）</h3>
+      <ul>
+        <li>route-map.yaml 不存在</li>
+        <li>從零建立所有產出</li>
+        <li>掃描全部 .feature</li>
+        <li>建立完整型別 + API + UI</li>
+      </ul>
+    </div>
+    <div class="vs-badge">vs</div>
+    <div class="vs-card new">
+      <h3>Sync 模式（迭代）</h3>
+      <ul>
+        <li>route-map.yaml 已存在</li>
+        <li>比對 content_hash 找變更</li>
+        <li>產出 sync-report.md</li>
+        <li>只更新受影響的檔案</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  CH["比對<br/>content_hash"]
+  SR["sync-report.md<br/><i>變更報告</i>"]
+  A1["Phase A<br/>只更新變更的型別+端點"]
+  B1["Phase B<br/>補生缺少的 spec"]
+  C1["Phase C<br/>只處理新增/修改的頁面"]
+
+  CH --> SR
+  SR --> A1
+  SR --> B1
+  SR --> C1
+
+  style CH fill:#713f12,stroke:#facc15,color:#e2e8f0
+  style SR fill:#713f12,stroke:#facc15,color:#e2e8f0
+  style A1 fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style B1 fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style C1 fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 9: 標準開發順序 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--red);color:var(--bg)">9</span> 標準開發順序 — 走一遍完整流程</h2>
+  <p class="desc">從放入規格檔到所有測試通過，每一步該下什麼指令。</p>
+
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="label">Step 0 — 放入規格檔</div>
+      <div style="font-size:0.9rem">從上游 repo 取得產出（EventStorming skill → .dsl.feature → AI 與操作者問答釐清 → .flow.md），手動放入 spec/gherkin-feature/ 和 spec/e2e-flows/</div>
+    </div>
+    <div class="tl-item">
+      <div class="label">Step 1 — API 合約</div>
+      <div style="font-size:0.9rem">分析 feature → 建立型別 + 路由對照 + Mock 資料 + API 端點</div>
+      <code>/feature-to-api</code>
+    </div>
+    <div class="tl-item">
+      <div class="label">Step 2 — 測試合約</div>
+      <div style="font-size:0.9rem">從 .flow.md 生成所有 Playwright spec</div>
+      <code>/test e2e setup    ← 首次需要
+/test e2e auto     ← 自動偵測生成</code>
+    </div>
+    <div class="tl-item">
+      <div class="label">Step 3 — UI 實作</div>
+      <div style="font-size:0.9rem">五階段建構完整 UI — 主題 → 骨架 → Layout → 元件 → 頁面</div>
+      <code>/feature-to-ui     ← Phase 1 開始
+/feature-to-ui 5 {功能名}  ← 逐頁實作</code>
+    </div>
+    <div class="tl-item">
+      <div class="label">Step 4 — 綠燈</div>
+      <div style="font-size:0.9rem">跑測試 → 修 UI → 重跑 → 直到所有 spec 通過</div>
+      <code>/test e2e green auto</code>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Section 10: 指令速查 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--green);color:var(--bg)">10</span> 指令速查</h2>
+  <p class="desc">所有可用指令、用途和前置條件。</p>
+
+  <table class="cmd-table">
+    <thead>
+      <tr><th>指令</th><th>用途</th><th>前置條件</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>/feature-to-api</td><td>Feature → 型別 + Mock API（Phase 0 + 1）</td><td>.flow.md 已放入</td></tr>
+      <tr><td>/feature-to-api 0</td><td>只跑準備工作</td><td>同上</td></tr>
+      <tr><td>/feature-to-api 1</td><td>只跑 Mock API</td><td>Phase 0 完成</td></tr>
+      <tr><td>/test e2e setup</td><td>建立測試基礎架構</td><td>無</td></tr>
+      <tr><td>/test e2e spec</td><td>生成測試合約</td><td>/feature-to-api 完成</td></tr>
+      <tr><td>/test e2e auto</td><td>自動偵測缺 spec 的 feature</td><td>同上</td></tr>
+      <tr><td>/feature-to-ui</td><td>Feature → 完整 UI（Phase 1 起）</td><td>/feature-to-api 完成</td></tr>
+      <tr><td>/feature-to-ui 5 {功能}</td><td>實作指定頁面</td><td>/test e2e spec 完成</td></tr>
+      <tr><td>/test e2e green</td><td>修 UI 直到 spec 全過</td><td>UI 實作後</td></tr>
+      <tr><td>/test e2e green auto</td><td>自動偵測失敗並逐一修復</td><td>同上</td></tr>
+      <tr><td>/nuxt-ui</td><td>載入 NuxtUI 官方文檔</td><td>無</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#334155',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#475569',
+      lineColor: '#64748b',
+      secondaryColor: '#1e293b',
+      tertiaryColor: '#1e293b',
+      fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+      fontSize: '14px',
+    },
+    sequence: {
+      actorMargin: 50,
+      messageMargin: 40,
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20,
+    }
+  });
+</script>
+
+</body>
+</html>

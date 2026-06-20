@@ -1,0 +1,46 @@
+name: SDD Review
+
+# Phase 1（MVP）：PR 開啟/更新時，對 diff 跑 /sdd-review，結果只「留言」不自動改 code。
+# 補的是 AI 語意層（框架慣例 + server 邏輯安全）；eslint/typecheck 由 pull_request.yml 負責，不重複。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'app/**'
+      - 'server/**'
+  workflow_dispatch:
+
+# 只給留言所需權限；不開 contents: write，故無 commit loop 風險（Phase 2 才需要）
+# id-token: write 是 claude-code-action 用 OIDC 換取 GitHub token 的必要權限
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  sdd-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 取完整歷史，讓 action 能算出 PR diff
+
+      - name: Run SDD Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          # 用 Claude 訂閱（Max/Pro）的 OAuth token，不另外花 API 費用
+          # token 由本機 `claude setup-token` 產生，存進 repo Secrets
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 純 prompt 模式不會自動建追蹤留言；開 track_progress 才會建立留言並寫入審查報告
+          track_progress: true
+          # 直接複用既有的 /sdd-review skill（pr 模式：完整推敲 authz / 敏感資料）
+          prompt: |
+            這是 PR 自動審查。對本次 PR 的 diff 執行 /sdd-review（pr 模式）：
+            - 只查 eslint/typecheck/playwright 漏網的死角：框架語意慣例 + server 邏輯安全
+            - 不重複 lint / 型別 / spec 合規的工作
+            - 以 .claude/skills/sdd-review/references/checks.md 為檢查依據
+            - 安全類（authz / 敏感資料外洩）完整推敲，一律列「必修」
+            把報告（必修 / 建議 / 通過 + Verdict）以一則 PR 留言輸出。
+            沒有 finding 時只回「全部通過」，不為湊報告硬找問題。
+          # mcp__github_comment__update_claude_comment：放行留言工具，否則審查報告產得出來卻發不出去
+          claude_args: '--allowed-tools "Read,Grep,Glob,Bash(git diff:*),mcp__github_comment__update_claude_comment"'

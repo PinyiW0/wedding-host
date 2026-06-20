@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>後端架構視覺化說明</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --border: #475569;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+    --green: #4ade80;
+    --orange: #fb923c;
+    --pink: #f472b6;
+    --purple: #a78bfa;
+    --red: #f87171;
+    --yellow: #facc15;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: var(--text-muted);
+    margin-bottom: 3rem;
+    font-size: 1.05rem;
+  }
+
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 2.5rem;
+  }
+
+  section h2 {
+    font-size: 1.4rem;
+    margin-bottom: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  section h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .desc {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  .mermaid {
+    display: flex;
+    justify-content: center;
+    margin: 1.5rem 0;
+  }
+
+  /* 四概念卡片 */
+  .concepts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .concept-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.2rem;
+    border-left: 4px solid;
+  }
+
+  .concept-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .concept-card p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+  }
+
+  .concept-card.c1 { border-color: var(--accent); }
+  .concept-card.c1 h3 { color: var(--accent); }
+  .concept-card.c2 { border-color: var(--green); }
+  .concept-card.c2 h3 { color: var(--green); }
+  .concept-card.c3 { border-color: var(--orange); }
+  .concept-card.c3 h3 { color: var(--orange); }
+  .concept-card.c4 { border-color: var(--purple); }
+  .concept-card.c4 h3 { color: var(--purple); }
+
+  /* Decider 步驟 */
+  .decider-steps {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .step-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    position: relative;
+  }
+
+  .step-card .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .step-card .name { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.2rem; }
+  .step-card .role { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.8rem; }
+  .step-card .example {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 0.7rem;
+    font-size: 0.82rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    text-align: left;
+    color: var(--green);
+  }
+
+  .step-card .gherkin-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .step-card:nth-child(1) .gherkin-tag { background: #164e63; color: var(--accent); }
+  .step-card:nth-child(1) .name { color: var(--accent); }
+  .step-card:nth-child(2) .gherkin-tag { background: #713f12; color: var(--orange); }
+  .step-card:nth-child(2) .name { color: var(--orange); }
+  .step-card:nth-child(3) .gherkin-tag { background: #14532d; color: var(--green); }
+  .step-card:nth-child(3) .name { color: var(--green); }
+
+  .arrow-between {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .arrow-between .arr { color: var(--accent); font-size: 1.3rem; }
+
+  /* 走一遍範例 */
+  .timeline {
+    position: relative;
+    padding-left: 2rem;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+
+  .tl-item {
+    position: relative;
+    margin-bottom: 1.2rem;
+    padding: 1rem 1.2rem;
+    background: var(--surface2);
+    border-radius: 10px;
+  }
+
+  .tl-item::before {
+    content: '';
+    position: absolute;
+    left: -1.65rem;
+    top: 1.2rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+  }
+
+  .tl-item .label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.3rem;
+  }
+
+  .tl-item:nth-child(1) .label { color: var(--accent); }
+  .tl-item:nth-child(2) .label { color: var(--accent); }
+  .tl-item:nth-child(3) .label { color: var(--orange); }
+  .tl-item:nth-child(4) .label { color: var(--green); }
+  .tl-item:nth-child(5) .label { color: var(--purple); }
+  .tl-item:nth-child(5)::before { border-color: var(--purple); }
+  .tl-item:nth-child(4)::before { border-color: var(--green); }
+  .tl-item:nth-child(3)::before { border-color: var(--orange); }
+
+  .tl-item code {
+    display: block;
+    background: var(--bg);
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    margin-top: 0.4rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--green);
+    white-space: pre;
+  }
+
+  /* VS 比較 */
+  .vs-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 1rem;
+    align-items: center;
+    margin: 1rem 0;
+  }
+
+  .vs-card {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .vs-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .vs-card ul {
+    list-style: none;
+    font-size: 0.88rem;
+  }
+
+  .vs-card ul li {
+    padding: 0.3rem 0;
+    color: var(--text-muted);
+  }
+
+  .vs-badge {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--border);
+  }
+
+  .vs-card.crud { border-top: 3px solid var(--text-muted); }
+  .vs-card.crud h3 { color: var(--text-muted); }
+  .vs-card.es { border-top: 3px solid var(--purple); }
+  .vs-card.es h3 { color: var(--purple); }
+
+  .highlight-box {
+    background: linear-gradient(135deg, rgba(56,189,248,0.1), rgba(167,139,250,0.1));
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 10px;
+    padding: 1.2rem;
+    margin-top: 1.5rem;
+    font-size: 0.92rem;
+  }
+
+  .highlight-box strong { color: var(--accent); }
+
+  @media (max-width: 700px) {
+    .concepts, .decider-steps, .vs-grid {
+      grid-template-columns: 1fr;
+    }
+    body { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>後端架構視覺化說明</h1>
+<p class="subtitle">整潔架構 + FCIS + Decider + Event Sourcing</p>
+
+<!-- ========== Section 1: 四概念總覽 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--accent);color:var(--bg)">1</span> 四個概念各管一件事</h2>
+  <p class="desc">四個概念不是擇一，而是疊加使用，各負責不同面向。</p>
+
+  <div class="concepts">
+    <div class="concept-card c1">
+      <h3>整潔架構</h3>
+      <p>管「分層」和「誰可以呼叫誰」<br>外層可以呼叫內層，反過來不行</p>
+    </div>
+    <div class="concept-card c2">
+      <h3>FCIS</h3>
+      <p>管「副作用隔離」<br>業務規則是純函數，不碰 DB / HTTP</p>
+    </div>
+    <div class="concept-card c3">
+      <h3>Decider</h3>
+      <p>管「函數簽名」<br>固定三元組：decide / evolve / initialState</p>
+    </div>
+    <div class="concept-card c4">
+      <h3>Event Sourcing</h3>
+      <p>管「怎麼存資料」<br>只存事件，狀態從事件重播算出來</p>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  A["<b>整潔架構</b><br/>分層規則"] --> B["<b>FCIS</b><br/>純函數約束"]
+  B --> C["<b>Decider</b><br/>簽名約束"]
+  C --> D["<b>Event Sourcing</b><br/>持久化策略"]
+
+  style A fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style B fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style C fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style D fill:#3b0764,stroke:#a78bfa,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 2: 分層架構 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--accent);color:var(--bg)">2</span> 分層架構 — 誰可以呼叫誰</h2>
+  <p class="desc">四層結構，依賴方向永遠是外層 → 內層。Domain 是核心，不依賴任何外層。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+  API["<b>API 層</b><br/>server/api/<br/>HTTP 入口，接單送餐的服務生"]
+  APP["<b>Application 層</b><br/>server/application/<br/>流程編排，調度一切的廚房主管"]
+  DOM["<b>Domain 層</b><br/>server/domain/<br/>純業務規則，只做判斷的廚師"]
+  INF["<b>Infrastructure 層</b><br/>server/infrastructure/<br/>Event Store + Read Model 倉庫"]
+
+  API -->|"寫入：呼叫 use case"| APP
+  API -.->|"查詢：直接讀 Read Model"| INF
+  APP -->|"呼叫純函數"| DOM
+  APP -->|"存取資料"| INF
+
+  style API fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
+  style APP fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  style DOM fill:#1e293b,stroke:#4ade80,color:#e2e8f0
+  style INF fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  </div>
+
+  <div class="highlight-box">
+    <strong>關鍵規則：</strong>Domain 不 import 任何外層。它只接收值、回傳值，不知道 DB 和 HTTP 的存在。
+  </div>
+</section>
+
+<!-- ========== Section 3: Decider 三元組 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--orange);color:var(--bg)">3</span> Decider 三元組 — 每個業務操作的固定結構</h2>
+  <p class="desc">每個操作都由三個部分組成，完美對應 Gherkin 測試的 Given / When / Then。</p>
+
+  <div class="decider-steps">
+    <div class="step-card">
+      <div class="gherkin-tag">Given</div>
+      <div class="name">evolve</div>
+      <div class="role">「事件發生後，狀態變怎樣？」</div>
+      <div class="example">evolve(state, 存款1000)
+→ { balance: 1000 }</div>
+    </div>
+    <div class="step-card">
+      <div class="gherkin-tag">When</div>
+      <div class="name">decide</div>
+      <div class="role">「這個命令，目前能不能做？」</div>
+      <div class="example">decide(state, 提款900)
+→ { error: '餘額不足' }</div>
+    </div>
+    <div class="step-card">
+      <div class="gherkin-tag">Then</div>
+      <div class="name">assert</div>
+      <div class="role">「decide 的結果對不對？」</div>
+      <div class="example">expect(result)
+  .toEqual({ error: ... })</div>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  IS["initialState<br/><i>{ balance: 0 }</i>"]
+  E1["evolve<br/><i>存款 1000</i>"]
+  E2["evolve<br/><i>提款 300</i>"]
+  ST["目前狀態<br/><i>{ balance: 700 }</i>"]
+  DEC["decide<br/><i>提款 900</i>"]
+  RES["結果<br/><i>❌ 餘額不足</i>"]
+
+  IS -->|"Given"| E1 -->|"Given"| E2 -->|"建出狀態"| ST -->|"When"| DEC -->|"Then"| RES
+
+  style IS fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style E1 fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style E2 fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style ST fill:#1e293b,stroke:#475569,color:#e2e8f0
+  style DEC fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style RES fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 4: 完整寫入流程 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--green);color:var(--bg)">4</span> 完整寫入流程 — 一個請求從頭到尾</h2>
+  <p class="desc">以「建立菜單項目 漢堡 $100」為例，資料怎麼流過每一層。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant U as 使用者
+    participant API as API 層
+    participant App as Application 層
+    participant Dom as Domain 層
+    participant ES as Event Store
+    participant RM as Read Model
+
+    U->>API: POST /menu/item { name: 漢堡 }
+    API->>App: createMenuItem(input)
+
+    Note over App: ① Load 歷史事件
+    App->>ES: loadEvents("project-1")
+    ES-->>App: [過去的事件...]
+
+    Note over App: ② Replay 建狀態
+    App->>Dom: evolve(initialState, 每個事件)
+    Dom-->>App: 目前狀態
+
+    Note over App: ③ 判斷命令
+    App->>Dom: decide(目前狀態, 建立漢堡)
+    Dom-->>App: [MenuItemCreated]
+
+    Note over App: ④ 存事件
+    App->>ES: append([MenuItemCreated])
+
+    Note over App: ⑤ 同步投影
+    App->>RM: 更新 Read Model
+
+    App-->>API: { success: true }
+    API-->>U: 200 OK
+  </div>
+</section>
+
+<!-- ========== Section 5: 查詢流程 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--purple);color:var(--bg)">5</span> 查詢流程 — 簡單直接</h2>
+  <p class="desc">查詢不經過 Domain 和 Event Store，直接從 Read Model 讀取。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+sequenceDiagram
+    participant U as 使用者
+    participant API as API 層
+    participant RM as Read Model
+
+    U->>API: GET /menu/items
+    API->>RM: getMenuItems()
+    RM-->>API: [漢堡, 薯條, 可樂...]
+    API-->>U: { success: true, items: [...] }
+
+    Note over API,RM: 寫入走 Decider 全套流程<br/>查詢直接讀 Read Model，超快
+  </div>
+</section>
+
+<!-- ========== Section 6: CRUD vs ES ========== -->
+<section>
+  <h2><span class="num" style="background:var(--pink);color:var(--bg)">6</span> Event Sourcing vs 傳統 CRUD</h2>
+  <p class="desc">Event Sourcing 存的是「發生了什麼事」，CRUD 存的是「現在長怎樣」。</p>
+
+  <div class="vs-grid">
+    <div class="vs-card crud">
+      <h3>傳統 CRUD</h3>
+      <ul>
+        <li>直接改資料庫的「現在值」</li>
+        <li>UPDATE balance = 700</li>
+        <li>歷史紀錄？不知道</li>
+        <li>怎麼變成 700 的？不知道</li>
+      </ul>
+    </div>
+    <div class="vs-badge">vs</div>
+    <div class="vs-card es">
+      <h3>Event Sourcing</h3>
+      <ul>
+        <li>只記錄每一筆「發生的事」</li>
+        <li>存款 1000 → 提款 300</li>
+        <li>完整歷史，可以審計</li>
+        <li>重播就知道怎麼變成 700</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  subgraph ES["Event Store（帳本）"]
+    E1["① 存款 1000"]
+    E2["② 提款 300"]
+    E3["③ 存款 500"]
+  end
+
+  E3 -->|"同步投影"| RM["Read Model<br/><b>balance: 1200</b><br/>（報表，隨時可重算）"]
+
+  style ES fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
+  style E1 fill:#334155,stroke:#a78bfa,color:#e2e8f0
+  style E2 fill:#334155,stroke:#a78bfa,color:#e2e8f0
+  style E3 fill:#334155,stroke:#a78bfa,color:#e2e8f0
+  style RM fill:#1e293b,stroke:#4ade80,color:#e2e8f0
+  </div>
+</section>
+
+<!-- ========== Section 7: Codegen 路徑 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--yellow);color:var(--bg)">7</span> 為什麼選 ES — Codegen 轉換路徑</h2>
+  <p class="desc">ES 是 Gherkin 和 CRUD 之間的中繼站，讓兩步轉換都是機械化操作。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph LR
+  G["<b>Gherkin</b><br/>Given/When/Then<br/>規格文件"]
+  E["<b>Event Sourcing</b><br/>evolve/decide/assert<br/>中繼架構"]
+  C["<b>CRUD</b><br/>直接讀寫 DB<br/>最終形態"]
+
+  G -->|"① 直譯<br/>1:1 語法轉換<br/>✅ 機械化"| E
+  E -->|"② 減法<br/>砍掉 Event Store 層<br/>✅ 機械化"| C
+  G -.->|"❌ 語意翻譯<br/>需要人工補<br/>schema mapping"| C
+
+  style G fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style E fill:#3b0764,stroke:#a78bfa,color:#e2e8f0
+  style C fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  </div>
+
+  <div class="highlight-box">
+    <strong>結論：</strong>走上面那條路（Gherkin → ES → CRUD），兩步都可以讓 AI 自動完成。走下面直達路需要人工介入。所以 ES 是 codegen 的最佳中繼架構。
+  </div>
+</section>
+
+<!-- ========== Section 8: 資料夾對應 ========== -->
+<section>
+  <h2><span class="num" style="background:var(--red);color:var(--bg)">8</span> 資料夾結構 — 以菜單為例</h2>
+  <p class="desc">每個 Slice 是獨立的開發單元，有自己的 decider 和測試。</p>
+
+  <div class="mermaid">
+%%{init: {'theme': 'dark'}}%%
+graph TB
+  subgraph API["server/api/menu/"]
+    A1["item.post.ts<br/><i>建立</i>"]
+    A2["item.put.ts<br/><i>更新</i>"]
+    A3["item.delete.ts<br/><i>刪除</i>"]
+    A4["items.get.ts<br/><i>查詢</i>"]
+  end
+
+  subgraph APP["server/application/"]
+    B1["menu.ts<br/><i>use case 編排</i>"]
+    B2["execute-command.ts<br/><i>底層引擎</i>"]
+  end
+
+  subgraph DOM["server/domain/"]
+    C1["create-menu-item/<br/><i>decider.ts + spec</i>"]
+    C2["update-menu-item/<br/><i>decider.ts + spec</i>"]
+    C3["delete-menu-item/<br/><i>decider.ts + spec</i>"]
+    C4["menu-list-view/<br/><i>projector.ts + spec</i>"]
+  end
+
+  subgraph INF["server/infrastructure/"]
+    D1["event-store/<br/><i>append / load</i>"]
+    D2["persistence/menu.ts<br/><i>Read Model 查詢</i>"]
+    D3["projection/menu.ts<br/><i>event → 寫 RM</i>"]
+  end
+
+  A1 --> B1
+  A2 --> B1
+  A3 --> B1
+  A4 -.-> D2
+  B1 --> B2
+  B2 --> C1
+  B2 --> C2
+  B2 --> C3
+  B2 --> D1
+  B2 --> D3
+
+  style API fill:#164e63,stroke:#38bdf8,color:#e2e8f0
+  style APP fill:#713f12,stroke:#fb923c,color:#e2e8f0
+  style DOM fill:#14532d,stroke:#4ade80,color:#e2e8f0
+  style INF fill:#3b0764,stroke:#a78bfa,color:#e2e8f0
+  </div>
+</section>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#334155',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#475569',
+      lineColor: '#64748b',
+      secondaryColor: '#1e293b',
+      tertiaryColor: '#1e293b',
+      fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+      fontSize: '14px',
+    },
+    sequence: {
+      actorMargin: 50,
+      messageMargin: 40,
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20,
+    }
+  });
+</script>
+
+</body>
+</html>

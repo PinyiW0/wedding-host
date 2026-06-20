@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Commit-msg gate: 用 commitlint 驗證 commit 訊息符合 Conventional Commits v1.0.0。
+# 與 /commit skill 互補——skill 是生成端（產漂亮訊息），本 hook 是驗證端（機械擋下不合規）。
+# 不合規範例：「fix bug」「update something」「Feat: Add X.」（大寫、句號、無 type）。
+# 合規範例：「feat(api): add device contract types」「fix(husky): skip gate when no tests」。
+#
+# git 把訊息檔路徑作為第一參數（$1）傳入，commitlint --edit 讀該檔驗證。
+# 緊急情況可用 git commit --no-verify 跳過（不推薦）。
+
+npx --no -- commitlint --edit "$1"

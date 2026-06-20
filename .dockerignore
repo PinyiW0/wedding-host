@@ -1,0 +1,45 @@
+# 機敏資料
+.env
+.env.*
+
+# 相依與 build 產物
+node_modules
+.nuxt
+.nitro
+.cache
+.output
+.data
+dist
+
+# Git 與 CI
+.git
+.github
+.gitignore
+
+# 開發工具與設定
+.vscode
+.idea
+.fleet
+.husky
+.claude
+.prettierrc
+commitlint.config.*
+
+# 測試
+test
+spec
+playwright-report
+test-results
+
+# OS / 雜項
+.DS_Store
+*.log*
+logs
+
+# Docker 自身
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文件
+README.md

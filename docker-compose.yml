@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 專案名稱與 tag 由 .env 控制，換專案只需改 .env，不用動此檔
+    image: ${PROJECT_NAME:-nuxt-app}-frontend:${IMAGE_TAG:-latest}
+    container_name: ${PROJECT_NAME:-nuxt-app}-frontend
+    ports:
+      - '${HOST_PORT:-3000}:3000'
+    environment:
+      NUXT_APP_BASE_URL: ${NUXT_APP_BASE_URL}
+      NUXT_APP_BASE_API_URL: ${NUXT_APP_BASE_API_URL}
+      NUXT_PRIVATE_GOOGLE_SHEET_KEY: ${NUXT_PRIVATE_GOOGLE_SHEET_KEY}
+    restart: unless-stopped
