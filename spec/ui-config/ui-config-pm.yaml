@@ -7,8 +7,8 @@
 # 專案基本資訊（必填）
 # -----------------------------------------------------------------------------
 project:
-  name: "鷹眼偵測系統"         # 網站名稱
-  description: "智能訓練分析平台，提供即時動作偵測與數據分析"   # 網站簡短描述（建議 160 字元內）
+  name: "EverAfter"         # 網站名稱
+  description: "Every love story deserves a beautiful EverAfter.每段愛情，都值得擁有美好的幸福結局"   # 網站簡短描述（建議 160 字元內）
   locale: "zh-TW"              # 語系：zh-TW（繁體中文）| en（英文）
   favicon: "/favicon.ico"           # 網站圖示（建議尺寸 32x32 px，ico 檔）
 
@@ -17,7 +17,7 @@ project:
 # -----------------------------------------------------------------------------
 meta:
   # SEO 關鍵字（以逗號分隔）
-  keywords: "baseball, statistics, analytics"
+  keywords: "wedding, wedding planning, wedding venue, bridal gown, wedding photographer,wedding invitation, wedding checklist, wedding inspiration, wedding vendors,wedding services"
 
   # 網站作者或團隊名稱
   author: "Andrea"
@@ -41,20 +41,22 @@ meta:
 # -----------------------------------------------------------------------------
 theme:
   colors:
-    primary: "#fd6438"      # 主色
-    secondary: "#3086fc"    # 輔色
-    neutral: "#1C1C1E"      # 中性色
-    success: ""      # 成功狀態
-    warning: ""      # 警告狀態
-    error: ""        # 錯誤狀態
-    info: ""         # 資訊提示
+    primary: "#BE6A52"      # 主色｜陶土橘（accent，僅用於 RSVP／報到等關鍵動作）
+    secondary: "#7A7C5E"    # 輔色｜橄欖鼠尾草
+    neutral: "#2B2420"      # 中性色｜暖咖啡墨（驅動暖灰階：象牙底＋深咖文字）
+    success: "#6E8B6A"      # 成功狀態｜苔綠
+    warning: "#C49A4A"      # 警告狀態｜古銅金
+    error: "#9B3A34"        # 錯誤狀態｜深酒磚紅（壓深以與主色陶土橘區隔）
+    info: "#6E8499"         # 資訊提示｜霧霾藍
+    # 設計備註（給工程師）：底色目標象牙 #F7F1E8、大標文字 #2B2420；
+    # neutral 以暖灰階生成，若 background 偏白可將 body 底錨定 #F7F1E8。
 
 # -----------------------------------------------------------------------------
 # 深色/淺色模式偏好
 # -----------------------------------------------------------------------------
 colorMode:
   default: "light"   # light（淺色）| dark（深色）
-  enabled: true      # 是否允許使用者切換深色/淺色模式：true（允許）| false（不允許）
+  enabled: false      # 是否允許使用者切換深色/淺色模式：true（允許）| false（不允許）
 
 # -----------------------------------------------------------------------------
 # 通知訊息設定
@@ -97,10 +99,14 @@ delete:
 # 供開發測試使用的帳號，工程師會設定到 Mock API 中
 # -----------------------------------------------------------------------------
 testAccounts:
-  - username: "admin"
-    password: "admin123"
+  - username: "Andrea"
+    password: "Andrea1122"
     role: "管理者"
     description: "可存取所有功能"
+  - username: "receptionist"
+    password: "star1122"
+    role: "接待員"
+    description: "依據功能操作"
 
 # -----------------------------------------------------------------------------
 # 額外功能需求（請勾選需要的功能，工程師會評估）
@@ -120,7 +126,7 @@ additionalFeatures:
   advancedDatePicker: false
 
   # 檔案上傳功能（如：圖片上傳、拖放上傳）
-  fileUpload: false
+  fileUpload: true
 
   # 無限滾動（如：滑到底部自動載入更多）
   infiniteScroll: false

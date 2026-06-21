@@ -5,8 +5,8 @@
 # 專案資訊（必填）
 # =============================================================================
 project:
-  name: "" # 網站名稱
-  description: "" # 網站描述
+  name: "EverAfter" # 網站名稱
+  description: "Every love story deserves a beautiful EverAfter.每段愛情，都值得擁有美好的幸福結局" # 網站描述
   locale: "zh-TW" # 語系
   favicon: "/favicon.ico" # 網站圖示
 
@@ -15,8 +15,8 @@ project:
 # Phase 1 讀取後寫入 nuxt.config.ts 的 app.head
 # =============================================================================
 meta:
-  keywords: "" # SEO 關鍵字（逗號分隔）
-  author: "Osense" # 網站作者或團隊名稱
+  keywords: "wedding, wedding planning, wedding venue, bridal gown, wedding photographer,wedding invitation, wedding checklist, wedding inspiration, wedding vendors,wedding services" # SEO 關鍵字（逗號分隔）
+  author: "Andrea" # 網站作者或團隊名稱
   og:
     image: "/og-image.png" # 社群分享預覽圖（建議 1200x630 px）
     type: "website" # 網站類型：website | article
@@ -48,22 +48,26 @@ meta:
 # =============================================================================
 theme:
   colors:
-    primary: ""      # 主色
-    secondary: ""    # 輔色
-    neutral: ""      # 中性色
-    success: ""             # 成功狀態
-    warning: ""             # 警告狀態
-    error: ""               # 錯誤狀態
-    info: ""                # 資訊提示
+    primary: "#BE6A52"      # 主色｜陶土橘
+    secondary: "#7A7C5E"    # 輔色｜橄欖鼠尾草
+    neutral: "#2B2420"      # 中性色｜暖咖啡墨
+    success: "#6E8B6A"      # 成功狀態｜苔綠
+    warning: "#C49A4A"      # 警告狀態｜古銅金
+    error: "#9B3A34"        # 錯誤狀態｜深酒磚紅
+    info: "#6E8499"         # 資訊提示｜霧霾藍
 
 # =============================================================================
 # 測試帳號（從 ui-config-pm.yaml 同步）
 # =============================================================================
 testAccounts:
-  - username: ""
-    password: ""
-    role: ""
-    description: ""
+  - username: "Andrea"
+    password: "Andrea1122"
+    role: "管理者"
+    description: "可存取所有功能"
+  - username: "receptionist"
+    password: "star1122"
+    role: "接待員"
+    description: "依據功能操作"
 
 # =============================================================================
 # Toast 通知設定
@@ -224,7 +228,7 @@ responsive:
 # 配色策略、無障礙對比色、深淺模式實作規範 → 詳見 rules.md
 # =============================================================================
 colorMode:
-  enabled: true
+  enabled: false
   default: "light"
 
 # =============================================================================
@@ -273,7 +277,7 @@ additionalFeatures:
     package: "@vuepic/vue-datepicker"
     useCase: "日期範圍選擇、時間選擇"
   fileUpload:
-    required: false
+    required: true
     package: "(無需額外套件)"
     useCase: "圖片上傳、檔案拖放上傳"
   infiniteScroll:

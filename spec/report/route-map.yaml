@@ -1,0 +1,575 @@
+# spec/report/route-map.yaml
+# 由 /feature-to-api Phase 0 自動產生（Feature 推導模式 + 全量模式）
+# ⚠️ 可手動修改，修改後以此為準
+
+generated_at: 2026-06-20
+version: 1
+
+# PM 啟用的額外功能（來自 ui-config-pm.yaml > additionalFeatures）
+enabled_features:
+  - fileUpload # 圖片 / Excel 上傳（賓客批次匯入、祝福照片、謝卡圖片）
+
+# =============================================================================
+# API 合約規格
+# =============================================================================
+api_contract:
+  # API path 前綴（Phase 0「Path 前綴偵測」決定，鎖定後不重抽）
+  # - 來源：spec/e2e-flows/*.flow.md 一致使用 /api/v1
+  # - 無 api-spec.yml、無既有 server/api/ → 採 flow 文件約定
+  # - runtimeConfig.public.apiBase 已設為空字串，故完整前綴 /api/v1 內嵌於路徑
+  path_prefix: /api/v1
+
+  # 回傳格式慣例（對齊 OpenAPI，不包裝）
+  response_conventions:
+    list: 'T[]（直接回陣列，不包裝）'
+    single: T（直接回物件，不包裝）
+    action: XxxEvent（POST 201；軟刪除 204 無 body）
+    error: 'throw createError({ statusCode, statusMessage })'
+
+  # 型別欄位快照（鏡像 app/types/api/*.ts，Sync diff 基準）
+  types:
+    # --- auth.ts ---
+    RegisterAdminBody:
+      file: auth.ts
+      fields: { email: string, displayName: string }
+    AdminRegisteredEvent:
+      file: auth.ts
+      fields: { userId: string, email: string, displayName: string }
+    LoginBody:
+      file: auth.ts
+      fields: { username: string, password: string }
+    UserLoggedInEvent:
+      file: auth.ts
+      fields: { userId: string, username: string, role: string, accessToken: string }
+    # --- weddings.ts ---
+    WeddingListItem:
+      file: weddings.ts
+      fields: { weddingId: string, title: string, venue: string, address: string, date: string, deletedAt: 'string | null' }
+    CreateWeddingBody:
+      file: weddings.ts
+      fields: { title: string, venue: string, address: string, date: string }
+    WeddingCreatedEvent:
+      file: weddings.ts
+      fields: { weddingId: string, title: string, venue: string, address: string, date: string }
+    UpdateWeddingBody:
+      file: weddings.ts
+      fields: { 'title?': string, 'venue?': string, 'address?': string, 'date?': string, 'mapLink?': string, 'parkingInfo?': string, 'transportInfo?': string }
+    WeddingUpdatedEvent:
+      file: weddings.ts
+      fields: { weddingId: string, title: string, venue: string, address: string, date: string, mapLink: 'string | null', parkingInfo: 'string | null', transportInfo: 'string | null' }
+    WeddingRestoredEvent:
+      file: weddings.ts
+      fields: { weddingId: string }
+    # --- accounts.ts ---
+    ReceptionAccountListItem:
+      file: accounts.ts
+      fields: { accountId: string, weddingId: string, username: string }
+    CreateReceptionAccountBody:
+      file: accounts.ts
+      fields: { username: string }
+    ReceptionAccountCreatedEvent:
+      file: accounts.ts
+      fields: { accountId: string, weddingId: string, username: string }
+    # --- guests.ts ---
+    GuestListItem:
+      file: guests.ts
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null', lineUserId: 'string | null', deletedAt: 'string | null' }
+    CreateGuestBody:
+      file: guests.ts
+      fields: { name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, 'notes?': string }
+    GuestCreatedEvent:
+      file: guests.ts
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null' }
+    UpdateGuestBody:
+      file: guests.ts
+      fields: { 'name?': string, 'side?': GuestSide, 'diet?': GuestDiet, 'category?': string, 'contact?': string, 'needChildSeat?': boolean, 'notes?': string }
+    GuestUpdatedEvent:
+      file: guests.ts
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null' }
+    GuestRestoredEvent:
+      file: guests.ts
+      fields: { guestId: string }
+    ImportGuestsBody:
+      file: guests.ts
+      fields: { fileName: string }
+    GuestsImportedEvent:
+      file: guests.ts
+      fields: { importedCount: number }
+    BindGuestLineBody:
+      file: guests.ts
+      fields: { lineUserId: string }
+    GuestLineBoundEvent:
+      file: guests.ts
+      fields: { guestId: string, lineUserId: string }
+    # --- seating.ts ---
+    TableListItem:
+      file: seating.ts
+      fields: { tableId: string, weddingId: string, tableName: string, capacity: number, positionX: number, positionY: number }
+    CreateTableBody:
+      file: seating.ts
+      fields: { tableName: string, capacity: number, positionX: number, positionY: number }
+    TableCreatedEvent:
+      file: seating.ts
+      fields: { tableId: string, weddingId: string, tableName: string, capacity: number, positionX: number, positionY: number }
+    UpdateTableBody:
+      file: seating.ts
+      fields: { 'tableName?': string, 'capacity?': number, 'positionX?': number, 'positionY?': number }
+    TableUpdatedEvent:
+      file: seating.ts
+      fields: { tableId: string, tableName: string, capacity: number, positionX: number, positionY: number }
+    SeatListItem:
+      file: seating.ts
+      fields: { guestId: string, tableId: string, seatNumber: number }
+    SeatGuestBody:
+      file: seating.ts
+      fields: { guestId: string, seatNumber: number }
+    GuestSeatedEvent:
+      file: seating.ts
+      fields: { tableId: string, guestId: string, seatNumber: number }
+    VenueLayoutBody:
+      file: seating.ts
+      fields: { stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number }
+    VenueLayoutConfiguredEvent:
+      file: seating.ts
+      fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number }
+    EtiquetteSettings:
+      file: seating.ts
+      fields: { elderNearMain: boolean, conflictWarning: boolean, genderSeparation: boolean, mainTableNearStage: boolean, sameCategoryTogether: boolean }
+    EtiquetteSettingsUpdatedEvent:
+      file: seating.ts
+      fields: { weddingId: string, elderNearMain: boolean, conflictWarning: boolean, genderSeparation: boolean, mainTableNearStage: boolean, sameCategoryTogether: boolean }
+    EtiquetteWarningListItem:
+      file: seating.ts
+      fields: { warningId: string, warningType: string, message: string, dismissed: boolean }
+    DismissEtiquetteWarningBody:
+      file: seating.ts
+      fields: { warningType: string }
+    EtiquetteWarningDismissedEvent:
+      file: seating.ts
+      fields: { warningId: string, warningType: string }
+    # --- rsvp.ts ---
+    SendRsvpInvitationBody:
+      file: rsvp.ts
+      fields: { channel: RsvpChannel }
+    RsvpInvitationSentEvent:
+      file: rsvp.ts
+      fields: { guestId: string, channel: RsvpChannel }
+    SubmitRsvpBody:
+      file: rsvp.ts
+      fields: { attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, needChildSeat: boolean }
+    RsvpSubmittedEvent:
+      file: rsvp.ts
+      fields: { guestId: string, attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, needChildSeat: boolean }
+    OverrideRsvpBody:
+      file: rsvp.ts
+      fields: { attending: AttendingStatus, reason: string }
+    RsvpOverriddenEvent:
+      file: rsvp.ts
+      fields: { guestId: string, attending: AttendingStatus, reason: string }
+    # --- cakebox.ts ---
+    CakeBoxTypeListItem:
+      file: cakebox.ts
+      fields: { cakeBoxTypeId: string, weddingId: string, name: string, description: 'string | null', isDefault: boolean }
+    CreateCakeBoxTypeBody:
+      file: cakebox.ts
+      fields: { name: string, 'description?': string, isDefault: boolean }
+    CakeBoxTypeCreatedEvent:
+      file: cakebox.ts
+      fields: { cakeBoxTypeId: string, weddingId: string, name: string, description: 'string | null', isDefault: boolean }
+    UpdateCakeBoxTypeBody:
+      file: cakebox.ts
+      fields: { 'name?': string, 'description?': string }
+    CakeBoxTypeUpdatedEvent:
+      file: cakebox.ts
+      fields: { cakeBoxTypeId: string, name: string, description: 'string | null' }
+    ConfigureCakeBoxAssignmentBody:
+      file: cakebox.ts
+      fields: { guestId: string, assignmentRule: string }
+    CakeBoxAssignmentConfiguredEvent:
+      file: cakebox.ts
+      fields: { cakeBoxTypeId: string, guestId: string, assignmentRule: string }
+    # --- reception.ts ---
+    GuestCheckedInEvent:
+      file: reception.ts
+      fields: { guestId: string, checkedInAt: string }
+    SelfCheckInBody:
+      file: reception.ts
+      fields: { name: string }
+    GuestSelfCheckedInEvent:
+      file: reception.ts
+      fields: { guestId: string, name: string, checkedInAt: string }
+    RecordGiftMoneyBody:
+      file: reception.ts
+      fields: { amount: number }
+    GiftMoneyRecordedEvent:
+      file: reception.ts
+      fields: { guestId: string, amount: number }
+    UpdateGiftMoneyBody:
+      file: reception.ts
+      fields: { amount: number }
+    GiftMoneyUpdatedEvent:
+      file: reception.ts
+      fields: { guestId: string, amount: number }
+    DistributeCakeBoxBody:
+      file: reception.ts
+      fields: { cakeBoxTypeId: string }
+    CakeBoxDistributedEvent:
+      file: reception.ts
+      fields: { guestId: string, cakeBoxTypeId: string }
+    # --- blessings.ts ---
+    BlessingListItem:
+      file: blessings.ts
+      fields: { blessingId: string, weddingId: string, guestId: string, message: string, photoUrl: 'string | null', status: BlessingStatus, rejectReason: 'string | null' }
+    SubmitBlessingBody:
+      file: blessings.ts
+      fields: { guestId: string, message: string, 'photoUrl?': string }
+    BlessingSubmittedEvent:
+      file: blessings.ts
+      fields: { blessingId: string, guestId: string, message: string, photoUrl: 'string | null' }
+    BlessingApprovedEvent:
+      file: blessings.ts
+      fields: { blessingId: string, status: BlessingStatus }
+    RejectBlessingBody:
+      file: blessings.ts
+      fields: { reason: string }
+    BlessingRejectedEvent:
+      file: blessings.ts
+      fields: { blessingId: string, status: BlessingStatus, reason: string }
+    # --- thankyou.ts ---
+    SetThankYouTemplateBody:
+      file: thankyou.ts
+      fields: { templateContent: string, 'templateImageUrl?': string }
+    ThankYouTemplateSetEvent:
+      file: thankyou.ts
+      fields: { weddingId: string, templateContent: string, templateImageUrl: 'string | null' }
+    CustomizeThankYouCardBody:
+      file: thankyou.ts
+      fields: { guestId: string, customContent: string }
+    ThankYouCardCustomizedEvent:
+      file: thankyou.ts
+      fields: { weddingId: string, guestId: string, customContent: string }
+    ThankYouBatchSentEvent:
+      file: thankyou.ts
+      fields: { weddingId: string, recipientCount: number }
+    SendThankYouFallbackBody:
+      file: thankyou.ts
+      fields: { guestId: string, channel: 'email | link' }
+    ThankYouFallbackSentEvent:
+      file: thankyou.ts
+      fields: { weddingId: string, guestId: string, channel: 'email | link' }
+    # --- line.ts ---
+    ConnectLineOaBody:
+      file: line.ts
+      fields: { oaName: string, channelId: string }
+    LineOaConnectedEvent:
+      file: line.ts
+      fields: { weddingId: string, oaName: string, channelId: string }
+
+  # 端點規格（method + path + Request/Response 型別引用）
+  # 所有 path 以 path_prefix (/api/v1) 開頭
+  endpoints:
+    # --- auth ---
+    - { method: POST, path: /api/v1/admins, request: RegisterAdminBody, response: AdminRegisteredEvent }
+    - { method: POST, path: /api/v1/auth/login, request: LoginBody, response: UserLoggedInEvent }
+    # --- weddings ---
+    - { method: GET, path: /api/v1/weddings, request: '{}', response: 'WeddingListItem[]' }
+    - { method: POST, path: /api/v1/weddings, request: CreateWeddingBody, response: WeddingCreatedEvent }
+    - { method: GET, path: /api/v1/weddings/{weddingId}, request: '{}', response: WeddingListItem }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}, request: UpdateWeddingBody, response: WeddingUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}, request: '{}', response: void }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/restore, request: '{}', response: WeddingRestoredEvent }
+    # --- reception accounts ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/reception-accounts, request: '{}', response: 'ReceptionAccountListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/reception-accounts, request: CreateReceptionAccountBody, response: ReceptionAccountCreatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/reception-accounts/{accountId}, request: '{}', response: void }
+    # --- guests ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/guests, request: '{}', response: 'GuestListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests, request: CreateGuestBody, response: GuestCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/guests/{guestId}, request: UpdateGuestBody, response: GuestUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/guests/{guestId}, request: '{}', response: void }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/restore, request: '{}', response: GuestRestoredEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/import, request: ImportGuestsBody, response: GuestsImportedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/line-binding, request: BindGuestLineBody, response: GuestLineBoundEvent }
+    # --- seating: tables ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/tables, request: '{}', response: 'TableListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/tables, request: CreateTableBody, response: TableCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/tables/{tableId}, request: UpdateTableBody, response: TableUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/tables/{tableId}, request: '{}', response: void }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/tables/{tableId}/seats, request: SeatGuestBody, response: GuestSeatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}, request: '{}', response: void }
+    # --- seating: venue layout / etiquette ---
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/venue-layout, request: VenueLayoutBody, response: VenueLayoutConfiguredEvent }
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/etiquette-settings, request: EtiquetteSettingsBody, response: EtiquetteSettingsUpdatedEvent }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/etiquette-warnings, request: '{}', response: 'EtiquetteWarningListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss, request: DismissEtiquetteWarningBody, response: EtiquetteWarningDismissedEvent }
+    # --- rsvp ---
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-invitation, request: SendRsvpInvitationBody, response: RsvpInvitationSentEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp, request: SubmitRsvpBody, response: RsvpSubmittedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-override, request: OverrideRsvpBody, response: RsvpOverriddenEvent }
+    # --- cake-box types ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/cake-box-types, request: '{}', response: 'CakeBoxTypeListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/cake-box-types, request: CreateCakeBoxTypeBody, response: CakeBoxTypeCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}, request: UpdateCakeBoxTypeBody, response: CakeBoxTypeUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}, request: '{}', response: void }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}/assignment, request: ConfigureCakeBoxAssignmentBody, response: CakeBoxAssignmentConfiguredEvent }
+    # --- reception: check-in / gift / cake distribution ---
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/check-in, request: '{}', response: GuestCheckedInEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/self-check-in, request: SelfCheckInBody, response: GuestSelfCheckedInEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/gift-money, request: RecordGiftMoneyBody, response: GiftMoneyRecordedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/guests/{guestId}/gift-money, request: UpdateGiftMoneyBody, response: GiftMoneyUpdatedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/cake-box-distribution, request: DistributeCakeBoxBody, response: CakeBoxDistributedEvent }
+    # --- blessings ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/blessings, request: '{}', response: 'BlessingListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/blessings, request: SubmitBlessingBody, response: BlessingSubmittedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/blessings/{blessingId}/approve, request: '{}', response: BlessingApprovedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/blessings/{blessingId}/reject, request: RejectBlessingBody, response: BlessingRejectedEvent }
+    # --- thank-you ---
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/thank-you-card/template, request: SetThankYouTemplateBody, response: ThankYouTemplateSetEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you-card/customizations, request: CustomizeThankYouCardBody, response: ThankYouCardCustomizedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you/batch-send, request: '{}', response: ThankYouBatchSentEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you/fallback-send, request: SendThankYouFallbackBody, response: ThankYouFallbackSentEvent }
+    # --- line oa ---
+    - { method: POST, path: /api/v1/weddings/{weddingId}/line-oa, request: ConnectLineOaBody, response: LineOaConnectedEvent }
+
+# =============================================================================
+# 路由規劃
+# =============================================================================
+routes:
+  - path: /
+    page: app/pages/index.vue
+    layout: default
+    features: []
+    api_endpoints: []
+    components: []
+    store: null
+
+  - path: /register
+    page: app/pages/register.vue
+    layout: auth
+    features:
+      - { file: RegisterAdmin.feature, content_hash: da29aa468399 }
+    api_endpoints:
+      - POST /api/v1/admins
+    components: []
+    store: auth
+
+  - path: /login
+    page: app/pages/login.vue
+    layout: auth
+    features: []
+    api_endpoints:
+      - POST /api/v1/auth/login
+    components: []
+    store: auth
+
+  - path: /weddings
+    page: app/pages/weddings/index.vue
+    layout: default
+    features:
+      - { file: CreateWedding.feature, content_hash: 70f5ea6c7c25 }
+      - { file: SoftDeleteWedding.feature, content_hash: 67df2c51807f }
+      - { file: RestoreWedding.feature, content_hash: 98278473294a }
+    api_endpoints:
+      - GET /api/v1/weddings
+      - POST /api/v1/weddings
+      - DELETE /api/v1/weddings/{weddingId}
+      - POST /api/v1/weddings/{weddingId}/restore
+    components: [PageHeader, ConfirmModal]
+    store: null
+
+  - path: /weddings/[weddingId]
+    page: app/pages/weddings/[weddingId]/index.vue
+    layout: default
+    features:
+      - { file: UpdateWeddingInfo.feature, content_hash: c0534e491c60 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}
+      - PATCH /api/v1/weddings/{weddingId}
+    components: [PageHeader]
+    store: null
+
+  - path: /weddings/[weddingId]/accounts
+    page: app/pages/weddings/[weddingId]/accounts.vue
+    layout: default
+    features:
+      - { file: CreateReceptionAccount.feature, content_hash: 05b8cf5b9c3f }
+      - { file: RemoveReceptionAccount.feature, content_hash: 96a34a25c71f }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/reception-accounts
+      - POST /api/v1/weddings/{weddingId}/reception-accounts
+      - DELETE /api/v1/weddings/{weddingId}/reception-accounts/{accountId}
+    components: [PageHeader, ConfirmModal]
+    store: null
+
+  - path: /weddings/[weddingId]/guests
+    page: app/pages/weddings/[weddingId]/guests.vue
+    layout: default
+    features:
+      - { file: AddGuest.feature, content_hash: 5dc6488de560 }
+      - { file: UpdateGuest.feature, content_hash: dce604ae798f }
+      - { file: RemoveGuest.feature, content_hash: ecc8b8282da9 }
+      - { file: RestoreGuest.feature, content_hash: 1f16b1d5f289 }
+      - { file: ImportGuestsBatch.feature, content_hash: 51e0e49c2641 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/guests
+      - POST /api/v1/weddings/{weddingId}/guests
+      - PATCH /api/v1/weddings/{weddingId}/guests/{guestId}
+      - DELETE /api/v1/weddings/{weddingId}/guests/{guestId}
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/restore
+      - POST /api/v1/weddings/{weddingId}/guests/import
+    components: [PageHeader, ConfirmModal]
+    store: null
+    features_used: [fileUpload]
+
+  - path: /guest/[guestId]/bind
+    page: app/pages/guest/[guestId]/bind.vue
+    layout: guest
+    features:
+      - { file: BindGuestLine.feature, content_hash: 2d237c703cce }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/line-binding
+    components: []
+    store: null
+
+  - path: /weddings/[weddingId]/seating
+    page: app/pages/weddings/[weddingId]/seating.vue
+    layout: default
+    features:
+      - { file: AddTable.feature, content_hash: 34012581670c }
+      - { file: UpdateTable.feature, content_hash: ed439ea6a07b }
+      - { file: RemoveTable.feature, content_hash: 2133440a1cf2 }
+      - { file: ConfigureVenueLayout.feature, content_hash: 89475785bde7 }
+      - { file: SeatGuest.feature, content_hash: eeb9df721667 }
+      - { file: UnseatGuest.feature, content_hash: ded80b2ef05a }
+      - { file: UpdateEtiquetteSettings.feature, content_hash: 8c9ffc6e0cb3 }
+      - { file: DismissEtiquetteWarning.feature, content_hash: f65c04f6df21 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/tables
+      - POST /api/v1/weddings/{weddingId}/tables
+      - PATCH /api/v1/weddings/{weddingId}/tables/{tableId}
+      - DELETE /api/v1/weddings/{weddingId}/tables/{tableId}
+      - POST /api/v1/weddings/{weddingId}/tables/{tableId}/seats
+      - DELETE /api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}
+      - PUT /api/v1/weddings/{weddingId}/venue-layout
+      - PUT /api/v1/weddings/{weddingId}/etiquette-settings
+      - GET /api/v1/weddings/{weddingId}/etiquette-warnings
+      - POST /api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss
+    components: [PageHeader, ConfirmModal]
+    store: null
+
+  - path: /weddings/[weddingId]/rsvp
+    page: app/pages/weddings/[weddingId]/rsvp.vue
+    layout: default
+    features:
+      - { file: SendRsvpInvitation.feature, content_hash: 9b922b344995 }
+      - { file: OverrideRsvp.feature, content_hash: 75e6c594fdbd }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-invitation
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-override
+    components: [PageHeader]
+    store: null
+
+  - path: /rsvp/[guestId]
+    page: app/pages/rsvp/[guestId].vue
+    layout: guest
+    features:
+      - { file: SubmitRsvp.feature, content_hash: 7561bceaff23 }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp
+    components: []
+    store: null
+
+  - path: /weddings/[weddingId]/cake-box
+    page: app/pages/weddings/[weddingId]/cake-box.vue
+    layout: default
+    features:
+      - { file: AddCakeBoxType.feature, content_hash: e509dc7604f4 }
+      - { file: UpdateCakeBoxType.feature, content_hash: aa4ecaf13ea2 }
+      - { file: RemoveCakeBoxType.feature, content_hash: 6cb6357126bc }
+      - { file: ConfigureCakeBoxAssignment.feature, content_hash: 515429c12fa8 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/cake-box-types
+      - POST /api/v1/weddings/{weddingId}/cake-box-types
+      - PATCH /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}
+      - DELETE /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}
+      - POST /api/v1/weddings/{weddingId}/cake-box-types/{cakeBoxTypeId}/assignment
+    components: [PageHeader, ConfirmModal]
+    store: null
+
+  - path: /reception
+    page: app/pages/reception/index.vue
+    layout: default
+    features:
+      - { file: CheckInByReception.feature, content_hash: 1b9a9db2ed03 }
+      - { file: RecordGiftMoney.feature, content_hash: ea46c2103737 }
+      - { file: UpdateGiftMoney.feature, content_hash: 7aa6e7961de1 }
+      - { file: DistributeCakeBox.feature, content_hash: 418d8db56127 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/guests
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/check-in
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/gift-money
+      - PATCH /api/v1/weddings/{weddingId}/guests/{guestId}/gift-money
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/cake-box-distribution
+    components: [PageHeader]
+    store: null
+
+  - path: /checkin
+    page: app/pages/checkin.vue
+    layout: guest
+    features:
+      - { file: SelfCheckIn.feature, content_hash: 3d0772a05bb5 }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/guests/{guestId}/self-check-in
+    components: []
+    store: null
+
+  - path: /weddings/[weddingId]/blessings
+    page: app/pages/weddings/[weddingId]/blessings.vue
+    layout: default
+    features:
+      - { file: ApproveBlessing.feature, content_hash: 71d4bfdfea84 }
+      - { file: RejectBlessing.feature, content_hash: b01ff473ede2 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/blessings
+      - POST /api/v1/weddings/{weddingId}/blessings/{blessingId}/approve
+      - POST /api/v1/weddings/{weddingId}/blessings/{blessingId}/reject
+    components: [PageHeader]
+    store: null
+
+  - path: /blessing/[weddingId]
+    page: app/pages/blessing/[weddingId].vue
+    layout: guest
+    features:
+      - { file: SubmitBlessing.feature, content_hash: 412f6cff2b97 }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/blessings
+    components: []
+    store: null
+    features_used: [fileUpload]
+
+  - path: /weddings/[weddingId]/thank-you
+    page: app/pages/weddings/[weddingId]/thank-you.vue
+    layout: default
+    features:
+      - { file: SetThankYouCardTemplate.feature, content_hash: 0739b7835a22 }
+      - { file: CustomizeThankYouCard.feature, content_hash: 0fd1deb7c974 }
+      - { file: SendThankYouBatch.feature, content_hash: d6924e69ab85 }
+      - { file: SendThankYouFallback.feature, content_hash: 8df6072da16e }
+    api_endpoints:
+      - PUT /api/v1/weddings/{weddingId}/thank-you-card/template
+      - POST /api/v1/weddings/{weddingId}/thank-you-card/customizations
+      - POST /api/v1/weddings/{weddingId}/thank-you/batch-send
+      - POST /api/v1/weddings/{weddingId}/thank-you/fallback-send
+    components: [PageHeader]
+    store: null
+    features_used: [fileUpload]
+
+  - path: /weddings/[weddingId]/line
+    page: app/pages/weddings/[weddingId]/line.vue
+    layout: default
+    features:
+      - { file: ConnectLineOa.feature, content_hash: 9a58fd98a841 }
+    api_endpoints:
+      - POST /api/v1/weddings/{weddingId}/line-oa
+    components: [PageHeader]
+    store: null
