@@ -34,5 +34,6 @@ logs
 
 # Playwright
 test/e2e/test-results/
+test/e2e/test-results-vibe/
 test/e2e/screenshots/
 playwright-report/

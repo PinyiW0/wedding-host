@@ -1,2 +1,103 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Tailwind v4 preflight 將 button cursor 設為 default，覆蓋回 pointer */
+@layer base {
+  button, [role="button"] {
+    cursor: pointer;
+  }
+}
+
+/* 7 個語義色皆為自訂 hex，產生 50-950 色階供 Nuxt UI plugin 橋接 */
+@theme static {
+  /* primary — 陶土橘 (base: #BE6A52) */
+  --color-primary-50: #FBF4F1;
+  --color-primary-100: #F6E6DF;
+  --color-primary-200: #ECCDC0;
+  --color-primary-300: #DFAB97;
+  --color-primary-400: #CF8470;
+  --color-primary-500: #BE6A52;
+  --color-primary-600: #A8523C;
+  --color-primary-700: #8C4232;
+  --color-primary-800: #75392D;
+  --color-primary-900: #63332A;
+  --color-primary-950: #351813;
+
+  /* secondary — 橄欖鼠尾草 (base: #7A7C5E) */
+  --color-secondary-50: #F6F6F2;
+  --color-secondary-100: #E9EADF;
+  --color-secondary-200: #D4D6C1;
+  --color-secondary-300: #B7BA9B;
+  --color-secondary-400: #9B9E78;
+  --color-secondary-500: #7A7C5E;
+  --color-secondary-600: #63654C;
+  --color-secondary-700: #4E4F3D;
+  --color-secondary-800: #414235;
+  --color-secondary-900: #393A2F;
+  --color-secondary-950: #1D1E16;
+
+  /* neutral — 暖咖啡墨 (base: #2B2420) */
+  --color-neutral-50: #F7F5F4;
+  --color-neutral-100: #EAE6E3;
+  --color-neutral-200: #D4CCC6;
+  --color-neutral-300: #B6AAA1;
+  --color-neutral-400: #93837A;
+  --color-neutral-500: #7A6A60;
+  --color-neutral-600: #635650;
+  --color-neutral-700: #514742;
+  --color-neutral-800: #443C38;
+  --color-neutral-900: #3C3531;
+  --color-neutral-950: #2B2420;
+
+  /* success — 苔綠 (base: #6E8B6A) */
+  --color-success-50: #F4F7F3;
+  --color-success-100: #E5ECE3;
+  --color-success-200: #CBD9C8;
+  --color-success-300: #A6BCA1;
+  --color-success-400: #809B7A;
+  --color-success-500: #6E8B6A;
+  --color-success-600: #4E6549;
+  --color-success-700: #3F523B;
+  --color-success-800: #344332;
+  --color-success-900: #2C382B;
+  --color-success-950: #161E16;
+
+  /* warning — 古銅金 (base: #C49A4A) */
+  --color-warning-50: #FBF7EE;
+  --color-warning-100: #F5EBD3;
+  --color-warning-200: #EAD5A8;
+  --color-warning-300: #DDB873;
+  --color-warning-400: #D2A052;
+  --color-warning-500: #C49A4A;
+  --color-warning-600: #A87B36;
+  --color-warning-700: #875F2D;
+  --color-warning-800: #714D2A;
+  --color-warning-900: #614127;
+  --color-warning-950: #382212;
+
+  /* error — 深酒磚紅 (base: #9B3A34) */
+  --color-error-50: #FBF4F3;
+  --color-error-100: #F7E6E4;
+  --color-error-200: #F1D1CD;
+  --color-error-300: #E5AEA8;
+  --color-error-400: #D67F76;
+  --color-error-500: #C4584D;
+  --color-error-600: #9B3A34;
+  --color-error-700: #8E332E;
+  --color-error-800: #772E2A;
+  --color-error-900: #642A28;
+  --color-error-950: #361211;
+
+  /* info — 霧霾藍 (base: #6E8499) */
+  --color-info-50: #F4F6F8;
+  --color-info-100: #E6EBF0;
+  --color-info-200: #D2DBE3;
+  --color-info-300: #B2C2D0;
+  --color-info-400: #8BA2B7;
+  --color-info-500: #6E8499;
+  --color-info-600: #5C6E82;
+  --color-info-700: #4C5A6A;
+  --color-info-800: #424D5A;
+  --color-info-900: #3B434D;
+  --color-info-950: #272C33;
+}
