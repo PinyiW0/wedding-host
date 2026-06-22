@@ -15,7 +15,7 @@ import {
 // （桌次 CRUD + 場地佈局 + 座位安排 + 禮俗設定 / 警告）
 // Feature Background：已登入為管理員（Admin）；已選定 wedding-001
 // mock seed：
-//   tables：table-001(主桌/10座/100,200)、table-002(男方家屬桌)、table-003(女方家屬桌)
+//   tables：table-001(主桌/12座/100,200，由後台設定)、table-002(男方家屬桌)、table-003(女方家屬桌)
 //   seats：預設無人入座
 //   venueLayout：wedding-001 已有舞台設定
 //   etiquetteSettings：wedding-001 五開關（部分開部分關）
@@ -197,8 +197,8 @@ test.describe('座位安排（Admin 端）', () => {
 
   test.describe('規則：桌次已滿', () => {
     test('桌次已滿時拒絕安排', async ({ page }) => {
-      // Given：table-001（capacity 10）已坐滿 10 位賓客（guest-001 ~ guest-010）
-      for (let i = 1; i <= 10; i++) {
+      // Given：table-001（capacity 12）已坐滿 12 位賓客（guest-001 ~ guest-012）
+      for (let i = 1; i <= 12; i++) {
         const guestId = `guest-${String(i).padStart(3, '0')}`
         const res = await page.request.post(
           '/api/v1/weddings/wedding-001/tables/table-001/seats',
@@ -208,11 +208,11 @@ test.describe('座位安排（Admin 端）', () => {
       }
       await page.goto(SEATING_URL, { waitUntil: 'networkidle' })
 
-      // When：嘗試將 guest-011（謝明哲）安排至已滿的 table-001
+      // When：嘗試將 guest-013（趙建國）安排至已滿的 table-001
       await page.getByRole('button', { name: /安排座位|安排/ }).first().click()
-      await selectOption(page, 'seat-guest-select', /謝明哲/)
+      await selectOption(page, 'seat-guest-select', /趙建國/)
       await selectOption(page, 'seat-table-select', /主桌/)
-      await page.getByLabel(/座位號/).fill('11')
+      await page.getByLabel(/座位號/).fill('13')
       await page.getByRole('button', { name: /安排|送出|確定/ }).click()
 
       // Then：使用者看到錯誤訊息
