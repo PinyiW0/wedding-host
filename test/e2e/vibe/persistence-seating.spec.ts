@@ -46,18 +46,19 @@ test.describe('持久化：場地佈局與禮俗設定重整後仍在', () => {
   test('禮俗設定：切換開關後重整，重開 modal 開關狀態仍是剛存的', async ({ page }) => {
     await page.goto(SEATING_PATH, { waitUntil: 'networkidle' })
 
-    // seed：elderNearMain=true、genderSeparation=false。切換兩者使其翻轉。
+    // seed：elderNearMain=true、sameCategoryTogether=false。切換兩者使其翻轉。
+    // （「男女分桌」開關已依需求自禮俗設定移除，故改驗「同分類同桌」開關的持久化）
     await page.getByTestId('etiquette-settings').click()
     await expect(page.getByTestId('etiquette-form-modal')).toBeVisible()
 
     const elderSwitch = page.getByTestId('etiquette-elder-near-main')
-    const genderSwitch = page.getByTestId('etiquette-gender-separation')
+    const sameCategorySwitch = page.getByTestId('etiquette-same-category-together')
 
     // 確認載入既有值（seed）後再切換，驗證翻轉結果可被持久化
     await expect(elderSwitch).toHaveAttribute('aria-checked', 'true')
-    await expect(genderSwitch).toHaveAttribute('aria-checked', 'false')
+    await expect(sameCategorySwitch).toHaveAttribute('aria-checked', 'false')
     await elderSwitch.click() // true -> false
-    await genderSwitch.click() // false -> true
+    await sameCategorySwitch.click() // false -> true
 
     const apiCall = waitForApiCall(page, /\/etiquette-settings(\?|$)/, 'PUT')
     await page.getByTestId('etiquette-submit').click()
@@ -68,6 +69,6 @@ test.describe('持久化：場地佈局與禮俗設定重整後仍在', () => {
     await page.getByTestId('etiquette-settings').click()
     await expect(page.getByTestId('etiquette-form-modal')).toBeVisible()
     await expect(page.getByTestId('etiquette-elder-near-main')).toHaveAttribute('aria-checked', 'false')
-    await expect(page.getByTestId('etiquette-gender-separation')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('etiquette-same-category-together')).toHaveAttribute('aria-checked', 'true')
   })
 })
