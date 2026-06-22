@@ -4,24 +4,20 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   CreateWeddingBody,
-  WeddingCreatedEvent,
   WeddingListItem,
-  WeddingRestoredEvent,
 } from '~/types/api/weddings'
 
 import { z } from 'zod'
+import { createWedding, deleteWedding, listWeddings, restoreWedding } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
 const toast = useToast()
 
 // 婚禮列表（含已軟刪除，UI 以 deletedAt 分區呈現）
-const { data: weddings, refresh } = await useFetch<WeddingListItem[]>(
-  '/api/v1/weddings',
-  {
-    default: () => [],
-  },
-)
+const { data: weddings, refresh } = await listWeddings({
+  default: () => [],
+})
 
 // 搜尋：依名稱 / 場地過濾
 const search = ref('')
@@ -78,10 +74,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       address: event.data.address,
       date: event.data.date,
     }
-    await $fetch<WeddingCreatedEvent>('/api/v1/weddings', {
-      method: 'POST',
-      body,
-    })
+    await createWedding(body)
     toast.add({ title: '婚禮建立成功', color: 'success' })
     isCreateOpen.value = false
     await refresh()
@@ -111,9 +104,7 @@ async function confirmDelete() {
     return
   isDeleting.value = true
   try {
-    await $fetch(`/api/v1/weddings/${deleteTarget.value.weddingId}`, {
-      method: 'DELETE',
-    })
+    await deleteWedding(deleteTarget.value.weddingId)
     toast.add({ title: '婚禮已刪除', color: 'success' })
     isDeleteOpen.value = false
     await refresh()
@@ -143,10 +134,7 @@ async function confirmRestore() {
     return
   isRestoring.value = true
   try {
-    await $fetch<WeddingRestoredEvent>(
-      `/api/v1/weddings/${restoreTarget.value.weddingId}/restore`,
-      { method: 'POST' },
-    )
+    await restoreWedding(restoreTarget.value.weddingId)
     toast.add({ title: '婚禮已恢復', color: 'success' })
     isRestoreOpen.value = false
     await refresh()
@@ -164,12 +152,17 @@ async function confirmRestore() {
 
 <template>
   <div data-testid="weddings-page" class="flex h-full flex-col">
-    <PageHeader title="婚禮" description="管理所有婚禮場次">
+    <PageHeader
+      title="婚禮"
+      eyebrow="Wedding Collection"
+      description="管理所有婚禮場次"
+    >
       <template #actions>
         <UButton
           data-testid="wedding-create"
           icon="i-heroicons-plus"
-          color="primary"
+          color="neutral"
+          variant="solid"
           @click="openCreate"
         >
           建立婚禮
@@ -178,7 +171,7 @@ async function confirmRestore() {
     </PageHeader>
 
     <!-- 搜尋框 -->
-    <div class="mb-4 flex shrink-0 justify-end">
+    <div class="mb-6 flex shrink-0 justify-end">
       <UInput
         v-model="search"
         data-testid="wedding-search"
@@ -188,56 +181,73 @@ async function confirmRestore() {
       />
     </div>
 
-    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 婚禮列表（未刪除） -->
+    <div class="min-h-0 flex-1 space-y-12 overflow-auto">
+      <!-- 婚禮列表（未刪除）：編輯式卡片網格 -->
       <div>
-        <table
+        <div
+          v-if="activeWeddings.length > 0"
           data-testid="wedding-list"
-          class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+          class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
         >
-          <thead class="bg-neutral-50 dark:bg-neutral-900">
-            <tr
-              class="text-left text-sm text-neutral-500 dark:text-neutral-400"
+          <article
+            v-for="wedding in activeWeddings"
+            :key="wedding.weddingId"
+            :aria-label="wedding.title"
+            class="group flex flex-col overflow-hidden rounded-lg border border-line bg-white transition-shadow hover:shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <!-- Save-the-Date 風格頂圖區（漸層 placeholder） -->
+            <NuxtLink
+              :to="`/weddings/${wedding.weddingId}`"
+              class="relative block aspect-video bg-gradient-to-br from-paper via-[#EFE7D8] to-[#E8DECB] dark:from-neutral-800 dark:via-neutral-800 dark:to-neutral-900"
             >
-              <th class="px-4 py-3 font-medium">
-                婚禮名稱
-              </th>
-              <th class="hidden px-4 py-3 font-medium sm:table-cell">
-                場地
-              </th>
-              <th class="hidden px-4 py-3 font-medium md:table-cell">
-                日期
-              </th>
-              <th class="px-4 py-3 text-right font-medium">
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="wedding in activeWeddings"
-              :key="wedding.weddingId"
-              class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
-            >
-              <td class="px-4 py-3">
+              <span
+                class="absolute left-5 top-5 inline-flex items-center gap-2 text-overline uppercase text-gold-deep"
+              >
+                <span class="h-px w-6 bg-gold" />
+                Save the Date
+              </span>
+              <span
+                class="absolute bottom-5 right-5 font-display text-2xl italic text-ink/30 dark:text-paper/30"
+              >
+                {{ wedding.date }}
+              </span>
+            </NuxtLink>
+
+            <!-- 卡片內文 -->
+            <div class="flex flex-1 flex-col p-6">
+              <div class="flex items-start justify-between gap-3">
                 <NuxtLink
                   :to="`/weddings/${wedding.weddingId}`"
-                  class="font-medium text-neutral-900 hover:text-primary-600 dark:text-white dark:hover:text-primary-400"
+                  class="font-display text-h2 font-semibold leading-tight text-ink hover:text-gold-deep dark:text-paper"
                 >
                   {{ wedding.title }}
                 </NuxtLink>
-              </td>
-              <td
-                class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300"
-              >
-                {{ wedding.venue }}
-              </td>
-              <td
-                class="hidden px-4 py-3 text-neutral-600 md:table-cell dark:text-neutral-300"
-              >
-                {{ wedding.date }}
-              </td>
-              <td class="px-4 py-3 text-right">
+                <UBadge color="success" variant="subtle" class="shrink-0">
+                  進行中
+                </UBadge>
+              </div>
+
+              <dl class="mt-4 space-y-2 text-caption text-ink-500 dark:text-neutral-400">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-heroicons-map-pin" class="size-4 text-gold" />
+                  <span>{{ wedding.venue }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-heroicons-calendar-days" class="size-4 text-gold" />
+                  <span>{{ wedding.date }}</span>
+                </div>
+              </dl>
+
+              <div class="mt-6 flex items-center justify-between border-t border-line pt-4 dark:border-neutral-800">
+                <UButton
+                  :to="`/weddings/${wedding.weddingId}`"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  trailing-icon="i-heroicons-arrow-right"
+                >
+                  進入管理
+                </UButton>
                 <UButton
                   data-testid="wedding-delete"
                   icon="i-heroicons-trash"
@@ -249,63 +259,58 @@ async function confirmRestore() {
                 >
                   刪除
                 </UButton>
-              </td>
-            </tr>
-            <tr v-if="activeWeddings.length === 0">
-              <td colspan="4">
-                <EmptyState
-                  title="目前沒有婚禮"
-                  description="點擊「建立婚禮」新增第一場婚禮"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <EmptyState
+          v-else
+          title="目前沒有婚禮"
+          description="點擊「建立婚禮」新增第一場婚禮"
+        />
       </div>
 
       <!-- 回收區（已軟刪除） -->
       <div v-if="deletedWeddings.length > 0">
-        <h2
-          class="mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400"
-        >
-          已刪除的婚禮
-        </h2>
-        <table
+        <div class="mb-4 flex items-center gap-3">
+          <span class="h-px w-8 bg-line" />
+          <p class="text-overline uppercase text-ink-300">
+            已刪除的婚禮
+          </p>
+        </div>
+        <div
           data-testid="wedding-deleted-list"
-          class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          <tbody>
-            <tr
-              v-for="wedding in deletedWeddings"
-              :key="wedding.weddingId"
-              class="border-t border-neutral-200 dark:border-neutral-800"
-            >
-              <td class="px-4 py-3">
-                <span
-                  class="font-medium text-neutral-500 line-through dark:text-neutral-400"
-                >
-                  {{ wedding.title }}
-                </span>
-              </td>
-              <td class="hidden px-4 py-3 text-neutral-400 sm:table-cell">
+          <div
+            v-for="wedding in deletedWeddings"
+            :key="wedding.weddingId"
+            role="article"
+            :aria-label="wedding.title"
+            class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-line bg-paper px-5 py-4 dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <div class="min-w-0">
+              <p class="truncate font-display text-body-l font-medium text-ink-500 line-through dark:text-neutral-400">
+                {{ wedding.title }}
+              </p>
+              <p class="truncate text-caption text-ink-300">
                 {{ wedding.venue }}
-              </td>
-              <td class="px-4 py-3 text-right">
-                <UButton
-                  data-testid="wedding-restore"
-                  icon="i-heroicons-arrow-uturn-left"
-                  color="primary"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`恢復 ${wedding.title}`"
-                  @click="openRestore(wedding)"
-                >
-                  恢復
-                </UButton>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </p>
+            </div>
+            <UButton
+              data-testid="wedding-restore"
+              icon="i-heroicons-arrow-uturn-left"
+              color="primary"
+              variant="ghost"
+              size="sm"
+              :aria-label="`恢復 ${wedding.title}`"
+              @click="openRestore(wedding)"
+            >
+              恢復
+            </UButton>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -313,8 +318,11 @@ async function confirmRestore() {
     <UModal v-model:open="isCreateOpen">
       <template #content>
         <div data-testid="wedding-form-modal" class="p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            New Wedding
+          </p>
           <h3
-            class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white"
+            class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper"
           >
             建立婚禮
           </h3>
@@ -392,7 +400,8 @@ async function confirmRestore() {
               <UButton
                 type="submit"
                 data-testid="wedding-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 建立

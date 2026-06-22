@@ -1,29 +1,36 @@
 <!-- app/pages/weddings/[weddingId]/thank-you.vue -->
 <script setup lang="ts">
-import type { GuestListItem } from '~/types/api/guests'
 import type {
   CustomizeThankYouCardBody,
   SendThankYouFallbackBody,
   SetThankYouTemplateBody,
-  ThankYouBatchSentEvent,
-  ThankYouCardCustomizedEvent,
-  ThankYouCustomizationListItem,
-  ThankYouFallbackSentEvent,
-  ThankYouTemplateDetail,
-  ThankYouTemplateSetEvent,
 } from '~/types/api/thankyou'
+import {
+  batchSendThankYou,
+  customizeThankYouCard,
+  fallbackSendThankYou,
+  getThankYouTemplate,
+  listGuests,
+  listThankYouCustomizations,
+  setThankYouTemplate,
+} from '~/api'
 
 definePageMeta({ layout: 'default' })
+
+// 謝卡預覽日期格式化用（避免每次呼叫重編譯 regex）
+const DATE_SEPARATOR_RE = /-/g
 
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
+// 婚禮資訊（顯示用）：謝卡預覽的新人名與日期
+const { wedding } = useCurrentWedding()
+const coupleName = computed(() => wedding.value?.title ?? '')
+const weddingDate = computed(() => (wedding.value?.date ?? '').replace(DATE_SEPARATOR_RE, ' · '))
+
 // 賓客清單（供客製 / 替代感謝選擇對象，濾除已軟刪賓客）
-const { data: guests } = await useFetch<GuestListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/guests`,
-  { default: () => [] },
-)
+const { data: guests } = await listGuests(weddingId, { default: () => [] })
 const guestOptions = computed(() =>
   (guests.value ?? [])
     .filter(g => !g.deletedAt)
@@ -35,10 +42,9 @@ function guestName(guestId: string): string {
 }
 
 // === 謝卡範本（由 GET 讀回，重整仍能還原預覽） ===
-const { data: template, refresh: refreshTemplate } = await useFetch<ThankYouTemplateDetail | null>(
-  () => `/api/v1/weddings/${weddingId.value}/thank-you-card/template`,
-  { default: () => null },
-)
+const { data: template, refresh: refreshTemplate } = await getThankYouTemplate(weddingId, {
+  default: () => null,
+})
 const templateContent = computed(() => template.value?.templateContent ?? '')
 
 // === 設定謝卡範本 ===
@@ -72,10 +78,7 @@ async function submitTemplate() {
       templateContent: templateContentInput.value.trim(),
       ...(templateImageUrl.value ? { templateImageUrl: templateImageUrl.value } : {}),
     }
-    await $fetch<ThankYouTemplateSetEvent>(
-      `/api/v1/weddings/${weddingId.value}/thank-you-card/template`,
-      { method: 'PUT', body },
-    )
+    await setThankYouTemplate(weddingId.value, body)
     await refreshTemplate()
     toast.add({ title: '謝卡範本已儲存', color: 'success' })
     isTemplateOpen.value = false
@@ -96,8 +99,8 @@ const customizeError = ref('')
 const customizeGuestId = ref('')
 const customizeContent = ref('')
 // 已客製賓客（由 GET 讀回，重整仍能還原清單）
-const { data: customizations, refresh: refreshCustomizations } = await useFetch<ThankYouCustomizationListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/thank-you-card/customizations`,
+const { data: customizations, refresh: refreshCustomizations } = await listThankYouCustomizations(
+  weddingId,
   { default: () => [] },
 )
 
@@ -126,10 +129,7 @@ async function submitCustomize() {
       guestId: customizeGuestId.value,
       customContent: customizeContent.value.trim(),
     }
-    await $fetch<ThankYouCardCustomizedEvent>(
-      `/api/v1/weddings/${weddingId.value}/thank-you-card/customizations`,
-      { method: 'POST', body },
-    )
+    await customizeThankYouCard(weddingId.value, body)
     await refreshCustomizations()
     toast.add({ title: '謝卡客製已儲存', color: 'success' })
     isCustomizeOpen.value = false
@@ -168,10 +168,7 @@ async function confirmBatch() {
   isBatchSending.value = true
   batchError.value = ''
   try {
-    const res = await $fetch<ThankYouBatchSentEvent>(
-      `/api/v1/weddings/${weddingId.value}/thank-you/batch-send`,
-      { method: 'POST' },
-    )
+    const res = await batchSendThankYou(weddingId.value)
     batchResultCount.value = res.recipientCount
     // 人數只放穩定的 inline 結果區，toast 不帶數字（避免 getByText(/50/) 觸發 strict mode，坑 #2）
     toast.add({ title: '感謝訊息已群發', color: 'success' })
@@ -220,10 +217,7 @@ async function submitFallback() {
       guestId: fallbackGuestId.value,
       channel: fallbackChannel.value,
     }
-    const res = await $fetch<ThankYouFallbackSentEvent>(
-      `/api/v1/weddings/${weddingId.value}/thank-you/fallback-send`,
-      { method: 'POST', body },
-    )
+    const res = await fallbackSendThankYou(weddingId.value, body)
     toast.add({
       title: `已透過${res.channel === 'email' ? 'Email' : '連結'}發送替代感謝`,
       color: 'success',
@@ -242,85 +236,136 @@ async function submitFallback() {
 
 <template>
   <div data-testid="thank-you-page" class="flex h-full flex-col">
-    <PageHeader title="謝卡與感謝" description="設定謝卡範本、客製個別謝卡，並群發或替代發送感謝訊息">
+    <PageHeader
+      title="謝卡與感謝"
+      eyebrow="With Gratitude"
+      description="設定謝卡範本、客製個別謝卡，並群發或替代發送感謝訊息"
+    >
       <template #actions>
         <div class="flex flex-wrap gap-2">
-          <UButton color="primary" variant="solid" @click="openBatch">
-            群發感謝訊息
-          </UButton>
-          <UButton color="primary" variant="outline" @click="openFallback">
+          <UButton color="neutral" variant="outline" @click="openFallback">
             替代感謝
+          </UButton>
+          <UButton color="neutral" variant="solid" @click="openBatch">
+            群發感謝訊息
           </UButton>
         </div>
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 space-y-6 overflow-auto">
-      <!-- 謝卡範本 -->
-      <section class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-        <div class="flex items-start justify-between gap-4">
-          <div class="min-w-0">
-            <h2 class="font-semibold text-neutral-900 dark:text-white">
-              謝卡範本
-            </h2>
-            <p
-              v-if="templateContent"
-              data-testid="template-preview"
-              class="mt-2 whitespace-pre-line text-neutral-700 dark:text-neutral-300"
-            >
-              {{ templateContent }}
-            </p>
-            <p v-else class="mt-2 text-sm text-neutral-400">
-              尚未設定謝卡範本
-            </p>
-          </div>
-          <UButton color="primary" variant="soft" class="shrink-0" @click="openTemplate">
-            編輯謝卡範本
-          </UButton>
-        </div>
-      </section>
+    <div class="min-h-0 flex-1 overflow-auto">
+      <div class="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_minmax(320px,400px)]">
+        <!-- 左：編輯區 -->
+        <div class="space-y-10">
+          <!-- 謝卡範本 -->
+          <section>
+            <div class="mb-4 flex items-center gap-3">
+              <span class="text-overline uppercase text-gold-deep">謝卡範本</span>
+              <span class="h-px flex-1 bg-line" />
+            </div>
+            <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                  <p
+                    v-if="templateContent"
+                    data-testid="template-preview"
+                    class="whitespace-pre-line text-body-l leading-relaxed text-ink-700 dark:text-neutral-300"
+                  >
+                    {{ templateContent }}
+                  </p>
+                  <p v-else class="text-body text-ink-300">
+                    尚未設定謝卡範本
+                  </p>
+                </div>
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  class="shrink-0"
+                  @click="openTemplate"
+                >
+                  編輯謝卡範本
+                </UButton>
+              </div>
+            </div>
+          </section>
 
-      <!-- 已群發結果 -->
-      <section
-        v-if="batchResultCount !== null"
-        data-testid="batch-result"
-        class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
-      >
-        <p class="text-neutral-700 dark:text-neutral-300">
-          已發送給 {{ batchResultCount }} 位賓客
-        </p>
-      </section>
-
-      <!-- 客製謝卡 -->
-      <section class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-        <div class="mb-3 flex items-center justify-between gap-4">
-          <h2 class="font-semibold text-neutral-900 dark:text-white">
-            個別客製謝卡
-          </h2>
-          <UButton color="primary" variant="soft" @click="openCustomize">
-            客製謝卡
-          </UButton>
-        </div>
-
-        <div v-if="customizationList.length === 0">
-          <EmptyState title="尚無客製謝卡" description="可為個別賓客客製專屬謝卡內容" />
-        </div>
-        <ul v-else class="space-y-2">
-          <li
-            v-for="c in customizationList"
-            :key="c.guestId"
-            :aria-label="c.name"
-            class="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+          <!-- 已群發結果 -->
+          <section
+            v-if="batchResultCount !== null"
+            data-testid="batch-result"
+            class="rounded-lg border border-line border-l-[3px] border-l-gold bg-paper p-5 dark:border-neutral-800 dark:bg-neutral-900"
           >
-            <p class="font-medium text-neutral-900 dark:text-white">
-              {{ c.name }}
+            <p class="text-ink-700 dark:text-neutral-300">
+              已發送給 {{ batchResultCount }} 位賓客
             </p>
-            <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-              {{ c.content }}
+          </section>
+
+          <!-- 客製謝卡 -->
+          <section>
+            <div class="mb-4 flex items-center justify-between gap-4">
+              <div class="flex flex-1 items-center gap-3">
+                <span class="text-overline uppercase text-gold-deep">個別客製謝卡</span>
+                <span class="h-px flex-1 bg-line" />
+              </div>
+              <UButton color="neutral" variant="outline" @click="openCustomize">
+                客製謝卡
+              </UButton>
+            </div>
+
+            <div v-if="customizationList.length === 0">
+              <EmptyState title="尚無客製謝卡" description="可為個別賓客客製專屬謝卡內容" />
+            </div>
+            <ul v-else class="space-y-2.5">
+              <li
+                v-for="c in customizationList"
+                :key="c.guestId"
+                :aria-label="c.name"
+                class="rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <p class="font-medium text-ink dark:text-paper">
+                  {{ c.name }}
+                </p>
+                <p class="mt-1 text-body text-ink-500 dark:text-neutral-400">
+                  {{ c.content }}
+                </p>
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- 右：謝卡風即時預覽（With Gratitude / Cormorant italic / 金線 / 新人名 Cormorant） -->
+        <aside class="lg:sticky lg:top-0">
+          <div class="mb-4 flex items-center gap-3">
+            <span class="text-overline uppercase text-gold-deep">即時預覽</span>
+            <span class="h-px flex-1 bg-line" />
+          </div>
+          <div class="flex flex-col items-center rounded-lg border border-line bg-paper px-8 py-12 text-center dark:border-neutral-800 dark:bg-neutral-900">
+            <p class="text-overline uppercase tracking-[0.32em] text-gold-deep">
+              With Gratitude
             </p>
-          </li>
-        </ul>
-      </section>
+            <p class="mt-8 font-display text-3xl italic leading-snug text-gold">
+              謝謝你，<br>來見證我們的開始
+            </p>
+            <span class="my-8 h-px w-10 bg-gold" />
+            <p class="max-w-xs whitespace-pre-line text-body leading-loose text-ink-700 dark:text-neutral-300">
+              {{ templateContent || '在此設定謝卡範本，賓客將收到這份感謝。' }}
+            </p>
+            <p
+              v-if="coupleName"
+              class="mt-10 font-display text-4xl font-semibold leading-none text-ink dark:text-paper"
+            >
+              {{ coupleName }}
+            </p>
+            <p v-if="weddingDate" class="mt-2 text-caption tracking-widest text-ink-500">
+              {{ weddingDate }}
+            </p>
+            <span class="my-8 h-px w-full bg-line" />
+            <span class="text-body text-gold-deep">
+              為新人留下祝福 →
+            </span>
+          </div>
+        </aside>
+      </div>
     </div>
 
     <!-- 設定謝卡範本 Modal -->
@@ -371,7 +416,8 @@ async function submitFallback() {
               </UButton>
               <UButton
                 data-testid="template-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isTemplateSubmitting"
                 @click="submitTemplate"
               >
@@ -434,7 +480,8 @@ async function submitFallback() {
               </UButton>
               <UButton
                 data-testid="customize-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isCustomizeSubmitting"
                 @click="submitCustomize"
               >
@@ -478,7 +525,8 @@ async function submitFallback() {
             </UButton>
             <UButton
               data-testid="batch-submit"
-              color="primary"
+              color="neutral"
+              variant="solid"
               :loading="isBatchSending"
               @click="confirmBatch"
             >
@@ -541,7 +589,8 @@ async function submitFallback() {
               </UButton>
               <UButton
                 data-testid="fallback-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isFallbackSending"
                 @click="submitFallback"
               >

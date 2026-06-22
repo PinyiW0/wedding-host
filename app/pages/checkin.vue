@@ -1,9 +1,7 @@
 <!-- app/pages/checkin.vue -->
 <script setup lang="ts">
-import type {
-  GuestSelfCheckedInEvent,
-  SelfCheckInBody,
-} from '~/types/api/reception'
+import type { SelfCheckInBody } from '~/types/api/reception'
+import { selfCheckInGuest } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -29,10 +27,7 @@ async function selfCheckIn() {
   submitError.value = ''
   try {
     const body: SelfCheckInBody = { name: name.value.trim() }
-    const res = await $fetch<GuestSelfCheckedInEvent>(
-      `/api/v1/weddings/${weddingId.value}/guests/${guestId.value}/self-check-in`,
-      { method: 'POST', body },
-    )
+    const res = await selfCheckInGuest(weddingId.value, guestId.value, body)
     checkedInName.value = res?.name ?? name.value.trim()
     isCheckedIn.value = true
   }
@@ -48,58 +43,82 @@ async function selfCheckIn() {
 
 <template>
   <div data-testid="checkin-page" class="flex flex-col">
-    <div class="text-center">
-      <UIcon name="i-heroicons-qr-code" class="size-12 text-primary-500" />
-      <h1 class="mt-4 text-xl font-bold text-neutral-900">
-        自助報到
+    <!-- 報到成功：深色 editorial 卡片 -->
+    <div
+      v-if="isCheckedIn"
+      data-testid="checkin-success"
+      role="status"
+      class="rounded-lg bg-ink px-8 py-12 text-center text-cream shadow-lg"
+    >
+      <span
+        data-testid="vibe-checkin-badge"
+        class="inline-flex items-center gap-2 rounded-full bg-success px-4 py-1.5 text-overline uppercase text-white"
+      >
+        <UIcon name="i-heroicons-check-circle" class="size-4" />
+        已完成報到
+      </span>
+      <h1 class="mt-6 font-display text-display-l font-semibold leading-none">
+        報到成功
       </h1>
-      <p class="mt-2 text-neutral-500">
-        請輸入您的姓名完成報到
+      <div class="mx-auto mt-4 h-px w-10 bg-gold" />
+      <p class="mt-5 text-body-l text-cream/80">
+        歡迎 <span class="font-display text-2xl text-gold-light">{{ checkedInName }}</span>，感謝您的蒞臨。
       </p>
     </div>
 
-    <UAlert
-      v-if="submitError"
-      data-testid="checkin-error"
-      icon="i-heroicons-exclamation-triangle"
-      color="error"
-      variant="soft"
-      :title="submitError"
-      class="mt-6"
-    />
+    <template v-else>
+      <!-- Hero -->
+      <div class="py-6 text-center">
+        <p class="text-overline uppercase text-gold-deep">
+          Check-in · 報到
+        </p>
+        <h1 class="mt-3 font-display text-display-l font-semibold leading-none text-ink">
+          自助報到
+        </h1>
+        <div class="mx-auto mt-4 h-px w-10 bg-gold" />
+        <p class="mt-4 text-body-l text-ink-500">
+          請輸入您的姓名完成報到
+        </p>
+      </div>
 
-    <!-- 報到成功反饋 -->
-    <UAlert
-      v-if="isCheckedIn"
-      data-testid="checkin-success"
-      icon="i-heroicons-check-circle"
-      color="success"
-      variant="soft"
-      title="報到成功"
-      :description="`歡迎 ${checkedInName}，感謝您的蒞臨。`"
-      class="mt-6"
-    />
+      <UAlert
+        v-if="submitError"
+        data-testid="checkin-error"
+        icon="i-heroicons-exclamation-triangle"
+        color="error"
+        variant="soft"
+        :title="submitError"
+        class="mt-2"
+      />
 
-    <form v-else class="mt-6 space-y-6" @submit.prevent="selfCheckIn">
-      <UFormField label="姓名" name="name">
-        <UInput
-          v-model="name"
-          data-testid="checkin-name"
-          placeholder="請輸入您的姓名"
-          class="w-full"
-        />
-      </UFormField>
+      <form class="mt-8 space-y-6" @submit.prevent="selfCheckIn">
+        <UFormField label="姓名" name="name">
+          <!-- 超大姓名輸入：白底墨黑粗框、金色游標（長輩友善大字） -->
+          <div class="flex items-center gap-4 rounded border-2 border-ink bg-white px-6 py-5 shadow">
+            <UIcon name="i-heroicons-user" class="size-7 shrink-0 text-gold" />
+            <input
+              v-model="name"
+              data-testid="checkin-name"
+              placeholder="請輸入您的姓名"
+              aria-label="姓名"
+              class="min-w-0 flex-1 bg-transparent font-display text-4xl font-medium text-ink caret-gold outline-none placeholder:text-ink-300"
+            >
+          </div>
+        </UFormField>
 
-      <UButton
-        type="submit"
-        data-testid="checkin-submit"
-        color="primary"
-        size="lg"
-        block
-        :loading="isSubmitting"
-      >
-        確認報到
-      </UButton>
-    </form>
+        <UButton
+          type="submit"
+          data-testid="checkin-submit"
+          color="neutral"
+          variant="solid"
+          size="xl"
+          block
+          :loading="isSubmitting"
+          class="py-5 text-2xl"
+        >
+          確認報到
+        </UButton>
+      </form>
+    </template>
   </div>
 </template>

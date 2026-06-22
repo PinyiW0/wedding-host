@@ -1,6 +1,7 @@
-import type { LoginBody, UserLoggedInEvent } from '~/types/api/auth'
+import type { LoginBody } from '~/types/api/auth'
 
 import { defineStore } from 'pinia'
+import { login as loginApi } from '~/api'
 
 // 登入後的使用者資訊（account 對應 testAccounts 的帳號）
 interface AuthUser {
@@ -20,10 +21,7 @@ export const useAuthStore = defineStore(
     // 登入：寫入用 $fetch，狀態自動 persist
     async function login(account: string, password: string) {
       const body: LoginBody = { username: account, password }
-      const res = await $fetch<UserLoggedInEvent>('/api/v1/auth/login', {
-        method: 'POST',
-        body,
-      })
+      const res = await loginApi(body)
       accessToken.value = res.accessToken
       user.value = { userId: res.userId, account: res.username, role: res.role }
       return res

@@ -57,99 +57,103 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div data-testid="login-page">
-    <UCard>
-      <template #header>
-        <h2 class="text-lg font-semibold text-neutral-900 dark:text-white">
-          登入帳號
-        </h2>
-        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-          輸入帳號與密碼進入後台
-        </p>
-      </template>
+  <div data-testid="login-page" class="rounded-lg border border-line bg-white p-8 shadow-sm">
+    <div class="mb-7">
+      <p class="text-overline uppercase text-gold-deep">
+        Sign In
+      </p>
+      <h2 class="mt-2 font-display text-h2 font-semibold text-ink">
+        登入帳號
+      </h2>
+      <p class="mt-1 text-body text-ink-500">
+        輸入帳號與密碼進入後台
+      </p>
+    </div>
 
-      <UForm
-        :schema="schema"
-        :state="state"
-        data-testid="login-form"
-        class="space-y-4"
-        @submit="onSubmit"
+    <UForm
+      :schema="schema"
+      :state="state"
+      data-testid="login-form"
+      class="space-y-4"
+      @submit="onSubmit"
+    >
+      <UAlert
+        v-if="errorMessage"
+        color="error"
+        variant="subtle"
+        icon="i-heroicons-exclamation-circle"
+        :title="errorMessage"
+      />
+
+      <UFormField
+        label="帳號"
+        name="account"
+        class="relative mb-6"
+        :ui="{ error: 'absolute top-full left-0 mt-1' }"
       >
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="subtle"
-          icon="i-heroicons-exclamation-circle"
-          :title="errorMessage"
+        <UInput
+          v-model="state.account"
+          data-testid="login-account"
+          placeholder="請輸入帳號"
+          autocomplete="username"
+          class="w-full"
         />
+      </UFormField>
 
-        <UFormField
-          label="帳號"
-          name="account"
-          class="relative mb-6"
-          :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      <UFormField
+        label="密碼"
+        name="password"
+        class="relative mb-6"
+        :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      >
+        <UInput
+          v-model="state.password"
+          data-testid="login-password"
+          :type="showPassword ? 'text' : 'password'"
+          placeholder="請輸入密碼"
+          autocomplete="current-password"
+          class="w-full"
         >
-          <UInput
-            v-model="state.account"
-            data-testid="login-account"
-            placeholder="請輸入帳號"
-            autocomplete="username"
-            class="w-full"
-          />
-        </UFormField>
+          <template #trailing>
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              :icon="
+                showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'
+              "
+              :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+              tabindex="-1"
+              @click="showPassword = !showPassword"
+            />
+          </template>
+        </UInput>
+      </UFormField>
 
-        <UFormField
-          label="密碼"
-          name="password"
-          class="relative mb-6"
-          :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      <UButton
+        type="submit"
+        data-testid="login-submit"
+        color="neutral"
+        variant="solid"
+        size="lg"
+        block
+        :loading="isSubmitting"
+        class="mt-2"
+      >
+        登入
+      </UButton>
+    </UForm>
+
+    <div class="mt-7 border-t border-line pt-5">
+      <p class="text-center text-body text-ink-500">
+        還沒有帳號？
+        <NuxtLink
+          to="/register"
+          class="font-medium text-gold-deep hover:text-gold"
         >
-          <UInput
-            v-model="state.password"
-            data-testid="login-password"
-            :type="showPassword ? 'text' : 'password'"
-            placeholder="請輸入密碼"
-            autocomplete="current-password"
-            class="w-full"
-          >
-            <template #trailing>
-              <UButton
-                color="neutral"
-                variant="link"
-                size="sm"
-                :icon="
-                  showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'
-                "
-                :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
-                tabindex="-1"
-                @click="showPassword = !showPassword"
-              />
-            </template>
-          </UInput>
-        </UFormField>
-
-        <UButton
-          type="submit"
-          data-testid="login-submit"
-          color="primary"
-          block
-          :loading="isSubmitting"
-        >
-          登入
-        </UButton>
-      </UForm>
-
-      <template #footer>
-        <p class="text-center text-sm text-neutral-500 dark:text-neutral-400">
-          還沒有帳號？
-          <NuxtLink
-            to="/register"
-            class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
-          >
-            前往註冊
-          </NuxtLink>
-        </p>
-      </template>
-    </UCard>
+          前往註冊
+        </NuxtLink>
+      </p>
+    </div>
   </div>
 </template>

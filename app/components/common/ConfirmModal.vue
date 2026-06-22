@@ -28,14 +28,14 @@ const isOpen = defineModel<boolean>('open', { default: false })
 <template>
   <UModal v-model:open="isOpen">
     <template #content>
-      <div data-testid="confirm-modal" class="p-6">
-        <h3 class="text-lg font-semibold text-neutral-900 dark:text-white">
+      <div data-testid="confirm-modal" class="bg-paper p-8 dark:bg-neutral-900">
+        <h3 class="font-display text-h2 font-semibold text-ink dark:text-paper">
           {{ title }}
         </h3>
-        <p class="mt-2 text-neutral-500 dark:text-neutral-400">
+        <p class="mt-3 text-body text-ink-500 dark:text-neutral-400">
           {{ description }}
         </p>
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="mt-8 flex justify-end gap-3">
           <UButton
             data-testid="confirm-cancel"
             color="neutral"

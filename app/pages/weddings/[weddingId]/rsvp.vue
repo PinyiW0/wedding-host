@@ -6,10 +6,9 @@ import type {
   AttendingStatus,
   OverrideRsvpBody,
   RsvpChannel,
-  RsvpInvitationSentEvent,
-  RsvpOverriddenEvent,
   SendRsvpInvitationBody,
 } from '~/types/api/rsvp'
+import { listGuests, overrideRsvp, sendRsvpInvitation } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -18,10 +17,7 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 賓客名單（僅未移除者參與 RSVP 管理）
-const { data: guests, refresh } = await useFetch<GuestListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/guests`,
-  { default: () => [] },
-)
+const { data: guests, refresh } = await listGuests(weddingId, { default: () => [] })
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -40,6 +36,51 @@ function attendingLabel(status: AttendingStatus | null): string {
       return '未提交'
   }
 }
+
+// 狀態語意色（對齊 Nuxt UI 語意：出席=success、缺席/不出席=error、未提交=warning）
+function attendingColor(status: AttendingStatus | null): 'success' | 'error' | 'warning' {
+  switch (status) {
+    case 'attending':
+      return 'success'
+    case 'declined':
+    case 'absent':
+      return 'error'
+    default:
+      return 'warning'
+  }
+}
+
+// === 出席統計（顯示用，僅彙總既有名單資料） ===
+const stats = computed(() => {
+  const list = activeGuests.value
+  const attending = list.filter(g => g.rsvpAttending === 'attending')
+  const declined = list.filter(g => g.rsvpAttending === 'declined').length
+  const absent = list.filter(g => g.rsvpAttending === 'absent').length
+  const pending = list.filter(g => g.rsvpAttending === null).length
+  // 葷素僅計入確認出席者
+  const meat = attending.filter(g => g.diet === 'meat').length
+  const vegetarian = attending.filter(g => g.diet === 'vegetarian').length
+  return {
+    total: list.length,
+    attending: attending.length,
+    declined,
+    absent,
+    pending,
+    meat,
+    vegetarian,
+  }
+})
+
+// 出席統計堆疊長條（出席 / 缺席+不出席 / 待回覆 三段百分比）
+const attendBar = computed(() => {
+  const total = stats.value.total || 1
+  const notAttending = stats.value.declined + stats.value.absent
+  return {
+    attending: (stats.value.attending / total) * 100,
+    notAttending: (notAttending / total) * 100,
+    pending: (stats.value.pending / total) * 100,
+  }
+})
 
 // === 發送 RSVP 邀請 ===
 const isInviteOpen = ref(false)
@@ -67,10 +108,7 @@ async function confirmInvite() {
   inviteError.value = ''
   try {
     const body: SendRsvpInvitationBody = { channel: inviteChannel.value }
-    await $fetch<RsvpInvitationSentEvent>(
-      `/api/v1/weddings/${weddingId.value}/guests/${inviteTarget.value.guestId}/rsvp-invitation`,
-      { method: 'POST', body },
-    )
+    await sendRsvpInvitation(weddingId.value, inviteTarget.value.guestId, body)
     toast.add({ title: '邀請已發送', color: 'success' })
     isInviteOpen.value = false
   }
@@ -116,10 +154,7 @@ async function confirmOverride() {
       attending: overrideAttending.value,
       reason: overrideReason.value,
     }
-    await $fetch<RsvpOverriddenEvent>(
-      `/api/v1/weddings/${weddingId.value}/guests/${guestId}/rsvp-override`,
-      { method: 'POST', body },
-    )
+    await overrideRsvp(weddingId.value, guestId, body)
     // 覆寫成功後重抓，以 GET 的 rsvpAttending 為呈現真實來源（重整也靠 GET）
     await refresh()
     toast.add({ title: 'RSVP 已覆寫', color: 'success' })
@@ -137,80 +172,171 @@ async function confirmOverride() {
 
 <template>
   <div data-testid="rsvp-page" class="flex h-full flex-col">
-    <PageHeader title="RSVP 出席管理" description="發送出席邀請、查看與覆寫賓客回覆" />
+    <PageHeader
+      title="RSVP 出席管理"
+      :eyebrow="`RSVP · ${stats.total} 份`"
+      description="發送出席邀請、查看與覆寫賓客回覆"
+    />
 
-    <div class="min-h-0 flex-1 overflow-auto">
-      <table
-        data-testid="rsvp-list"
-        class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
-      >
-        <thead class="bg-neutral-50 dark:bg-neutral-900">
-          <tr class="text-left text-sm text-neutral-500 dark:text-neutral-400">
-            <th class="px-4 py-3 font-medium">
-              姓名
-            </th>
-            <th class="hidden px-4 py-3 font-medium sm:table-cell">
-              出席狀態
-            </th>
-            <th class="px-4 py-3 text-right font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="guest in activeGuests"
-            :key="guest.guestId"
-            :data-testid="`rsvp-row-${guest.guestId}`"
-            class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
-          >
-            <td class="px-4 py-3">
-              <span class="font-medium text-neutral-900 dark:text-white">
-                {{ guest.name }}
+    <div class="min-h-0 flex-1 space-y-10 overflow-auto">
+      <!-- 出席統計（StatCard grid + 堆疊長條 + 葷素分項，僅彙總既有名單資料） -->
+      <section class="space-y-6">
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            eyebrow="確認出席"
+            :value="stats.attending"
+            feature
+            :progress="attendBar.attending"
+            :caption="`共 ${stats.total} 位賓客`"
+          />
+          <StatCard eyebrow="不出席" :value="stats.declined" caption="婉謝出席" />
+          <StatCard eyebrow="缺席" :value="stats.absent" caption="當日未到" />
+          <StatCard eyebrow="待回覆" :value="stats.pending" caption="尚未提交回覆" />
+        </div>
+
+        <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+          <div class="mb-5 flex items-baseline justify-between">
+            <div class="flex items-center gap-3">
+              <span class="h-px w-8 bg-gold" />
+              <span class="text-overline uppercase text-gold-deep">出席統計</span>
+            </div>
+            <span class="text-caption text-ink-300">RSVP {{ stats.total }} 份</span>
+          </div>
+
+          <!-- 堆疊長條：出席 / 不出席+缺席 / 待回覆 -->
+          <div class="mb-5 flex h-3.5 overflow-hidden rounded-full bg-line">
+            <div class="bg-success-600" :style="{ width: `${attendBar.attending}%` }" />
+            <div class="bg-error-700" :style="{ width: `${attendBar.notAttending}%` }" />
+            <div class="bg-line" :style="{ width: `${attendBar.pending}%` }" />
+          </div>
+
+          <div class="flex flex-col gap-3.5">
+            <div class="flex items-center justify-between text-body">
+              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
+                <span class="size-2.5 rounded-sm bg-success-600" /> 出席
               </span>
-            </td>
-            <td class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300">
-              <span :data-testid="`rsvp-status-${guest.guestId}`">
-                {{ attendingLabel(guest.rsvpAttending) }}
+              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.attending }}</span>
+            </div>
+            <div class="flex items-center justify-between text-body">
+              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
+                <span class="size-2.5 rounded-sm bg-error-700" /> 不出席 / 缺席
               </span>
-            </td>
-            <td class="px-4 py-3 text-right">
-              <div class="flex justify-end gap-1">
-                <UButton
-                  data-testid="rsvp-invite"
-                  icon="i-heroicons-paper-airplane"
-                  color="primary"
-                  variant="ghost"
+              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.declined + stats.absent }}</span>
+            </div>
+            <div class="flex items-center justify-between text-body">
+              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
+                <span class="size-2.5 rounded-sm bg-line" /> 待回覆
+              </span>
+              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.pending }}</span>
+            </div>
+          </div>
+
+          <!-- 葷素分項（僅計確認出席者） -->
+          <div class="my-6 h-px bg-line" />
+          <div class="flex gap-10">
+            <div>
+              <p class="text-caption text-gold-deep">
+                葷食
+              </p>
+              <p class="font-display text-3xl text-ink dark:text-paper">
+                {{ stats.meat }}
+              </p>
+            </div>
+            <div>
+              <p class="text-caption text-gold-deep">
+                素食
+              </p>
+              <p class="font-display text-3xl text-ink dark:text-paper">
+                {{ stats.vegetarian }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 賓客回覆清單 — 編輯式表格 -->
+      <section>
+        <div class="mb-3 flex items-center gap-3">
+          <span class="text-overline uppercase text-gold-deep">賓客回覆</span>
+          <span class="h-px flex-1 bg-line" />
+        </div>
+        <table
+          data-testid="rsvp-list"
+          class="w-full border-collapse text-body"
+        >
+          <thead>
+            <tr class="text-left text-overline uppercase text-gold-deep">
+              <th class="border-b border-line px-3 py-3.5 font-medium">
+                姓名
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                出席狀態
+              </th>
+              <th class="border-b border-line px-3 py-3.5 text-right font-medium">
+                操作
+              </th>
+            </tr>
+          </thead>
+          <tbody class="text-ink-700 dark:text-neutral-300">
+            <tr
+              v-for="guest in activeGuests"
+              :key="guest.guestId"
+              :data-testid="`rsvp-row-${guest.guestId}`"
+              class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
+            >
+              <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <span class="font-medium text-ink dark:text-paper">
+                  {{ guest.name }}
+                </span>
+              </td>
+              <td class="hidden border-b border-line px-3 py-4 sm:table-cell dark:border-neutral-800">
+                <UBadge
+                  :data-testid="`rsvp-status-${guest.guestId}`"
+                  :color="attendingColor(guest.rsvpAttending)"
+                  variant="soft"
                   size="sm"
-                  :aria-label="`發送 RSVP 邀請給 ${guest.name}`"
-                  @click="openInvite(guest)"
                 >
-                  發送邀請
-                </UButton>
-                <UButton
-                  data-testid="rsvp-override"
-                  icon="i-heroicons-pencil-square"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`覆寫 ${guest.name} 的 RSVP`"
-                  @click="openOverride(guest)"
-                >
-                  覆寫
-                </UButton>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="activeGuests.length === 0">
-            <td colspan="3">
-              <EmptyState
-                title="目前沒有賓客"
-                description="請先於賓客名單新增賓客後再管理 RSVP"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                  {{ attendingLabel(guest.rsvpAttending) }}
+                </UBadge>
+              </td>
+              <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
+                <div class="flex justify-end gap-1">
+                  <UButton
+                    data-testid="rsvp-invite"
+                    icon="i-heroicons-paper-airplane"
+                    color="primary"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`發送 RSVP 邀請給 ${guest.name}`"
+                    @click="openInvite(guest)"
+                  >
+                    發送邀請
+                  </UButton>
+                  <UButton
+                    data-testid="rsvp-override"
+                    icon="i-heroicons-pencil-square"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`覆寫 ${guest.name} 的 RSVP`"
+                    @click="openOverride(guest)"
+                  >
+                    覆寫
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="activeGuests.length === 0">
+              <td colspan="3">
+                <EmptyState
+                  title="目前沒有賓客"
+                  description="請先於賓客名單新增賓客後再管理 RSVP"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </div>
 
     <!-- 發送 RSVP 邀請 Modal -->

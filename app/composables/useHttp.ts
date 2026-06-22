@@ -6,8 +6,10 @@ import type { MaybeRefOrGetter } from 'vue'
 export type PathParams = Record<string, string | number>
 
 // reactive 讀取（useFetch）選項：baseURL 由 useHttp 統一帶入、method 固定，故移除
-export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method'> & {
+// default 在此覆寫：UseFetchOptions<T> 的 default 泛型在巢狀包裝下會塌成 Ref<undefined>，改以 () => T 收斂
+export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method' | 'default'> & {
   pathParams?: PathParams
+  default?: () => T
 }
 
 // imperative 讀取 / 寫入（$fetch）選項：同上

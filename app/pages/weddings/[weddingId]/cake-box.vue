@@ -3,18 +3,22 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
-  CakeBoxAssignmentConfiguredEvent,
-  CakeBoxAssignmentListItem,
-  CakeBoxTypeCreatedEvent,
   CakeBoxTypeListItem,
-  CakeBoxTypeUpdatedEvent,
   ConfigureCakeBoxAssignmentBody,
   CreateCakeBoxTypeBody,
   UpdateCakeBoxTypeBody,
 } from '~/types/api/cakebox'
-import type { GuestListItem } from '~/types/api/guests'
 
 import { z } from 'zod'
+import {
+  configureCakeBoxAssignment,
+  createCakeBoxType,
+  deleteCakeBoxType,
+  listCakeBoxAssignments,
+  listCakeBoxTypes,
+  listGuests,
+  updateCakeBoxType,
+} from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -23,14 +27,14 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 喜餅款式清單
-const { data: cakeBoxTypes, refresh } = await useFetch<CakeBoxTypeListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/cake-box-types`,
+const { data: cakeBoxTypes, refresh } = await listCakeBoxTypes(
+  weddingId,
   { default: () => [] },
 )
 
 // 賓客清單（供指派規則選擇對象賓客）
-const { data: guests } = await useFetch<GuestListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/guests`,
+const { data: guests } = await listGuests(
+  weddingId,
   { default: () => [] },
 )
 
@@ -43,19 +47,32 @@ function guestName(guestId: string): string {
 }
 
 // 已設定指派規則清單（由 GET 讀回，重整仍能還原顯示）
-const { data: assignments, refresh: refreshAssignments } = await useFetch<CakeBoxAssignmentListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/cake-box-types/assignments`,
+const { data: assignments, refresh: refreshAssignments } = await listCakeBoxAssignments(
+  weddingId,
   { default: () => [] },
 )
 
-const assignmentList = computed(() =>
-  (assignments.value ?? []).map(a => ({
-    key: `${a.cakeBoxTypeId}-${a.guestId}`,
-    cakeBoxTypeName: a.cakeBoxTypeName,
-    guestName: guestName(a.guestId),
-    assignmentRule: a.assignmentRule,
-  })),
-)
+// 指派結果改「依款式分組」呈現，當訂購／打包清單用（每款幾位、各是誰）
+const assignmentGroups = computed(() => {
+  const groups: Record<string, {
+    cakeBoxTypeId: string
+    cakeBoxTypeName: string
+    guests: { key: string, guestName: string, assignmentRule: string }[]
+  }> = {}
+  for (const a of assignments.value ?? []) {
+    const grp = (groups[a.cakeBoxTypeId] ??= {
+      cakeBoxTypeId: a.cakeBoxTypeId,
+      cakeBoxTypeName: a.cakeBoxTypeName || typeNameOf(a.cakeBoxTypeId),
+      guests: [],
+    })
+    grp.guests.push({
+      key: `${a.cakeBoxTypeId}-${a.guestId}`,
+      guestName: guestName(a.guestId),
+      assignmentRule: a.assignmentRule,
+    })
+  }
+  return Object.values(groups)
+})
 
 // === 新增 / 編輯喜餅款式表單 ===
 const schema = z.object({
@@ -110,10 +127,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         name: data.name,
         description: data.description,
       }
-      await $fetch<CakeBoxTypeUpdatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/cake-box-types/${editingId.value}`,
-        { method: 'PATCH', body },
-      )
+      await updateCakeBoxType(weddingId.value, editingId.value, body)
       toast.add({ title: '喜餅款式已更新', color: 'success' })
     }
     else {
@@ -122,10 +136,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         description: data.description || undefined,
         isDefault: data.isDefault,
       }
-      await $fetch<CakeBoxTypeCreatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/cake-box-types`,
-        { method: 'POST', body },
-      )
+      await createCakeBoxType(weddingId.value, body)
       toast.add({ title: '喜餅款式新增成功', color: 'success' })
     }
     isFormOpen.value = false
@@ -156,10 +167,7 @@ async function confirmRemove() {
     return
   isRemoving.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/cake-box-types/${removeTarget.value.cakeBoxTypeId}`,
-      { method: 'DELETE' },
-    )
+    await deleteCakeBoxType(weddingId.value, removeTarget.value.cakeBoxTypeId)
     toast.add({ title: '喜餅款式已移除', color: 'success' })
     isRemoveOpen.value = false
     await refresh()
@@ -221,10 +229,7 @@ async function confirmAssign() {
       guestId: assignState.guestId,
       assignmentRule: assignState.assignmentRule,
     }
-    await $fetch<CakeBoxAssignmentConfiguredEvent>(
-      `/api/v1/weddings/${weddingId.value}/cake-box-types/${assignState.cakeBoxTypeId}/assignment`,
-      { method: 'POST', body },
-    )
+    await configureCakeBoxAssignment(weddingId.value, assignState.cakeBoxTypeId, body)
     toast.add({ title: '指派規則設定成功', color: 'success' })
     isAssignOpen.value = false
     await refreshAssignments()
@@ -237,13 +242,121 @@ async function confirmAssign() {
     isAssigning.value = false
   }
 }
+
+// === 依分類自動帶入（規則：每個分類 → 一種款式；沒對到給預設款）===
+const defaultType = computed(() => (cakeBoxTypes.value ?? []).find(t => t.isDefault) ?? null)
+
+function guestCategory(category: string | null | undefined): string {
+  return category || '未分類'
+}
+
+// 各分類人數
+const distinctCategories = computed(() => {
+  const set = new Set<string>()
+  for (const g of activeGuests.value)
+    set.add(guestCategory(g.category))
+  return [...set]
+})
+function categoryCount(cat: string): number {
+  return activeGuests.value.filter(g => guestCategory(g.category) === cat).length
+}
+
+// 各款式已指派人數（供訂購數量估算）
+const assignedCountByType = computed(() => {
+  const m: Record<string, number> = {}
+  for (const a of assignments.value ?? [])
+    m[a.cakeBoxTypeId] = (m[a.cakeBoxTypeId] ?? 0) + 1
+  return m
+})
+
+function typeNameOf(typeId: string): string {
+  return (cakeBoxTypes.value ?? []).find(t => t.cakeBoxTypeId === typeId)?.name ?? ''
+}
+
+// 由現有指派回推「該分類目前用哪一款」，供重開 modal 時預填（達到規則持久化效果）
+function existingTypeByCategory(): Record<string, string> {
+  const m: Record<string, string> = {}
+  for (const a of assignments.value ?? []) {
+    const g = (guests.value ?? []).find(x => x.guestId === a.guestId)
+    if (!g)
+      continue
+    const cat = guestCategory(g.category)
+    if (!m[cat])
+      m[cat] = a.cakeBoxTypeId
+  }
+  return m
+}
+
+const isAutoOpen = ref(false)
+const isApplying = ref(false)
+const autoError = ref('')
+const categoryRule = reactive<Record<string, string>>({})
+
+function openAutoAssign() {
+  autoError.value = ''
+  const byCat = existingTypeByCategory()
+  for (const cat of distinctCategories.value)
+    categoryRule[cat] = byCat[cat] ?? defaultType.value?.cakeBoxTypeId ?? ''
+  isAutoOpen.value = true
+}
+
+async function applyByCategory() {
+  if (isApplying.value)
+    return
+  isApplying.value = true
+  autoError.value = ''
+  try {
+    let applied = 0
+    let skipped = 0
+    for (const g of activeGuests.value) {
+      const cat = guestCategory(g.category)
+      const typeId = categoryRule[cat] || defaultType.value?.cakeBoxTypeId || ''
+      if (!typeId) {
+        skipped++
+        continue
+      }
+      await configureCakeBoxAssignment(weddingId.value, typeId, {
+        guestId: g.guestId,
+        assignmentRule: `${cat}→${typeNameOf(typeId)}`,
+      })
+      applied++
+    }
+    await refreshAssignments()
+    toast.add({
+      title: `已依分類帶入 ${applied} 位`,
+      description: skipped > 0 ? `${skipped} 位未對到規則且無預設款` : '可於下方逐位再微調',
+      color: 'success',
+    })
+    isAutoOpen.value = false
+  }
+  catch (error: any) {
+    autoError.value
+      = error?.data?.message || error?.statusMessage || '帶入失敗，請稍後再試'
+  }
+  finally {
+    isApplying.value = false
+  }
+}
 </script>
 
 <template>
   <div data-testid="cake-box-page" class="flex h-full flex-col">
-    <PageHeader title="喜餅款式" description="管理喜餅款式與賓客指派規則">
+    <PageHeader
+      title="喜餅款式"
+      :eyebrow="`Cake Box · ${(cakeBoxTypes ?? []).length} 款`"
+      description="管理喜餅款式與賓客指派規則"
+    >
       <template #actions>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            data-testid="cake-box-auto-assign"
+            icon="i-heroicons-sparkles"
+            color="primary"
+            variant="solid"
+            @click="openAutoAssign"
+          >
+            依分類帶入
+          </UButton>
           <UButton
             data-testid="cake-box-assign"
             icon="i-heroicons-adjustments-horizontal"
@@ -256,7 +369,8 @@ async function confirmAssign() {
           <UButton
             data-testid="cake-box-create"
             icon="i-heroicons-plus"
-            color="primary"
+            color="neutral"
+            variant="solid"
             @click="openCreate"
           >
             新增喜餅款式
@@ -265,44 +379,48 @@ async function confirmAssign() {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 space-y-6 overflow-auto">
-      <table
-        data-testid="cake-box-list"
-        class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
-      >
-        <thead class="bg-neutral-50 dark:bg-neutral-900">
-          <tr class="text-left text-sm text-neutral-500 dark:text-neutral-400">
-            <th class="px-4 py-3 font-medium">
-              名稱
-            </th>
-            <th class="hidden px-4 py-3 font-medium md:table-cell">
-              說明
-            </th>
-            <th class="px-4 py-3 font-medium">
-              預設
-            </th>
-            <th class="px-4 py-3 text-right font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
+    <div class="min-h-0 flex-1 space-y-10 overflow-auto">
+      <!-- 喜餅款式 — 編輯式卡片（預設款式金框 + 金勾） -->
+      <section>
+        <div class="mb-4 flex items-center gap-3">
+          <span class="text-overline uppercase text-gold-deep">喜餅款式</span>
+          <span class="h-px flex-1 bg-line" />
+        </div>
+
+        <div
+          v-if="(cakeBoxTypes ?? []).length > 0"
+          data-testid="cake-box-list"
+          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          <div
             v-for="type in cakeBoxTypes"
             :key="type.cakeBoxTypeId"
             :data-testid="`cake-box-row-${type.cakeBoxTypeId}`"
+            role="article"
             :aria-label="type.name"
-            class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+            class="flex flex-col rounded-lg border p-6 transition-colors"
+            :class="type.isDefault
+              ? 'border-gold bg-paper dark:bg-neutral-900'
+              : 'border-line bg-white hover:border-gold-deep dark:border-neutral-800 dark:bg-neutral-900'"
           >
-            <td class="px-4 py-3">
-              <span class="font-medium text-neutral-900 dark:text-white">
+            <div class="mb-2 flex items-start justify-between gap-3">
+              <h3 class="font-display text-2xl font-medium text-ink dark:text-paper">
                 {{ type.name }}
+              </h3>
+              <!-- 預設款式金勾，其餘空框（對齊參考「選中金勾」） -->
+              <span
+                class="flex size-7 shrink-0 items-center justify-center rounded"
+                :class="type.isDefault ? 'bg-gold text-white' : 'border border-line'"
+              >
+                <UIcon v-if="type.isDefault" name="i-heroicons-check" class="size-4" />
               </span>
-            </td>
-            <td class="hidden px-4 py-3 text-neutral-600 md:table-cell dark:text-neutral-300">
+            </div>
+
+            <p class="min-h-5 text-body text-ink-500 dark:text-neutral-400">
               {{ type.description ?? '—' }}
-            </td>
-            <td class="px-4 py-3">
+            </p>
+
+            <div class="mt-3 flex items-center gap-2">
               <UBadge
                 v-if="type.isDefault"
                 color="primary"
@@ -311,79 +429,94 @@ async function confirmAssign() {
               >
                 預設
               </UBadge>
-              <span v-else class="text-neutral-400">—</span>
-            </td>
-            <td class="px-4 py-3 text-right">
-              <div class="flex justify-end gap-1">
-                <UButton
-                  data-testid="cake-box-edit"
-                  icon="i-heroicons-pencil"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`編輯 ${type.name}`"
-                  @click="openEdit(type)"
-                >
-                  編輯
-                </UButton>
-                <UButton
-                  data-testid="cake-box-remove"
-                  icon="i-heroicons-trash"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`移除 ${type.name}`"
-                  @click="openRemove(type)"
-                >
-                  移除
-                </UButton>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="(cakeBoxTypes ?? []).length === 0">
-            <td colspan="4">
-              <EmptyState
-                title="目前沒有喜餅款式"
-                description="點擊「新增喜餅款式」建立第一個款式"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              <!-- 已指派人數（喜餅訂購數量估算） -->
+              <span class="text-caption text-ink-400 dark:text-neutral-500">
+                已指派 {{ assignedCountByType[type.cakeBoxTypeId] ?? 0 }} 位
+              </span>
+            </div>
+
+            <div class="mt-5 flex justify-end gap-1 border-t border-line pt-4 dark:border-neutral-800">
+              <UButton
+                data-testid="cake-box-edit"
+                icon="i-heroicons-pencil"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :aria-label="`編輯 ${type.name}`"
+                @click="openEdit(type)"
+              >
+                編輯
+              </UButton>
+              <UButton
+                data-testid="cake-box-remove"
+                icon="i-heroicons-trash"
+                color="error"
+                variant="ghost"
+                size="sm"
+                :aria-label="`移除 ${type.name}`"
+                @click="openRemove(type)"
+              >
+                移除
+              </UButton>
+            </div>
+          </div>
+        </div>
+
+        <div v-else data-testid="cake-box-list">
+          <EmptyState
+            title="目前沒有喜餅款式"
+            description="點擊「新增喜餅款式」建立第一個款式"
+          />
+        </div>
+      </section>
 
       <!-- 已設定指派規則（由 GET 讀回，重整仍能還原顯示） -->
-      <section
-        data-testid="cake-box-assignment-list"
-        class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
-      >
-        <h2 class="mb-3 font-semibold text-neutral-900 dark:text-white">
-          已設定指派規則
-        </h2>
+      <section data-testid="cake-box-assignment-list">
+        <div class="mb-4 flex items-center gap-3">
+          <span class="text-overline uppercase text-gold-deep">已設定指派規則</span>
+          <span class="h-px flex-1 bg-line" />
+        </div>
 
-        <div v-if="assignmentList.length === 0">
+        <div v-if="assignmentGroups.length === 0">
           <EmptyState
             title="尚未設定指派規則"
             description="點擊「設定指派規則」為賓客指派喜餅款式"
           />
         </div>
-        <ul v-else class="space-y-2">
-          <li
-            v-for="a in assignmentList"
-            :key="a.key"
-            :aria-label="a.guestName"
-            class="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+        <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div
+            v-for="grp in assignmentGroups"
+            :key="grp.cakeBoxTypeId"
+            class="rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
           >
-            <p class="font-medium text-neutral-900 dark:text-white">
-              {{ a.guestName }} → {{ a.cakeBoxTypeName }}
-            </p>
-            <p
-              v-if="a.assignmentRule"
-              class="mt-1 text-sm text-neutral-600 dark:text-neutral-400"
-            >
-              {{ a.assignmentRule }}
-            </p>
-          </li>
-        </ul>
+            <!-- 款式標頭：款名 + 該款人數（直接對應要訂幾盒） -->
+            <div class="mb-3 flex items-center gap-2 border-b border-line pb-2 dark:border-neutral-800">
+              <span class="size-2 shrink-0 rounded-full bg-gold" />
+              <h3 class="font-medium text-ink dark:text-paper">
+                {{ grp.cakeBoxTypeName }}
+              </h3>
+              <span class="ml-auto text-caption text-ink-400 dark:text-neutral-500">
+                {{ grp.guests.length }} 位
+              </span>
+            </div>
+            <ul class="space-y-1.5">
+              <li
+                v-for="a in grp.guests"
+                :key="a.key"
+                :aria-label="a.guestName"
+                class="flex flex-wrap items-baseline gap-x-2"
+              >
+                <span class="font-medium text-ink dark:text-paper">{{ a.guestName }}</span>
+                <span
+                  v-if="a.assignmentRule"
+                  class="text-caption text-ink-500 dark:text-neutral-400"
+                >
+                  {{ a.assignmentRule }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -454,7 +587,8 @@ async function confirmAssign() {
               <UButton
                 type="submit"
                 data-testid="cake-box-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 {{ editingId ? '儲存' : '新增' }}
@@ -526,13 +660,86 @@ async function confirmAssign() {
               </UButton>
               <UButton
                 data-testid="assignment-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isAssigning"
                 @click="confirmAssign"
               >
                 設定
               </UButton>
             </div>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 依分類帶入 Modal -->
+    <UModal v-model:open="isAutoOpen">
+      <template #content>
+        <div data-testid="cake-box-auto-modal" class="p-6">
+          <h3 class="mb-1 text-lg font-semibold text-neutral-900 dark:text-white">
+            依分類帶入喜餅
+          </h3>
+          <p class="mb-4 text-body text-ink-500 dark:text-neutral-400">
+            為每個賓客分類選一種款式，套用後所有賓客依分類自動帶入；沒對到的給預設款（{{ defaultType?.name ?? '尚未設定預設款' }}）。
+          </p>
+
+          <UAlert
+            v-if="autoError"
+            data-testid="cake-box-auto-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="autoError"
+            class="mb-4"
+          />
+
+          <div v-if="distinctCategories.length === 0" class="py-4">
+            <EmptyState
+              title="目前沒有賓客分類"
+              description="請先於賓客管理新增賓客"
+            />
+          </div>
+          <div v-else class="max-h-80 space-y-3 overflow-auto">
+            <div
+              v-for="cat in distinctCategories"
+              :key="cat"
+              class="flex items-center gap-3"
+            >
+              <span class="w-28 shrink-0 text-body font-medium text-ink dark:text-paper">
+                {{ cat }}
+                <span class="text-caption text-ink-400">（{{ categoryCount(cat) }} 位）</span>
+              </span>
+              <USelectMenu
+                v-model="categoryRule[cat]"
+                :data-testid="`cake-box-auto-rule-${cat}`"
+                :items="typeOptions"
+                value-key="value"
+                placeholder="選擇款式"
+                class="flex-1"
+              />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-3 pt-5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :disabled="isApplying"
+              @click="isAutoOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              data-testid="cake-box-auto-apply"
+              color="primary"
+              variant="solid"
+              :loading="isApplying"
+              :disabled="distinctCategories.length === 0"
+              @click="applyByCategory"
+            >
+              套用
+            </UButton>
           </div>
         </div>
       </template>

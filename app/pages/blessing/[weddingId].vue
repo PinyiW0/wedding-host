@@ -1,9 +1,9 @@
 <!-- app/pages/blessing/[weddingId].vue -->
 <script setup lang="ts">
 import type {
-  BlessingSubmittedEvent,
   SubmitBlessingBody,
 } from '~/types/api/blessings'
+import { submitBlessing as submitBlessingApi } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -41,10 +41,7 @@ async function submitBlessing() {
       message: message.value.trim(),
       ...(photoUrl.value ? { photoUrl: photoUrl.value } : {}),
     }
-    await $fetch<BlessingSubmittedEvent>(
-      `/api/v1/weddings/${weddingId.value}/blessings`,
-      { method: 'POST', body },
-    )
+    await submitBlessingApi(weddingId.value, body)
     isSubmitted.value = true
   }
   catch (error: any) {
@@ -59,13 +56,18 @@ async function submitBlessing() {
 
 <template>
   <div data-testid="blessing-submit-page" class="flex flex-col">
+    <!-- 沉浸式標題：Guest Blessings overline + Cormorant 大標 + italic 引言 -->
     <div class="text-center">
-      <UIcon name="i-heroicons-heart" class="size-12 text-primary-500" />
-      <h1 class="mt-4 text-xl font-bold text-neutral-900">
+      <div class="mb-4 flex items-center justify-center gap-3">
+        <span class="h-px w-8 bg-gold" />
+        <span class="text-overline uppercase tracking-widest text-gold-deep">Guest Blessings</span>
+        <span class="h-px w-8 bg-gold" />
+      </div>
+      <h1 class="font-display text-display-l font-semibold leading-none text-ink">
         獻上祝福
       </h1>
-      <p class="mt-2 text-neutral-500">
-        留下您對新人的祝福留言與照片
+      <p class="mx-auto mt-4 max-w-sm font-display text-body-l italic leading-relaxed text-ink-500">
+        留下您對新人的祝福留言與照片，<br>讓今晚的喜悅被永遠收藏。
       </p>
     </div>
 
@@ -76,22 +78,32 @@ async function submitBlessing() {
       color="error"
       variant="soft"
       :title="submitError"
-      class="mt-6"
+      class="mt-8"
     />
 
     <!-- 提交成功反饋 -->
-    <UAlert
+    <div
       v-if="isSubmitted"
       data-testid="blessing-submit-success"
-      icon="i-heroicons-check-circle"
-      color="success"
-      variant="soft"
-      title="祝福已送出"
-      description="感謝您的祝福，我們已收到您的留言。"
-      class="mt-6"
-    />
+      class="mt-8 rounded-lg border border-line bg-paper p-8 text-center"
+    >
+      <div class="mx-auto flex size-14 items-center justify-center rounded-full bg-gold-light text-gold-deep">
+        <UIcon name="i-heroicons-check" class="size-7" />
+      </div>
+      <h2 class="mt-4 font-display text-h2 font-semibold text-ink">
+        祝福已送出
+      </h2>
+      <p class="mt-2 text-body text-ink-500">
+        感謝您的祝福，我們已收到您的留言。
+      </p>
+    </div>
 
-    <form v-else class="mt-6 space-y-6" @submit.prevent="submitBlessing">
+    <!-- 留言輸入卡：bg-paper 插入式淺面板 -->
+    <form
+      v-else
+      class="mt-8 space-y-6 rounded-lg border border-line bg-paper p-6 sm:p-8"
+      @submit.prevent="submitBlessing"
+    >
       <UFormField label="祝福留言" name="message">
         <UTextarea
           v-model="message"

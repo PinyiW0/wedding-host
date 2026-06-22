@@ -1,12 +1,11 @@
 <!-- app/pages/weddings/[weddingId]/blessings.vue -->
 <script setup lang="ts">
 import type {
-  BlessingApprovedEvent,
   BlessingListItem,
-  BlessingRejectedEvent,
   BlessingStatus,
   RejectBlessingBody,
 } from '~/types/api/blessings'
+import { approveBlessing, listBlessings, rejectBlessing } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -14,10 +13,7 @@ const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
-const { data: blessings } = await useFetch<BlessingListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/blessings`,
-  { default: () => [] },
-)
+const { data: blessings } = await listBlessings(weddingId, { default: () => [] })
 
 const items = computed(() => blessings.value ?? [])
 
@@ -30,6 +26,11 @@ const STATUS_COLOR: Record<BlessingStatus, 'warning' | 'success' | 'error'> = {
   submitted: 'warning',
   approved: 'success',
   rejected: 'error',
+}
+
+// 頭像金圓首字：取留言內容首字作為編輯式裝飾（無姓名欄位時的視覺替代）
+function initialOf(blessing: BlessingListItem) {
+  return blessing.message.trim().charAt(0) || '祝'
 }
 
 function setStatus(blessingId: string, status: BlessingStatus, reason: string | null = null) {
@@ -55,10 +56,7 @@ async function confirmApprove() {
   isApproving.value = true
   const blessingId = approveTarget.value.blessingId
   try {
-    const res = await $fetch<BlessingApprovedEvent>(
-      `/api/v1/weddings/${weddingId.value}/blessings/${blessingId}/approve`,
-      { method: 'POST' },
-    )
+    const res = await approveBlessing(weddingId.value, blessingId)
     setStatus(blessingId, res.status)
     toast.add({ title: '祝福已通過', color: 'success' })
     isApproveOpen.value = false
@@ -98,10 +96,7 @@ async function submitReject() {
   const blessingId = rejectTarget.value.blessingId
   try {
     const body: RejectBlessingBody = { reason: rejectReason.value.trim() }
-    const res = await $fetch<BlessingRejectedEvent>(
-      `/api/v1/weddings/${weddingId.value}/blessings/${blessingId}/reject`,
-      { method: 'POST', body },
-    )
+    const res = await rejectBlessing(weddingId.value, blessingId, body)
     setStatus(blessingId, res.status, res.reason)
     toast.add({ title: '祝福已拒絕', color: 'success' })
     isRejectOpen.value = false
@@ -119,54 +114,75 @@ async function submitReject() {
 
 <template>
   <div data-testid="blessings-page" class="flex h-full flex-col">
-    <PageHeader title="祝福審核" description="審核賓客提交的祝福留言（通過 / 拒絕）" />
+    <PageHeader
+      title="祝福審核"
+      eyebrow="Guest Blessings"
+      description="審核賓客提交的祝福留言（通過 / 拒絕）"
+    />
 
     <div class="min-h-0 flex-1 overflow-auto">
       <div v-if="items.length === 0">
         <EmptyState title="目前沒有祝福" description="賓客提交祝福後會顯示於此" />
       </div>
 
-      <ul v-else class="space-y-3">
+      <ul v-else class="space-y-4">
         <li
           v-for="blessing in items"
           :key="blessing.blessingId"
           :data-testid="`blessing-row-${blessing.blessingId}`"
           :aria-label="blessing.message"
-          class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800"
+          class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
         >
-          <div class="flex items-start justify-between gap-4">
+          <div class="flex items-start gap-5">
+            <!-- 頭像金圓 + Cormorant 首字 -->
+            <div
+              class="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold-light font-display text-2xl text-gold-deep"
+              aria-hidden="true"
+            >
+              {{ initialOf(blessing) }}
+            </div>
+
             <div class="min-w-0 flex-1">
-              <p class="font-medium text-neutral-900 dark:text-white">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+                <p class="text-caption uppercase tracking-wide text-ink-500">
+                  賓客 · {{ blessing.guestId }}
+                </p>
+                <div class="flex shrink-0 items-center gap-2">
+                  <UBadge
+                    :color="STATUS_COLOR[blessing.status]"
+                    variant="soft"
+                    size="sm"
+                  >
+                    {{ STATUS_LABEL[blessing.status] }}
+                  </UBadge>
+                </div>
+              </div>
+
+              <p class="mt-2 text-body-l leading-relaxed text-ink-700 dark:text-neutral-200">
                 {{ blessing.message }}
               </p>
+
               <img
                 v-if="blessing.photoUrl"
                 :src="blessing.photoUrl"
                 alt="祝福照片"
-                class="mt-2 max-h-32 rounded-md object-cover"
+                class="mt-3 max-h-32 rounded-lg border border-line object-cover"
               >
               <p
                 v-if="blessing.rejectReason"
-                class="mt-1 text-sm text-neutral-400"
+                class="mt-2 border-l-[3px] border-gold pl-3 text-body text-ink-500"
               >
                 拒絕原因：{{ blessing.rejectReason }}
               </p>
-            </div>
 
-            <div class="flex shrink-0 flex-col items-end gap-2">
-              <UBadge
-                :color="STATUS_COLOR[blessing.status]"
-                variant="soft"
-                size="sm"
+              <div
+                v-if="blessing.status === 'submitted'"
+                class="mt-4 flex gap-2 border-t border-line pt-4"
               >
-                {{ STATUS_LABEL[blessing.status] }}
-              </UBadge>
-
-              <div v-if="blessing.status === 'submitted'" class="flex gap-1">
                 <UButton
                   :data-testid="`blessing-approve-${blessing.blessingId}`"
-                  color="success"
-                  variant="soft"
+                  color="neutral"
+                  variant="solid"
                   size="sm"
                   @click="openApprove(blessing)"
                 >
@@ -175,7 +191,7 @@ async function submitReject() {
                 <UButton
                   :data-testid="`blessing-reject-${blessing.blessingId}`"
                   color="error"
-                  variant="soft"
+                  variant="outline"
                   size="sm"
                   @click="openReject(blessing)"
                 >
@@ -203,7 +219,10 @@ async function submitReject() {
     <UModal v-model:open="isRejectOpen">
       <template #content>
         <div data-testid="blessing-reject-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+          <p class="text-overline uppercase text-gold-deep">
+            Review
+          </p>
+          <h3 class="mb-4 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
             審核拒絕祝福
           </h3>
 

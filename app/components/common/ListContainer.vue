@@ -21,7 +21,7 @@ const page = defineModel<number>('page', { default: 1 })
     </div>
 
     <!-- Pagination：固定底部 -->
-    <div class="flex shrink-0 items-center justify-end border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
+    <div class="flex shrink-0 items-center justify-end border-t border-line bg-paper px-6 py-4 dark:border-neutral-800 dark:bg-neutral-900">
       <UPagination
         v-model:page="page"
         :total="total"

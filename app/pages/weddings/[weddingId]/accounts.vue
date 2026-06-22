@@ -4,11 +4,15 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   CreateReceptionAccountBody,
-  ReceptionAccountCreatedEvent,
   ReceptionAccountListItem,
 } from '~/types/api/accounts'
 
 import { z } from 'zod'
+import {
+  createReceptionAccount,
+  deleteReceptionAccount,
+  listReceptionAccounts,
+} from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -17,12 +21,9 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 接待帳號列表
-const { data: accounts, refresh } = await useFetch<ReceptionAccountListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/reception-accounts`,
-  {
-    default: () => [],
-  },
-)
+const { data: accounts, refresh } = await listReceptionAccounts(weddingId, {
+  default: () => [],
+})
 
 // === 建立接待帳號 ===
 const schema = z.object({
@@ -51,10 +52,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const body: CreateReceptionAccountBody = {
       username: event.data.username,
     }
-    await $fetch<ReceptionAccountCreatedEvent>(
-      `/api/v1/weddings/${weddingId.value}/reception-accounts`,
-      { method: 'POST', body },
-    )
+    await createReceptionAccount(weddingId.value, body)
     toast.add({ title: '接待帳號建立成功', color: 'success' })
     isCreateOpen.value = false
     await refresh()
@@ -84,10 +82,7 @@ async function confirmRemove() {
     return
   isRemoving.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/reception-accounts/${removeTarget.value.accountId}`,
-      { method: 'DELETE' },
-    )
+    await deleteReceptionAccount(weddingId.value, removeTarget.value.accountId)
     toast.add({ title: '接待帳號已移除', color: 'success' })
     isRemoveOpen.value = false
     await refresh()
@@ -101,16 +96,26 @@ async function confirmRemove() {
     isRemoving.value = false
   }
 }
+
+// 由既有 username 取首字作頭像（純顯示衍生，不影響資料邏輯）
+function avatarInitial(name: string) {
+  return name.trim().charAt(0) || '接'
+}
 </script>
 
 <template>
   <div data-testid="accounts-page" class="flex h-full flex-col">
-    <PageHeader title="接待帳號" description="管理此婚禮的接待人員共用帳號">
+    <PageHeader
+      title="接待帳號"
+      eyebrow="Accounts & Roles"
+      description="管理此婚禮的接待人員共用帳號"
+    >
       <template #actions>
         <UButton
           data-testid="account-create"
           icon="i-heroicons-plus"
-          color="primary"
+          color="neutral"
+          variant="solid"
           @click="openCreate"
         >
           建立接待帳號
@@ -119,62 +124,62 @@ async function confirmRemove() {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto">
-      <table
-        data-testid="account-list"
-        class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
-      >
-        <thead class="bg-neutral-50 dark:bg-neutral-900">
-          <tr class="text-left text-sm text-neutral-500 dark:text-neutral-400">
-            <th class="px-4 py-3 font-medium">
-              帳號名稱
-            </th>
-            <th class="px-4 py-3 text-right font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="account in accounts"
-            :key="account.accountId"
-            class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+      <!-- 區段金色 overline -->
+      <p class="text-overline mb-4 uppercase text-gold-deep">
+        角色與帳號
+      </p>
+
+      <!-- 帳號列：編輯式卡片（頭像金圓 + 名稱 + 角色 caption + 權限 badge） -->
+      <div data-testid="account-list" class="flex flex-col gap-2.5">
+        <div
+          v-for="account in accounts"
+          :key="account.accountId"
+          role="article"
+          :aria-label="account.username"
+          class="flex items-center gap-4 rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+        >
+          <!-- 金色頭像圓 -->
+          <div class="flex size-10 flex-none items-center justify-center rounded-full bg-gold font-display text-lg text-ink">
+            {{ avatarInitial(account.username) }}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate font-medium text-ink dark:text-paper">
+              {{ account.username }}
+            </div>
+            <div class="text-caption text-ink-500 dark:text-neutral-400">
+              現場接待 · 共用帳號
+            </div>
+          </div>
+          <!-- 權限 badge -->
+          <UBadge color="primary" variant="outline" size="sm">
+            受限
+          </UBadge>
+          <UButton
+            data-testid="account-remove"
+            icon="i-heroicons-trash"
+            color="error"
+            variant="ghost"
+            size="sm"
+            :aria-label="`移除 ${account.username}`"
+            @click="openRemove(account)"
           >
-            <td class="px-4 py-3">
-              <span class="font-medium text-neutral-900 dark:text-white">
-                {{ account.username }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-right">
-              <UButton
-                data-testid="account-remove"
-                icon="i-heroicons-trash"
-                color="error"
-                variant="ghost"
-                size="sm"
-                :aria-label="`移除 ${account.username}`"
-                @click="openRemove(account)"
-              >
-                移除
-              </UButton>
-            </td>
-          </tr>
-          <tr v-if="accounts.length === 0">
-            <td colspan="2">
-              <EmptyState
-                title="目前沒有接待帳號"
-                description="點擊「建立接待帳號」新增第一個帳號"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            移除
+          </UButton>
+        </div>
+
+        <EmptyState
+          v-if="(accounts?.length ?? 0) === 0"
+          title="目前沒有接待帳號"
+          description="點擊「建立接待帳號」新增第一個帳號"
+        />
+      </div>
     </div>
 
     <!-- 建立接待帳號 Modal -->
     <UModal v-model:open="isCreateOpen">
       <template #content>
         <div data-testid="account-form-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
             建立接待帳號
           </h3>
 
@@ -220,7 +225,8 @@ async function confirmRemove() {
               <UButton
                 type="submit"
                 data-testid="account-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 建立

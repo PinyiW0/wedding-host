@@ -4,11 +4,10 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   UpdateWeddingBody,
-  WeddingDetail,
-  WeddingUpdatedEvent,
 } from '~/types/api/weddings'
 
 import { z } from 'zod'
+import { getWedding, updateWedding } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -17,9 +16,7 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 婚禮詳情（含 mapLink / parkingInfo / transportInfo，GET 已回傳完整欄位）
-const { data: wedding, refresh } = await useFetch<WeddingDetail>(
-  () => `/api/v1/weddings/${weddingId.value}`,
-)
+const { data: wedding, refresh } = await getWedding(weddingId)
 
 // === 編輯婚禮資訊 ===
 const schema = z.object({
@@ -71,10 +68,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
     }
-    await $fetch<WeddingUpdatedEvent>(
-      `/api/v1/weddings/${weddingId.value}`,
-      { method: 'PATCH', body },
-    )
+    await updateWedding(weddingId.value, body)
     toast.add({ title: '婚禮資訊已更新', color: 'success' })
     isEditOpen.value = false
     await refresh()
@@ -94,13 +88,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   <div data-testid="wedding-detail-page" class="flex h-full flex-col">
     <PageHeader
       :title="wedding?.title ?? '婚禮詳情'"
+      eyebrow="Wedding Details"
       description="管理此場婚禮的基本資訊"
     >
       <template #actions>
         <UButton
           data-testid="wedding-edit"
           icon="i-heroicons-pencil"
-          color="primary"
+          color="neutral"
+          variant="solid"
           @click="openEdit"
         >
           編輯
@@ -110,95 +106,91 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     <div class="min-h-0 flex-1 overflow-auto">
       <div
-        class="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+        class="rounded-lg border border-line bg-white p-6 sm:p-8 dark:border-neutral-800 dark:bg-neutral-900"
       >
-        <dl class="divide-y divide-neutral-200 dark:divide-neutral-800">
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+        <div class="mb-6 flex items-center gap-3">
+          <span class="h-px w-8 bg-gold" />
+          <p class="text-overline uppercase text-gold-deep">
+            基本資訊
+          </p>
+        </div>
+
+        <!-- 編輯式定義列：細線分隔，label 金色 overline、值墨黑 -->
+        <dl class="divide-y divide-line dark:divide-neutral-800">
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               婚禮名稱
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="font-display text-body-l text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.title }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               場地
             </dt>
             <dd
               data-testid="wedding-venue-display"
-              class="text-neutral-900 sm:col-span-2 dark:text-white"
+              class="text-ink sm:col-span-2 dark:text-paper"
             >
               {{ wedding?.venue }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               地址
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.address }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               日期
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="font-display text-body-l text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.date }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               地圖連結
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
               <a
                 v-if="wedding?.mapLink"
                 :href="wedding.mapLink"
                 target="_blank"
                 rel="noopener"
-                class="text-primary-600 hover:underline dark:text-primary-400"
+                class="text-gold-deep hover:underline"
               >
                 {{ wedding.mapLink }}
               </a>
-              <span v-else class="text-neutral-400">未設定</span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               停車資訊
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
-              {{ wedding?.parkingInfo || '未設定' }}
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <span v-if="wedding?.parkingInfo">{{ wedding.parkingInfo }}</span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               交通指引
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
-              {{ wedding?.transportInfo || '未設定' }}
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <span v-if="wedding?.transportInfo">{{ wedding.transportInfo }}</span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
         </dl>
@@ -209,8 +201,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     <UModal v-model:open="isEditOpen">
       <template #content>
         <div data-testid="wedding-form-modal" class="p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Edit Details
+          </p>
           <h3
-            class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white"
+            class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper"
           >
             編輯婚禮資訊
           </h3>
@@ -330,7 +325,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               <UButton
                 type="submit"
                 data-testid="wedding-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 儲存

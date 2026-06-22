@@ -4,16 +4,23 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   CreateGuestBody,
-  GuestCreatedEvent,
   GuestDiet,
   GuestListItem,
   GuestSide,
-  GuestUpdatedEvent,
   ImportGuestsBody,
   UpdateGuestBody,
 } from '~/types/api/guests'
 
 import { z } from 'zod'
+
+import {
+  createGuest,
+  deleteGuest,
+  importGuests,
+  listGuests,
+  restoreGuest,
+  updateGuest,
+} from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -22,12 +29,9 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 賓客名單（含已移除，UI 以 deletedAt 分區呈現）
-const { data: guests, refresh } = await useFetch<GuestListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/guests`,
-  {
-    default: () => [],
-  },
-)
+const { data: guests, refresh } = await listGuests(weddingId, {
+  default: () => [],
+})
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -39,6 +43,60 @@ const deletedGuests = computed(() =>
 // 顯示文字對照
 const sideLabel = (side: GuestSide) => (side === 'groom' ? '男方' : '女方')
 const dietLabel = (diet: GuestDiet) => (diet === 'meat' ? '葷食' : '素食')
+
+// RSVP 出席狀態顯示（null = 待回覆）
+function rsvpMeta(s: GuestListItem['rsvpAttending']) {
+  if (s === 'attending')
+    return { label: '出席', color: 'success' as const }
+  if (s === 'declined')
+    return { label: '不出席', color: 'neutral' as const }
+  if (s === 'absent')
+    return { label: '缺席', color: 'error' as const }
+  return { label: '待回覆', color: 'warning' as const }
+}
+
+// === 篩選膠囊（純前端，預設「全部」；膠囊帶數量避免與表單「男方」按鈕撞名）===
+type GuestFilter = 'all' | 'groom' | 'bride' | 'pending'
+const filter = ref<GuestFilter>('all')
+const filterTabs = [
+  { key: 'all', label: '全部' },
+  { key: 'groom', label: '男方' },
+  { key: 'bride', label: '女方' },
+  { key: 'pending', label: '待回覆' },
+] as const
+
+function countOf(key: GuestFilter) {
+  const list = activeGuests.value
+  if (key === 'groom')
+    return list.filter(g => g.side === 'groom').length
+  if (key === 'bride')
+    return list.filter(g => g.side === 'bride').length
+  if (key === 'pending')
+    return list.filter(g => g.rsvpAttending == null).length
+  return list.length
+}
+
+// 搜尋（純前端，僅過濾已載入資料的顯示，不動 API）
+const search = ref('')
+
+const filteredGuests = computed(() => {
+  let list = activeGuests.value
+  if (filter.value === 'groom')
+    list = list.filter(g => g.side === 'groom')
+  else if (filter.value === 'bride')
+    list = list.filter(g => g.side === 'bride')
+  else if (filter.value === 'pending')
+    list = list.filter(g => g.rsvpAttending == null)
+
+  const keyword = search.value.trim().toLowerCase()
+  if (keyword) {
+    list = list.filter(g =>
+      g.name.toLowerCase().includes(keyword)
+      || g.category.toLowerCase().includes(keyword),
+    )
+  }
+  return list
+})
 
 // === 新增 / 編輯賓客表單 ===
 const schema = z.object({
@@ -114,10 +172,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         needChildSeat: data.needChildSeat,
         notes: data.notes,
       }
-      await $fetch<GuestUpdatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/guests/${editingId.value}`,
-        { method: 'PATCH', body },
-      )
+      await updateGuest(weddingId.value, editingId.value, body)
       toast.add({ title: '賓客已更新', color: 'success' })
     }
     else {
@@ -130,10 +185,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         needChildSeat: data.needChildSeat,
         notes: data.notes || undefined,
       }
-      await $fetch<GuestCreatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/guests`,
-        { method: 'POST', body },
-      )
+      await createGuest(weddingId.value, body)
       toast.add({ title: '賓客新增成功', color: 'success' })
     }
     isFormOpen.value = false
@@ -164,10 +216,7 @@ async function confirmRemove() {
     return
   isRemoving.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/${removeTarget.value.guestId}`,
-      { method: 'DELETE' },
-    )
+    await deleteGuest(weddingId.value, removeTarget.value.guestId)
     toast.add({ title: '賓客已移除', color: 'success' })
     isRemoveOpen.value = false
     await refresh()
@@ -197,10 +246,7 @@ async function confirmRestore() {
     return
   isRestoring.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/${restoreTarget.value.guestId}/restore`,
-      { method: 'POST' },
-    )
+    await restoreGuest(weddingId.value, restoreTarget.value.guestId)
     toast.add({ title: '賓客已恢復', color: 'success' })
     isRestoreOpen.value = false
     await refresh()
@@ -250,10 +296,7 @@ async function confirmImport() {
   importError.value = ''
   try {
     const body: ImportGuestsBody = { fileName: selectedFileName.value }
-    const result = await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/import`,
-      { method: 'POST', body },
-    )
+    const result = await importGuests(weddingId.value, body)
     importResult.value = result.importedCount
     toast.add({
       title: `成功匯入 ${result.importedCount} 位賓客`,
@@ -273,7 +316,11 @@ async function confirmImport() {
 
 <template>
   <div data-testid="guests-page" class="flex h-full flex-col">
-    <PageHeader title="賓客名單" description="管理此婚禮的賓客資料與批次匯入">
+    <PageHeader
+      title="賓客名單"
+      :eyebrow="`Guest List · ${activeGuests.length} 位`"
+      description="管理此婚禮的賓客資料與批次匯入"
+    >
       <template #actions>
         <div class="flex gap-2">
           <UButton
@@ -283,12 +330,13 @@ async function confirmImport() {
             variant="outline"
             @click="openImport"
           >
-            批次匯入
+            匯入名單
           </UButton>
           <UButton
             data-testid="guest-create"
             icon="i-heroicons-plus"
-            color="primary"
+            color="neutral"
+            variant="solid"
             @click="openCreate"
           >
             新增賓客
@@ -297,53 +345,97 @@ async function confirmImport() {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 賓客名單（未移除） -->
+    <!-- 搜尋 + 篩選膠囊（編輯式工具列；純前端篩選） -->
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <UInput
+        v-model="search"
+        data-testid="vibe-guests-search"
+        icon="i-heroicons-magnifying-glass"
+        placeholder="搜尋姓名 / 分類⋯"
+        variant="outline"
+        class="w-full sm:max-w-xs"
+      />
+      <div data-testid="vibe-guests-filter" class="flex flex-wrap gap-2">
+        <button
+          v-for="tab in filterTabs"
+          :key="tab.key"
+          type="button"
+          :data-testid="`vibe-guests-filter-${tab.key}`"
+          class="rounded-full border px-4 py-1.5 text-sm transition-colors"
+          :class="filter === tab.key
+            ? 'border-ink bg-ink text-cream'
+            : 'border-line text-ink-500 hover:border-gold-deep'"
+          @click="filter = tab.key"
+        >
+          {{ tab.label }} {{ countOf(tab.key) }}
+        </button>
+      </div>
+    </div>
+
+    <div class="min-h-0 flex-1 space-y-10 overflow-auto">
+      <!-- 賓客名單（未移除）— 編輯式表格 -->
       <table
         data-testid="guest-list"
-        class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+        class="w-full border-collapse text-body"
       >
-        <thead class="bg-neutral-50 dark:bg-neutral-900">
-          <tr class="text-left text-sm text-neutral-500 dark:text-neutral-400">
-            <th class="px-4 py-3 font-medium">
+        <thead>
+          <tr class="text-left text-overline uppercase text-gold-deep">
+            <th class="border-b border-line px-3 py-3.5 font-medium">
               姓名
             </th>
-            <th class="hidden px-4 py-3 font-medium sm:table-cell">
-              男女方
+            <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+              方
             </th>
-            <th class="hidden px-4 py-3 font-medium sm:table-cell">
-              飲食
+            <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+              餐點
             </th>
-            <th class="hidden px-4 py-3 font-medium md:table-cell">
+            <th class="hidden border-b border-line px-3 py-3.5 font-medium md:table-cell">
               分類
             </th>
-            <th class="px-4 py-3 text-right font-medium">
+            <th class="border-b border-line px-3 py-3.5 font-medium">
+              RSVP
+            </th>
+            <th class="border-b border-line px-3 py-3.5 text-right font-medium">
               操作
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="text-ink-700 dark:text-neutral-300">
           <tr
-            v-for="guest in activeGuests"
+            v-for="guest in filteredGuests"
             :key="guest.guestId"
             :data-testid="`guest-row-${guest.guestId}`"
-            class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+            class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
           >
-            <td class="px-4 py-3">
-              <span class="font-medium text-neutral-900 dark:text-white">
-                {{ guest.name }}
+            <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+              <span class="flex items-center gap-2.5">
+                <span
+                  class="size-2 shrink-0 rounded-full"
+                  :class="guest.side === 'groom' ? 'bg-info-500' : 'bg-gold'"
+                />
+                <span class="font-medium text-ink dark:text-paper">
+                  {{ guest.name }}
+                </span>
               </span>
             </td>
-            <td class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300">
-              {{ sideLabel(guest.side) }}
+            <td class="hidden border-b border-line px-3 py-4 sm:table-cell dark:border-neutral-800">
+              <span :class="guest.side === 'groom' ? 'text-info-500' : 'text-gold'">
+                {{ sideLabel(guest.side) }}
+              </span>
             </td>
-            <td class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300">
-              {{ dietLabel(guest.diet) }}
+            <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
+              <span>{{ dietLabel(guest.diet) }}</span>
+              <span v-if="guest.needChildSeat" class="text-ink-300"> · 兒童椅</span>
             </td>
-            <td class="hidden px-4 py-3 text-neutral-600 md:table-cell dark:text-neutral-300">
+            <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
               {{ guest.category }}
             </td>
-            <td class="px-4 py-3 text-right">
+            <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+              <UBadge :color="rsvpMeta(guest.rsvpAttending).color" variant="soft" size="sm">
+                {{ rsvpMeta(guest.rsvpAttending).label }}
+              </UBadge>
+            </td>
+            <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
               <div class="flex justify-end gap-1">
                 <UButton
                   data-testid="guest-edit"
@@ -370,42 +462,42 @@ async function confirmImport() {
               </div>
             </td>
           </tr>
-          <tr v-if="activeGuests.length === 0">
-            <td colspan="5">
+          <tr v-if="filteredGuests.length === 0">
+            <td colspan="6">
               <EmptyState
                 title="目前沒有賓客"
-                description="點擊「新增賓客」或「批次匯入」建立賓客名單"
+                description="點擊「新增賓客」或「匯入名單」建立賓客名單"
               />
             </td>
           </tr>
         </tbody>
       </table>
 
-      <!-- 回收區（已移除） -->
+      <!-- 回收區（已移除，常駐渲染供恢復操作可達） -->
       <div v-if="deletedGuests.length > 0">
-        <h2 class="mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
-          已移除的賓客
-        </h2>
+        <div class="mb-3 flex items-center gap-3">
+          <span class="text-overline uppercase text-gold-deep">已移除的賓客</span>
+          <span class="h-px flex-1 bg-line" />
+        </div>
         <table
           data-testid="guest-deleted-list"
-          class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+          class="w-full border-collapse"
         >
           <tbody>
             <tr
               v-for="guest in deletedGuests"
               :key="guest.guestId"
               :data-testid="`guest-row-${guest.guestId}`"
-              class="border-t border-neutral-200 dark:border-neutral-800"
             >
-              <td class="px-4 py-3">
-                <span class="font-medium text-neutral-500 line-through dark:text-neutral-400">
+              <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <span class="font-medium text-ink-300 line-through">
                   {{ guest.name }}
                 </span>
               </td>
-              <td class="hidden px-4 py-3 text-neutral-400 sm:table-cell">
+              <td class="hidden border-b border-line px-3 py-4 text-ink-300 sm:table-cell dark:border-neutral-800">
                 {{ sideLabel(guest.side) }}
               </td>
-              <td class="px-4 py-3 text-right">
+              <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
                 <UButton
                   data-testid="guest-restore"
                   icon="i-heroicons-arrow-uturn-left"
@@ -427,8 +519,8 @@ async function confirmImport() {
     <!-- 新增 / 編輯賓客 Modal -->
     <UModal v-model:open="isFormOpen">
       <template #content>
-        <div data-testid="guest-form-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+        <div data-testid="guest-form-modal" class="bg-paper p-8 dark:bg-neutral-900">
+          <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
             {{ editingId ? '編輯賓客' : '新增賓客' }}
           </h3>
 
@@ -552,7 +644,8 @@ async function confirmImport() {
               <UButton
                 type="submit"
                 data-testid="guest-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 {{ editingId ? '儲存' : '新增' }}
@@ -566,8 +659,8 @@ async function confirmImport() {
     <!-- 批次匯入 Modal -->
     <UModal v-model:open="isImportOpen">
       <template #content>
-        <div data-testid="guest-import-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+        <div data-testid="guest-import-modal" class="bg-paper p-8 dark:bg-neutral-900">
+          <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
             批次匯入賓客
           </h3>
 
@@ -610,7 +703,8 @@ async function confirmImport() {
             </UButton>
             <UButton
               data-testid="guest-import-submit"
-              color="primary"
+              color="neutral"
+              variant="solid"
               :loading="isImporting"
               @click="confirmImport"
             >

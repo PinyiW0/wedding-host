@@ -1,6 +1,7 @@
 <!-- app/pages/weddings/[weddingId]/line.vue -->
 <script setup lang="ts">
-import type { ConnectLineOaBody, LineOaConnectedEvent, LineOaDetail } from '~/types/api/line'
+import type { ConnectLineOaBody } from '~/types/api/line'
+import { connectLineOa, getLineOa } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -9,10 +10,7 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // === 已連結的官方帳號（由 GET 讀回，重整後仍能還原顯示） ===
-const { data: connectedOa, refresh } = await useFetch<LineOaDetail | null>(
-  () => `/api/v1/weddings/${weddingId.value}/line-oa`,
-  { default: () => null },
-)
+const { data: connectedOa, refresh } = await getLineOa(weddingId, { default: () => null })
 
 // === 連結表單 ===
 const isOpen = ref(false)
@@ -46,10 +44,7 @@ async function submitConnect() {
       oaName: oaName.value.trim(),
       channelId: channelId.value.trim(),
     }
-    await $fetch<LineOaConnectedEvent>(
-      `/api/v1/weddings/${weddingId.value}/line-oa`,
-      { method: 'POST', body },
-    )
+    await connectLineOa(weddingId.value, body)
     // 寫入成功後重抓，以 GET 為呈現真實來源（重整也靠 GET）
     await refresh()
     toast.add({ title: 'LINE 官方帳號連結成功', color: 'success' })
@@ -68,44 +63,83 @@ async function submitConnect() {
 
 <template>
   <div data-testid="line-page" class="flex h-full flex-col">
-    <PageHeader title="LINE 官方帳號" description="將 LINE 官方帳號連結至婚禮，用於發送通知與感謝訊息">
+    <PageHeader
+      title="LINE 官方帳號"
+      eyebrow="LINE"
+      description="將 LINE 官方帳號連結至婚禮，用於發送通知與感謝訊息"
+    >
       <template #actions>
-        <UButton color="primary" variant="solid" @click="openConnect">
+        <UButton color="neutral" variant="solid" @click="openConnect">
           連結 LINE 官方帳號
         </UButton>
       </template>
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto">
-      <section class="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-        <h2 class="font-semibold text-neutral-900 dark:text-white">
-          連結狀態
-        </h2>
-
-        <div v-if="connectedOa" data-testid="line-oa-status" class="mt-3 space-y-1">
-          <div class="flex items-center gap-2">
-            <UBadge color="success" variant="subtle">
-              已連結
-            </UBadge>
-            <span class="font-medium text-neutral-900 dark:text-white">
-              {{ connectedOa.oaName }}
-            </span>
-          </div>
-          <p class="text-sm text-neutral-500 dark:text-neutral-400">
-            Channel ID：{{ connectedOa.channelId }}
+      <div class="max-w-2xl space-y-8">
+        <!-- 連結狀態 -->
+        <section>
+          <p class="text-overline mb-4 uppercase text-gold-deep">
+            連結狀態
           </p>
-        </div>
-        <p v-else class="mt-3 text-sm text-neutral-400">
-          尚未連結 LINE 官方帳號
-        </p>
-      </section>
+
+          <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <div v-if="connectedOa" data-testid="line-oa-status" class="space-y-4">
+              <div class="flex items-center gap-3">
+                <UBadge color="success" variant="subtle">
+                  已連結
+                </UBadge>
+                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">
+                  {{ connectedOa.oaName }}
+                </span>
+              </div>
+              <div>
+                <p class="text-caption text-ink-500 dark:text-neutral-400">
+                  Channel ID
+                </p>
+                <p class="mt-1 text-body text-ink-700 dark:text-neutral-300">
+                  {{ connectedOa.channelId }}
+                </p>
+              </div>
+            </div>
+            <p v-else class="text-body text-ink-300 dark:text-neutral-500">
+              尚未連結 LINE 官方帳號
+            </p>
+          </div>
+        </section>
+
+        <!-- LINE 群發提醒（金左框淺面板） -->
+        <section>
+          <p class="text-overline mb-4 uppercase text-gold-deep">
+            群發提醒
+          </p>
+
+          <div class="rounded-lg border border-line border-l-[3px] border-l-gold bg-paper p-6 dark:border-neutral-800">
+            <h3 class="font-medium text-ink dark:text-paper">
+              LINE 群發提醒
+            </h3>
+            <p class="mt-1.5 text-body text-ink-500 dark:text-neutral-400">
+              連結官方帳號後，即可向賓客發送邀請與感謝訊息。
+            </p>
+            <UButton
+              class="mt-4"
+              color="neutral"
+              variant="solid"
+              :disabled="!connectedOa"
+              @click="openConnect"
+            >
+              設定群發訊息
+            </UButton>
+          </div>
+        </section>
+      </div>
     </div>
 
     <!-- 連結 LINE 官方帳號 Modal -->
     <UModal v-model:open="isOpen">
       <template #content>
         <div data-testid="line-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
             連結 LINE 官方帳號
           </h3>
 
@@ -149,7 +183,8 @@ async function submitConnect() {
               </UButton>
               <UButton
                 data-testid="line-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
                 @click="submitConnect"
               >

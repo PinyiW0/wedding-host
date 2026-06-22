@@ -1,6 +1,7 @@
 <!-- app/pages/guest/[guestId]/bind.vue -->
 <script setup lang="ts">
-import type { BindGuestLineBody, GuestLineBoundEvent } from '~/types/api/guests'
+import type { BindGuestLineBody } from '~/types/api/guests'
+import { bindGuestLine } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -23,10 +24,7 @@ async function bindLine() {
     const body: BindGuestLineBody = {
       lineUserId: `line-u-${guestId.value}-${Date.now()}`,
     }
-    await $fetch<GuestLineBoundEvent>(
-      `/api/v1/weddings/${weddingId.value}/guests/${guestId.value}/line-binding`,
-      { method: 'POST', body },
-    )
+    await bindGuestLine(weddingId.value, guestId.value, body)
     isBound.value = true
   }
   catch (error: any) {
@@ -40,12 +38,22 @@ async function bindLine() {
 </script>
 
 <template>
-  <div data-testid="guest-bind-page" class="flex flex-col items-center text-center">
-    <UIcon name="i-heroicons-chat-bubble-left-right" class="size-12 text-primary-500" />
-    <h1 class="mt-4 text-xl font-bold text-neutral-900">
+  <div
+    data-testid="guest-bind-page"
+    class="flex flex-col items-center rounded-lg border border-line bg-paper px-6 py-12 text-center"
+  >
+    <div class="flex size-16 items-center justify-center rounded-full border border-gold bg-white">
+      <UIcon name="i-heroicons-chat-bubble-left-right" class="size-7 text-gold" />
+    </div>
+
+    <p class="mt-6 text-overline uppercase text-gold-deep">
+      LINE Binding
+    </p>
+    <h1 class="mt-3 font-display text-h1 font-semibold leading-none text-ink">
       綁定您的 LINE
     </h1>
-    <p class="mt-2 text-neutral-500">
+    <div class="mx-auto mt-4 h-px w-10 bg-gold" />
+    <p class="mt-4 text-body-l text-ink-500">
       綁定後即可接收婚禮通知與專屬訊息
     </p>
 
@@ -56,7 +64,7 @@ async function bindLine() {
       color="error"
       variant="soft"
       :title="bindError"
-      class="mt-6 text-left"
+      class="mt-8 text-left"
     />
 
     <!-- 綁定成功反饋 -->
@@ -68,7 +76,7 @@ async function bindLine() {
       variant="soft"
       title="綁定成功"
       description="您已成功綁定 LINE，將會收到婚禮的最新消息。"
-      class="mt-6 text-left"
+      class="mt-8 text-left"
     />
 
     <UButton
@@ -76,9 +84,9 @@ async function bindLine() {
       data-testid="guest-bind-submit"
       icon="i-heroicons-chat-bubble-left-right"
       color="success"
-      size="lg"
+      size="xl"
       :loading="isBinding"
-      class="mt-6"
+      class="mt-8"
       @click="bindLine"
     >
       綁定 LINE
