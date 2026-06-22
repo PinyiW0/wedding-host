@@ -1,5 +1,5 @@
 // 座位與場地佈局 mock 資料：桌次 / 座位 / 場地佈局 / 禮俗設定與警告
-// seed：table-001（主桌 / 10 座 / 100,200）、warning-001（gender-separation）
+// seed：table-001（主桌 / 12 座 / 100,200，由後台設定）、warning-001（gender-separation）
 
 import type { EtiquetteSettings } from '../../../app/types/api/seating'
 
@@ -38,10 +38,25 @@ export interface MockEtiquetteWarning {
   dismissed: boolean
 }
 
+// 預設佈局：主桌置於頂端中央（正對舞台），其餘各桌「兩桌一列」往下排到結束。
+// 欄距 360 / 列距 300 的寬鬆間距，使各桌「圓桌＋環繞座位＋下方按鈕」不致重疊。
+// 註：位置存於記憶體 mock，現場拖曳調整後重整仍在，但開發伺服器重啟會回到此預設。
 export const mockTables: MockTable[] = [
-  { tableId: 'table-001', weddingId: 'wedding-001', tableName: '主桌', capacity: 10, positionX: 100, positionY: 200 },
-  { tableId: 'table-002', weddingId: 'wedding-001', tableName: '男方家屬桌', capacity: 10, positionX: 300, positionY: 200 },
-  { tableId: 'table-003', weddingId: 'wedding-001', tableName: '女方家屬桌', capacity: 10, positionX: 500, positionY: 200 },
+  { tableId: 'table-001', weddingId: 'wedding-001', tableName: '主桌', capacity: 12, positionX: 308, positionY: 40 },
+  { tableId: 'table-002', weddingId: 'wedding-001', tableName: '男方家屬桌', capacity: 10, positionX: 120, positionY: 340 },
+  { tableId: 'table-003', weddingId: 'wedding-001', tableName: '女方家屬桌', capacity: 10, positionX: 480, positionY: 340 },
+  { tableId: 'table-004', weddingId: 'wedding-001', tableName: '第4桌', capacity: 10, positionX: 120, positionY: 640 },
+  { tableId: 'table-005', weddingId: 'wedding-001', tableName: '第5桌', capacity: 10, positionX: 480, positionY: 640 },
+  { tableId: 'table-006', weddingId: 'wedding-001', tableName: '第6桌', capacity: 10, positionX: 120, positionY: 940 },
+  { tableId: 'table-007', weddingId: 'wedding-001', tableName: '第7桌', capacity: 10, positionX: 480, positionY: 940 },
+  { tableId: 'table-008', weddingId: 'wedding-001', tableName: '第8桌', capacity: 10, positionX: 120, positionY: 1240 },
+  { tableId: 'table-009', weddingId: 'wedding-001', tableName: '第9桌', capacity: 10, positionX: 480, positionY: 1240 },
+  { tableId: 'table-010', weddingId: 'wedding-001', tableName: '第10桌', capacity: 10, positionX: 120, positionY: 1540 },
+  { tableId: 'table-011', weddingId: 'wedding-001', tableName: '第11桌', capacity: 10, positionX: 480, positionY: 1540 },
+  { tableId: 'table-012', weddingId: 'wedding-001', tableName: '第12桌', capacity: 10, positionX: 120, positionY: 1840 },
+  { tableId: 'table-013', weddingId: 'wedding-001', tableName: '第13桌', capacity: 10, positionX: 480, positionY: 1840 },
+  { tableId: 'table-014', weddingId: 'wedding-001', tableName: '第14桌', capacity: 10, positionX: 120, positionY: 2140 },
+  { tableId: 'table-015', weddingId: 'wedding-001', tableName: '第15桌', capacity: 10, positionX: 480, positionY: 2140 },
 ]
 
 // 座位安排（預設無人入座；測試移除「桌次上還有賓客」情境時可動態 push）
@@ -58,7 +73,7 @@ export const mockEtiquetteSettings: MockEtiquetteSettings[] = [
     conflictWarning: true,
     genderSeparation: false,
     mainTableNearStage: true,
-    sameCategoryTogether: true,
+    sameCategoryTogether: false,
   },
 ]
 

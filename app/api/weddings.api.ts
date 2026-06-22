@@ -4,6 +4,7 @@ import type {
   CreateWeddingBody,
   UpdateWeddingBody,
   WeddingCreatedEvent,
+  WeddingDetail,
   WeddingListItem,
   WeddingRestoredEvent,
   WeddingUpdatedEvent,
@@ -16,9 +17,9 @@ export function listWeddings(options?: HttpGetOptions<WeddingListItem[]>) {
 
 export function getWedding(
   weddingId: MaybeRefOrGetter<string>,
-  options?: HttpGetOptions<WeddingListItem>,
+  options?: HttpGetOptions<WeddingDetail>,
 ) {
-  return useHttp().get<WeddingListItem>(() => `/api/v1/weddings/${toValue(weddingId)}`, options)
+  return useHttp().get<WeddingDetail>(() => `/api/v1/weddings/${toValue(weddingId)}`, options)
 }
 
 export function createWedding(body: CreateWeddingBody) {

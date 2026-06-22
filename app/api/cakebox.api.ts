@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CakeBoxAssignmentConfiguredEvent,
+  CakeBoxAssignmentListItem,
   CakeBoxTypeCreatedEvent,
   CakeBoxTypeListItem,
   CakeBoxTypeUpdatedEvent,
@@ -10,6 +11,16 @@ import type {
   UpdateCakeBoxTypeBody,
 } from '~/types/api/cakebox'
 import { useHttp } from '~/composables/useHttp'
+
+export function listCakeBoxAssignments(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<CakeBoxAssignmentListItem[]>,
+) {
+  return useHttp().get<CakeBoxAssignmentListItem[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/cake-box-types/assignments`,
+    options,
+  )
+}
 
 export function listCakeBoxTypes(
   weddingId: MaybeRefOrGetter<string>,

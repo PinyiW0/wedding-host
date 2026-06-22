@@ -15,6 +15,7 @@ export {
   configureCakeBoxAssignment,
   createCakeBoxType,
   deleteCakeBoxType,
+  listCakeBoxAssignments,
   listCakeBoxTypes,
   updateCakeBoxType,
 } from './cakebox.api'
@@ -27,10 +28,11 @@ export {
   restoreGuest,
   updateGuest,
 } from './guests.api'
-export { connectLineOa } from './line.api'
+export { connectLineOa, getLineOa } from './line.api'
 export {
   checkInGuest,
   distributeCakeBox,
+  getReceptionStatus,
   recordGiftMoney,
   selfCheckInGuest,
   updateGiftMoney,
@@ -45,6 +47,9 @@ export {
   createTable,
   deleteTable,
   dismissEtiquetteWarning,
+  getEtiquetteSettings,
+  getTableSeats,
+  getVenueLayout,
   listEtiquetteWarnings,
   listTables,
   seatGuest,
@@ -56,6 +61,8 @@ export {
   batchSendThankYou,
   customizeThankYouCard,
   fallbackSendThankYou,
+  getThankYouTemplate,
+  listThankYouCustomizations,
   setThankYouTemplate,
 } from './thankyou.api'
 export {

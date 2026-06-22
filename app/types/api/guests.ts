@@ -18,6 +18,10 @@ export interface GuestListItem {
   lineUserId: string | null
   // RSVP 出席狀態：未提交為 null（重整後仍可讀回）
   rsvpAttending: AttendingStatus | null
+  // 這組總人數（本人＋攜伴），供接待端顯示；未提供時視為 1
+  partySize?: number
+  // 桌次名稱（display 用，真實後端應由座位安排推導）；未排桌為 null
+  tableName?: string | null
   deletedAt: string | null
 }
 

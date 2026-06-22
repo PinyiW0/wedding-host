@@ -19,6 +19,8 @@ export default defineEventHandler((event: H3Event): GuestListItem[] => {
       notes: g.notes,
       lineUserId: g.lineUserId,
       rsvpAttending: g.rsvpAttending,
+      partySize: g.partySize,
+      tableName: g.tableName,
       deletedAt: g.deletedAt,
     }))
 })
