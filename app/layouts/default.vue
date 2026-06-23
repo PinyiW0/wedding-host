@@ -8,11 +8,19 @@ const { wedding, weddingId } = useCurrentWedding()
 const isMobileMenuOpen = ref(false)
 const isCollapsed = ref(false)
 
-// 全域導覽（未進入特定婚禮時顯示）
-const globalNav = [
-  { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
-  { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
-]
+// 全域導覽（未進入特定婚禮時顯示）；接待員只保留「接待報到」（帶 weddingId）
+const globalNav = computed(() => {
+  if (authStore.isReceptionist) {
+    const id = authStore.weddingId ?? 'wedding-001'
+    return [
+      { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: `/reception?weddingId=${id}` },
+    ]
+  }
+  return [
+    { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
+    { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
+  ]
+})
 
 // 婚禮模組導覽（進入某場婚禮後顯示，對齊參考稿後台側邊欄）
 const weddingNav = computed(() => {
@@ -36,6 +44,9 @@ const inWedding = computed(() => weddingNav.value.length > 0)
 
 // 使用者頭像首字
 const avatarChar = computed(() => (authStore.user?.account ?? '?').charAt(0).toUpperCase())
+
+// 角色標籤（依登入者角色顯示）
+const roleLabel = computed(() => (authStore.isReceptionist ? '接待 · 接待員' : '主辦 · 管理員'))
 
 // 婚禮列表與婚禮總覽需精確比對，避免被子頁路徑前綴誤判為作用中
 function isActive(to: string) {
@@ -142,8 +153,8 @@ async function handleLogout() {
             <p class="truncate text-body text-ink dark:text-paper">
               {{ authStore.user?.account ?? '未登入' }}
             </p>
-            <p class="text-caption text-ink-300">
-              主辦 · 管理員
+            <p data-testid="vibe-user-role" class="text-caption text-ink-300">
+              {{ roleLabel }}
             </p>
           </div>
           <UButton

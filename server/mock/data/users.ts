@@ -8,6 +8,7 @@ export interface MockUser {
   password: string
   displayName: string
   role: string // 管理者 | 接待員
+  weddingId: string | null // 接待員綁定其負責的婚禮；管理者跨場為 null
   deletedAt: string | null
 }
 
@@ -19,6 +20,7 @@ export const mockUsers: MockUser[] = [
     password: 'Andrea1122',
     displayName: 'Andrea',
     role: '管理者',
+    weddingId: null,
     deletedAt: null,
   },
   {
@@ -28,6 +30,7 @@ export const mockUsers: MockUser[] = [
     password: 'star1122',
     displayName: '接待員',
     role: '接待員',
+    weddingId: 'wedding-001',
     deletedAt: null,
   },
 ]

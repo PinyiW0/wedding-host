@@ -36,13 +36,17 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   errorMessage.value = ''
   try {
     // 登入用 store 方法（狀態自動 persist）
-    await authStore.login(event.data.account, event.data.password)
+    const res = await authStore.login(event.data.account, event.data.password)
     toast.add({
       title: '登入成功',
       description: '歡迎回來',
       color: 'success',
     })
-    router.push('/weddings')
+    // 依角色導向：接待員→接待台（帶 weddingId）；管理者→所有婚禮
+    if (res.role === '接待員')
+      router.push(`/reception?weddingId=${res.weddingId ?? 'wedding-001'}`)
+    else
+      router.push('/weddings')
   }
   catch (error: any) {
     const message
