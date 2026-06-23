@@ -1,6 +1,6 @@
 <!-- app/pages/reception/index.vue -->
 <script setup lang="ts">
-import type { GuestListItem } from '~/types/api/guests'
+import type { CreateGuestBody, GuestListItem } from '~/types/api/guests'
 import type {
   DistributeCakeBoxBody,
   ReceptionStatusItem,
@@ -15,6 +15,7 @@ import type {
 } from '~/types/api/seating'
 import {
   checkInGuest,
+  createGuest,
   createTable,
   distributeCakeBox,
   getReceptionStatus,
@@ -38,8 +39,8 @@ const nuxtApp = useNuxtApp()
 // weddingId 由查詢字串帶入（沿用既有模式），預設 wedding-001
 const weddingId = computed(() => String(route.query.weddingId ?? 'wedding-001'))
 
-// 賓客清單
-const { data: guests } = await listGuests(weddingId, { default: () => [] })
+// 賓客清單（現場新增臨時賓客後 refresh，左欄報到名單即時更新）
+const { data: guests, refresh: refreshGuests } = await listGuests(weddingId, { default: () => [] })
 
 // 喜餅款式（供發放選擇）
 const { data: cakeBoxTypes } = await listCakeBoxTypes(weddingId, { default: () => [] })
@@ -348,61 +349,132 @@ async function submitTable() {
   }
 }
 
-// === 現場安排座位 ===
-const tableOptions = computed(() =>
-  (tables.value ?? []).map(t => ({ label: t.tableName, value: t.tableId })),
-)
-const seatGuestOptions = computed(() =>
-  activeGuests.value.map(g => ({ label: g.name, value: g.guestId })),
-)
-
-const isSeatOpen = ref(false)
-const isSeating = ref(false)
-const seatError = ref('')
-const seatForm = reactive<{ guestId: string, tableId: string, seatNumber: number }>({
-  guestId: '',
+// === 現場新增賓客（可一併指定桌次入座）===
+// 接待現場臨時來客先建檔（建完即出現在報到名單，可報到 / 禮金 / 喜餅）；可選擇桌次當場入座
+const isGuestOpen = ref(false)
+const isGuestSubmitting = ref(false)
+const guestError = ref('')
+const newGuestForm = reactive<{
+  name: string
+  side: GuestListItem['side']
+  diet: GuestListItem['diet']
+  category: string
+  contact: string
+  needChildSeat: boolean
+  tableId: string // 空字串 = 先不排桌
+}>({
+  name: '',
+  side: 'groom',
+  diet: 'meat',
+  category: '',
+  contact: '',
+  needChildSeat: false,
   tableId: '',
-  seatNumber: 1,
+})
+const sideOptions = [
+  { label: '男方', value: 'groom' },
+  { label: '女方', value: 'bride' },
+]
+const dietOptions = [
+  { label: '葷食', value: 'meat' },
+  { label: '素食', value: 'vegetarian' },
+]
+// 桌次選項：首項為「先不排桌」，其餘標示目前入座 / 座位數，現場一眼看出哪桌還有空位
+const tableOptions = computed(() => [
+  { label: '先不排桌', value: '' },
+  ...(tables.value ?? []).map(t => ({
+    label: `${t.tableName}（${tableSeats(t.tableId).length}/${t.capacity}）`,
+    value: t.tableId,
+  })),
+])
+
+// 一桌容量規則（對齊後端）：大人至多坐滿 capacity，需兒童椅者該桌可 +1 加位
+function tableSeatLimit(table: TableListItem, needChildSeat: boolean): number {
+  return needChildSeat ? table.capacity + 1 : table.capacity
+}
+
+// 選定桌次的剩餘空位提示（隨「需兒童椅」即時反映 +1 加位）
+const seatHint = computed(() => {
+  const t = (tables.value ?? []).find(x => x.tableId === newGuestForm.tableId)
+  if (!t)
+    return ''
+  const occupied = tableSeats(t.tableId).length
+  const remaining = tableSeatLimit(t, newGuestForm.needChildSeat) - occupied
+  const childNote = newGuestForm.needChildSeat ? '（含兒童椅 +1）' : ''
+  return remaining > 0
+    ? `${t.tableName} 尚可坐 ${remaining} 位${childNote}，目前 ${occupied}/${t.capacity}`
+    : `${t.tableName} 已滿${childNote}，目前 ${occupied}/${t.capacity}`
 })
 
-function openSeat() {
-  seatError.value = ''
-  seatForm.guestId = ''
-  seatForm.tableId = ''
-  seatForm.seatNumber = 1
-  isSeatOpen.value = true
+function openGuest() {
+  guestError.value = ''
+  newGuestForm.name = ''
+  newGuestForm.side = 'groom'
+  newGuestForm.diet = 'meat'
+  newGuestForm.category = ''
+  newGuestForm.contact = ''
+  newGuestForm.needChildSeat = false
+  newGuestForm.tableId = ''
+  isGuestOpen.value = true
 }
 
-// 在 Modal 內改選桌次時，自動建議下一個座位號
-function onSeatTableChange(tableId: string) {
-  seatForm.seatNumber = tableSeats(tableId).length + 1
-}
-
-async function submitSeat() {
-  if (isSeating.value)
+async function submitGuest() {
+  if (isGuestSubmitting.value)
     return
-  if (!seatForm.guestId || !seatForm.tableId) {
-    seatError.value = '請選擇賓客與桌次'
+  if (!newGuestForm.name.trim()) {
+    guestError.value = '請輸入賓客姓名'
     return
   }
-  isSeating.value = true
-  seatError.value = ''
-  try {
-    const body: SeatGuestBody = {
-      guestId: seatForm.guestId,
-      seatNumber: Number(seatForm.seatNumber) || 1,
+  // 若選了桌次：先以同一容量規則前端預檢，滿了就擋（不建檔，避免產生未入座的半成品賓客）
+  const targetTable = newGuestForm.tableId
+    ? (tables.value ?? []).find(t => t.tableId === newGuestForm.tableId)
+    : null
+  if (newGuestForm.tableId && !targetTable) {
+    guestError.value = '桌次不存在'
+    return
+  }
+  if (targetTable) {
+    const occupied = tableSeats(targetTable.tableId).length
+    if (occupied >= tableSeatLimit(targetTable, newGuestForm.needChildSeat)) {
+      guestError.value = '桌次已滿，無法再安排座位'
+      return
     }
-    await seatGuest(weddingId.value, seatForm.tableId, body)
-    toast.add({ title: '已安排座位', color: 'success' })
-    isSeatOpen.value = false
-    await refreshSeating()
+  }
+  isGuestSubmitting.value = true
+  guestError.value = ''
+  try {
+    const body: CreateGuestBody = {
+      name: newGuestForm.name.trim(),
+      side: newGuestForm.side,
+      diet: newGuestForm.diet,
+      category: newGuestForm.category.trim(),
+      contact: newGuestForm.contact.trim(),
+      needChildSeat: newGuestForm.needChildSeat,
+    }
+    const created = await createGuest(weddingId.value, body)
+    // 選了桌次：建檔後當場入座（座位號接續現有入座數；後端再次把關容量）
+    if (targetTable) {
+      const seatBody: SeatGuestBody = {
+        guestId: created.guestId,
+        seatNumber: tableSeats(targetTable.tableId).length + 1,
+      }
+      await seatGuest(weddingId.value, targetTable.tableId, seatBody)
+    }
+    await refreshGuests()
+    if (targetTable)
+      await refreshSeating()
+    toast.add({
+      title: targetTable ? `${body.name} 已新增並入座 ${targetTable.tableName}` : `${body.name} 新增成功`,
+      color: 'success',
+    })
+    isGuestOpen.value = false
   }
   catch (error: any) {
-    seatError.value
-      = error?.data?.message || error?.statusMessage || '安排失敗，請稍後再試'
+    guestError.value
+      = error?.data?.message || error?.statusMessage || '新增失敗，請稍後再試'
   }
   finally {
-    isSeating.value = false
+    isGuestSubmitting.value = false
   }
 }
 
@@ -625,7 +697,7 @@ async function submitCake() {
         </div>
       </div>
 
-      <!-- 右欄：現場桌次圖（接待人員比照；可現場新增桌次 / 安排座位） -->
+      <!-- 右欄：現場桌次圖（接待人員比照；可現場新增賓客 / 新增桌次） -->
       <div class="flex min-h-0 flex-col lg:w-[520px] lg:shrink-0">
         <div class="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div>
@@ -635,14 +707,14 @@ async function submitCake() {
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <UButton
-              data-testid="vibe-reception-seat"
+              data-testid="vibe-reception-add-guest"
               icon="i-heroicons-user-plus"
               color="neutral"
               variant="outline"
               size="sm"
-              @click="openSeat()"
+              @click="openGuest()"
             >
-              安排座位
+              新增賓客
             </UButton>
             <UButton
               data-testid="vibe-reception-add-table"
@@ -936,57 +1008,95 @@ async function submitCake() {
       </template>
     </UModal>
 
-    <!-- 現場安排座位 Modal -->
-    <UModal v-model:open="isSeatOpen">
+    <!-- 現場新增賓客 Modal -->
+    <UModal v-model:open="isGuestOpen">
       <template #content>
-        <div data-testid="vibe-reception-seat-modal" class="bg-paper p-8 dark:bg-neutral-900">
+        <div data-testid="vibe-reception-guest-modal" class="bg-paper p-8 dark:bg-neutral-900">
           <p class="text-overline uppercase text-gold-deep">
-            Floor Plan
+            Guest
           </p>
           <h3 class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-            安排座位
+            新增賓客
           </h3>
 
           <UAlert
-            v-if="seatError"
-            data-testid="vibe-reception-seat-error"
+            v-if="guestError"
+            data-testid="vibe-reception-guest-error"
             icon="i-heroicons-exclamation-triangle"
             color="error"
             variant="soft"
-            :title="seatError"
+            :title="guestError"
             class="mb-4"
           />
 
           <div class="space-y-5">
-            <UFormField label="賓客" name="guestId">
-              <USelectMenu
-                v-model="seatForm.guestId"
-                data-testid="vibe-reception-seat-guest"
-                :items="seatGuestOptions"
-                value-key="value"
-                placeholder="選擇賓客"
+            <UFormField label="賓客姓名" name="newGuestName">
+              <UInput
+                v-model="newGuestForm.name"
+                data-testid="vibe-reception-new-guest-name"
+                placeholder="請輸入賓客姓名"
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="桌次" name="tableId">
+            <div class="grid grid-cols-2 gap-3">
+              <UFormField label="男方 / 女方" name="newGuestSide">
+                <USelectMenu
+                  v-model="newGuestForm.side"
+                  data-testid="vibe-reception-new-guest-side"
+                  :items="sideOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="葷 / 素" name="newGuestDiet">
+                <USelectMenu
+                  v-model="newGuestForm.diet"
+                  data-testid="vibe-reception-new-guest-diet"
+                  :items="dietOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <UFormField label="分類（選填）" name="newGuestCategory">
+              <UInput
+                v-model="newGuestForm.category"
+                data-testid="vibe-reception-new-guest-category"
+                placeholder="如：親友、同事"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="聯絡方式（選填）" name="newGuestContact">
+              <UInput
+                v-model="newGuestForm.contact"
+                data-testid="vibe-reception-new-guest-contact"
+                placeholder="電話 / Email"
+                class="w-full"
+              />
+            </UFormField>
+            <UCheckbox
+              v-model="newGuestForm.needChildSeat"
+              data-testid="vibe-reception-new-guest-child-seat"
+              label="需兒童椅"
+            />
+
+            <!-- 桌次（選填）：選定後當場入座；提示隨兒童椅 +1 即時更新 -->
+            <UFormField label="桌次（選填，可當場入座）" name="newGuestTable">
               <USelectMenu
-                v-model="seatForm.tableId"
-                data-testid="vibe-reception-seat-table"
+                v-model="newGuestForm.tableId"
+                data-testid="vibe-reception-new-guest-table"
                 :items="tableOptions"
                 value-key="value"
-                placeholder="選擇桌次"
-                class="w-full"
-                @update:model-value="onSeatTableChange"
-              />
-            </UFormField>
-            <UFormField label="座位號" name="seatNumber">
-              <UInput
-                v-model.number="seatForm.seatNumber"
-                data-testid="vibe-reception-seat-number"
-                type="number"
-                min="1"
+                placeholder="先不排桌"
                 class="w-full"
               />
+              <p
+                v-if="seatHint"
+                data-testid="vibe-reception-new-guest-seat-hint"
+                class="mt-1.5 text-caption text-ink-500 dark:text-neutral-400"
+              >
+                {{ seatHint }}
+              </p>
             </UFormField>
 
             <div class="flex justify-end gap-3 pt-2">
@@ -994,19 +1104,19 @@ async function submitCake() {
                 color="neutral"
                 variant="outline"
                 size="lg"
-                :disabled="isSeating"
-                @click="isSeatOpen = false"
+                :disabled="isGuestSubmitting"
+                @click="isGuestOpen = false"
               >
                 取消
               </UButton>
               <UButton
-                data-testid="vibe-reception-seat-submit"
+                data-testid="vibe-reception-guest-submit"
                 color="primary"
                 size="lg"
-                :loading="isSeating"
-                @click="submitSeat"
+                :loading="isGuestSubmitting"
+                @click="submitGuest"
               >
-                安排
+                新增
               </UButton>
             </div>
           </div>
