@@ -82,7 +82,7 @@ async function handleLogout() {
           <p class="text-overline uppercase text-gold-deep">
             {{ wedding ? 'The Wedding of' : 'The Wedding Platform' }}
           </p>
-          <p class="mt-1 truncate font-display text-2xl font-semibold text-ink dark:text-paper">
+          <p class="mt-1 truncate font-display text-base font-semibold text-ink dark:text-paper">
             {{ wedding?.title ?? 'EverAfter' }}
           </p>
           <p v-if="wedding" class="mt-0.5 truncate text-caption text-ink-500 dark:text-neutral-400">

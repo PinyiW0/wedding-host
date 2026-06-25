@@ -16,7 +16,7 @@ const weddingId = computed(() => String(route.query.weddingId ?? 'wedding-001'))
 const attending = ref<AttendingStatus>('attending')
 const diet = ref<'meat' | 'vegetarian'>('meat')
 const plusOneCount = ref(0)
-const needChildSeat = ref(false)
+const childChairCount = ref(0)
 
 const isSubmitting = ref(false)
 const isSubmitted = ref(false)
@@ -32,7 +32,7 @@ async function submitRsvp() {
       attending: attending.value,
       diet: diet.value,
       plusOneCount: Number(plusOneCount.value) || 0,
-      needChildSeat: needChildSeat.value,
+      childChairCount: Number(childChairCount.value) || 0,
     }
     await submitRsvpApi(weddingId.value, guestId.value, body)
     isSubmitted.value = true
@@ -175,15 +175,44 @@ async function submitRsvp() {
         </div>
       </div>
 
-      <!-- 兒童座椅 -->
+      <!-- 兒童椅嬰兒數（stepper）：用兒童椅、不吃大人菜的小嬰兒；額外加位、不佔正常席 -->
       <div class="flex items-center justify-between border-b border-line py-4">
         <div>
-          <span class="text-body-l text-ink">需要兒童座椅</span>
+          <span class="text-body-l text-ink">兒童椅嬰兒數</span>
           <p class="mt-0.5 text-caption text-ink-300">
-            適合 6 歲以下幼童
+            用兒童椅、不吃大人菜的小嬰兒；會自己坐、吃大人菜的小孩請算進攜伴人數
           </p>
         </div>
-        <USwitch v-model="needChildSeat" data-testid="rsvp-child-seat" />
+        <div data-testid="vibe-rsvp-childchair-stepper" class="flex items-center gap-5">
+          <UButton
+            icon="i-heroicons-minus"
+            color="neutral"
+            variant="outline"
+            size="lg"
+            class="rounded-full"
+            :disabled="childChairCount <= 0"
+            aria-label="少一位"
+            @click="childChairCount = Math.max(0, Number(childChairCount) - 1)"
+          />
+          <UInput
+            v-model.number="childChairCount"
+            data-testid="rsvp-child-seat"
+            type="number"
+            min="0"
+            aria-label="兒童椅嬰兒數"
+            class="w-16"
+            :ui="{ base: 'text-center font-display text-3xl' }"
+          />
+          <UButton
+            icon="i-heroicons-plus"
+            color="neutral"
+            variant="solid"
+            size="lg"
+            class="rounded-full"
+            aria-label="多一位"
+            @click="childChairCount = Number(childChairCount) + 1"
+          />
+        </div>
       </div>
 
       <UButton

@@ -22,9 +22,9 @@ withDefaults(
           <span class="h-px w-8 bg-gold" />
           <span class="text-overline uppercase text-gold-deep">{{ eyebrow }}</span>
         </div>
-        <h1 class="font-display text-h1 font-semibold text-ink dark:text-paper">
+        <h2 class="font-display text-h2 font-semibold text-ink dark:text-paper">
           {{ title }}
-        </h1>
+        </h2>
         <p v-if="description" class="mt-2 text-body text-ink-500 dark:text-neutral-400">
           {{ description }}
         </p>

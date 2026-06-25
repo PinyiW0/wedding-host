@@ -360,7 +360,8 @@ const newGuestForm = reactive<{
   diet: GuestListItem['diet']
   category: string
   contact: string
-  needChildSeat: boolean
+  plusOneCount: number // 同行人數（攜伴大人＋會自己坐吃大人菜的小孩；皆佔正常席）
+  childChairCount: number // 兒童椅嬰兒數（不佔正常席、額外加位）
   tableId: string // 空字串 = 先不排桌
 }>({
   name: '',
@@ -368,7 +369,8 @@ const newGuestForm = reactive<{
   diet: 'meat',
   category: '',
   contact: '',
-  needChildSeat: false,
+  plusOneCount: 0,
+  childChairCount: 0,
   tableId: '',
 })
 const sideOptions = [
@@ -379,31 +381,54 @@ const dietOptions = [
   { label: '葷食', value: 'meat' },
   { label: '素食', value: 'vegetarian' },
 ]
-// 桌次選項：首項為「先不排桌」，其餘標示目前入座 / 座位數，現場一眼看出哪桌還有空位
+// 一桌正常席已用人頭（兒童椅不計）
+function normalSeatCount(tableId: string): number {
+  return tableSeats(tableId).filter(s => s.seatType === 'normal').length
+}
+// 一桌兒童椅嬰兒數
+function childChairCount(tableId: string): number {
+  return tableSeats(tableId).filter(s => s.seatType === 'childChair').length
+}
+// 席位標籤：正常席「名字N」、兒童椅「名字-兒童N」
+function seatLabel(seat: SeatListItem): string {
+  const name = (guests.value ?? []).find(g => g.guestId === seat.guestId)?.name ?? '賓客'
+  return seat.seatType === 'childChair' ? `${name}-兒童${seat.partyIndex}` : `${name}${seat.partyIndex}`
+}
+// 此席位的賓客是否已報到（整組共用同一報到狀態）
+function isSeatCheckedIn(seat: SeatListItem): boolean {
+  return status[seat.guestId]?.checkedIn ?? false
+}
+// 桌次圖席位顏色：依報到狀態區分——已報到實心綠、未報到虛線淡，接待一眼看出誰到了
+function seatChipClass(seat: SeatListItem): string {
+  return isSeatCheckedIn(seat)
+    ? 'border border-success-600 bg-success-500 text-white'
+    : 'border border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'
+}
+// 此組正常席人頭 = 本人 + 同行
+const newGuestNormalHeads = computed(() => 1 + (Number(newGuestForm.plusOneCount) || 0))
+// 桌次選項：首項為「先不排桌」，其餘標示正常席入座 / 座位數，現場一眼看出哪桌還有空位
 const tableOptions = computed(() => [
   { label: '先不排桌', value: '' },
   ...(tables.value ?? []).map(t => ({
-    label: `${t.tableName}（${tableSeats(t.tableId).length}/${t.capacity}）`,
+    label: `${t.tableName}（${normalSeatCount(t.tableId)}/${t.capacity}）`,
     value: t.tableId,
   })),
 ])
 
-// 一桌容量規則（對齊後端）：大人至多坐滿 capacity，需兒童椅者該桌可 +1 加位
-function tableSeatLimit(table: TableListItem, needChildSeat: boolean): number {
-  return needChildSeat ? table.capacity + 1 : table.capacity
-}
-
-// 選定桌次的剩餘空位提示（隨「需兒童椅」即時反映 +1 加位）
+// 選定桌次的剩餘正常席提示（隨同行 / 兒童椅即時更新；兒童椅額外不佔 capacity）
 const seatHint = computed(() => {
   const t = (tables.value ?? []).find(x => x.tableId === newGuestForm.tableId)
   if (!t)
     return ''
-  const occupied = tableSeats(t.tableId).length
-  const remaining = tableSeatLimit(t, newGuestForm.needChildSeat) - occupied
-  const childNote = newGuestForm.needChildSeat ? '（含兒童椅 +1）' : ''
-  return remaining > 0
-    ? `${t.tableName} 尚可坐 ${remaining} 位${childNote}，目前 ${occupied}/${t.capacity}`
-    : `${t.tableName} 已滿${childNote}，目前 ${occupied}/${t.capacity}`
+  const occupied = normalSeatCount(t.tableId)
+  const remaining = t.capacity - occupied
+  const need = newGuestNormalHeads.value
+  const childNote = Number(newGuestForm.childChairCount) > 0
+    ? `，另含 ${newGuestForm.childChairCount} 張兒童椅（額外加位）`
+    : ''
+  return remaining >= need
+    ? `${t.tableName} 正常席尚可坐 ${remaining} 位，此組需 ${need} 位${childNote}（目前 ${occupied}/${t.capacity}）`
+    : `${t.tableName} 正常席不足：尚可坐 ${remaining} 位、此組需 ${need} 位${childNote}`
 })
 
 function openGuest() {
@@ -413,7 +438,8 @@ function openGuest() {
   newGuestForm.diet = 'meat'
   newGuestForm.category = ''
   newGuestForm.contact = ''
-  newGuestForm.needChildSeat = false
+  newGuestForm.plusOneCount = 0
+  newGuestForm.childChairCount = 0
   newGuestForm.tableId = ''
   isGuestOpen.value = true
 }
@@ -434,8 +460,9 @@ async function submitGuest() {
     return
   }
   if (targetTable) {
-    const occupied = tableSeats(targetTable.tableId).length
-    if (occupied >= tableSeatLimit(targetTable, newGuestForm.needChildSeat)) {
+    // 正常席人頭預檢（兒童椅額外、不佔 capacity）；滿了就擋、不建檔
+    const occupied = normalSeatCount(targetTable.tableId)
+    if (occupied + newGuestNormalHeads.value > targetTable.capacity) {
       guestError.value = '桌次已滿，無法再安排座位'
       return
     }
@@ -449,10 +476,11 @@ async function submitGuest() {
       diet: newGuestForm.diet,
       category: newGuestForm.category.trim(),
       contact: newGuestForm.contact.trim(),
-      needChildSeat: newGuestForm.needChildSeat,
+      partySize: 1 + (Number(newGuestForm.plusOneCount) || 0) + (Number(newGuestForm.childChairCount) || 0),
+      childChairCount: Number(newGuestForm.childChairCount) || 0,
     }
     const created = await createGuest(weddingId.value, body)
-    // 選了桌次：建檔後當場入座（座位號接續現有入座數；後端再次把關容量）
+    // 選了桌次：建檔後當場入座（後端依 partySize / childChairCount 展開多席並再次把關容量）
     if (targetTable) {
       const seatBody: SeatGuestBody = {
         guestId: created.guestId,
@@ -513,9 +541,9 @@ async function submitCake() {
         <p class="text-overline uppercase text-gold-deep">
           Reception · 接待報到端
         </p>
-        <h1 class="mt-2 font-display text-h1 font-semibold leading-none text-ink dark:text-paper">
+        <h2 class="mt-2 font-display text-h2 font-semibold leading-none text-ink dark:text-paper">
           接待台
-        </h1>
+        </h2>
       </div>
       <div class="flex items-center gap-6">
         <div class="text-right">
@@ -608,14 +636,14 @@ async function submitCake() {
               </span>
               <span class="inline-flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-body text-ink dark:border-neutral-700 dark:text-paper">
                 <UIcon name="i-heroicons-user-group" class="size-4 text-gold-deep" />
-                共 {{ guest.partySize ?? 1 }} 人
+                共 {{ guest.partySize }} 人
               </span>
               <span
-                v-if="guest.needChildSeat"
+                v-if="guest.childChairCount > 0"
                 class="inline-flex items-center gap-1.5 rounded border border-gold bg-gold-light/20 px-3 py-1.5 text-body font-medium text-gold-deep"
               >
                 <UIcon name="i-heroicons-sparkles" class="size-4" />
-                需兒童椅
+                兒童椅 ×{{ guest.childChairCount }}
               </span>
             </div>
 
@@ -704,6 +732,15 @@ async function submitCake() {
             <h2 class="font-display text-xl font-semibold leading-none text-ink dark:text-paper">
               現場桌次圖
             </h2>
+            <!-- 顏色圖例：依報到狀態區分席位 -->
+            <div class="mt-2 flex items-center gap-3 text-caption text-ink-500 dark:text-neutral-400">
+              <span class="flex items-center gap-1.5">
+                <span class="size-2.5 rounded-full border border-success-600 bg-success-500" />已報到
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="size-2.5 rounded-full border border-dashed border-ink-200 bg-paper" />未報到
+              </span>
+            </div>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <UButton
@@ -769,12 +806,36 @@ async function submitCake() {
                     :class="isMainTable(table) ? 'text-xl' : 'text-base'"
                   >{{ table.tableName }}</span>
                   <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
-                    {{ tableSeats(table.tableId).length }} / {{ table.capacity }} 位
+                    {{ normalSeatCount(table.tableId) }} / {{ table.capacity }} 位
+                  </span>
+                  <span v-if="childChairCount(table.tableId) > 0" class="text-caption text-gold-deep">
+                    +兒童椅 {{ childChairCount(table.tableId) }}
                   </span>
                 </div>
                 <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
                   面對舞台
                 </p>
+                <!-- 展開列出個別席位（名字1 / 名字-兒童1），方便接待現場核對 -->
+                <div
+                  v-if="tableSeats(table.tableId).length > 0"
+                  :data-testid="`vibe-reception-seats-${table.tableId}`"
+                  class="mt-2 flex flex-wrap justify-center gap-1"
+                >
+                  <span
+                    v-for="seat in tableSeats(table.tableId)"
+                    :key="`${seat.guestId}-${seat.seatNumber}`"
+                    class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption transition-colors"
+                    :class="seatChipClass(seat)"
+                    :title="isSeatCheckedIn(seat) ? '已報到' : '未報到'"
+                  >
+                    <UIcon
+                      v-if="seat.seatType === 'childChair'"
+                      name="i-heroicons-sparkles"
+                      class="size-3 shrink-0"
+                    />
+                    {{ seatLabel(seat) }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1074,13 +1135,32 @@ async function submitCake() {
                 class="w-full"
               />
             </UFormField>
-            <UCheckbox
-              v-model="newGuestForm.needChildSeat"
-              data-testid="vibe-reception-new-guest-child-seat"
-              label="需兒童椅"
-            />
+            <!-- 人數：同行（佔正常席）＋ 兒童椅嬰兒（額外加位、不佔正常席） -->
+            <div class="grid grid-cols-2 gap-3">
+              <UFormField label="同行人數" name="newGuestPlusOne">
+                <UInput
+                  v-model.number="newGuestForm.plusOneCount"
+                  data-testid="vibe-reception-new-guest-plus-one"
+                  type="number"
+                  min="0"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="兒童椅嬰兒數" name="newGuestChildChair">
+                <UInput
+                  v-model.number="newGuestForm.childChairCount"
+                  data-testid="vibe-reception-new-guest-child-chair"
+                  type="number"
+                  min="0"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <p class="text-caption text-ink-300">
+              會自己坐、吃大人菜的小孩請算進「同行人數」；用兒童椅的小嬰兒填「兒童椅嬰兒數」。
+            </p>
 
-            <!-- 桌次（選填）：選定後當場入座；提示隨兒童椅 +1 即時更新 -->
+            <!-- 桌次（選填）：選定後當場入座；提示隨同行 / 兒童椅即時更新 -->
             <UFormField label="桌次（選填，可當場入座）" name="newGuestTable">
               <USelectMenu
                 v-model="newGuestForm.tableId"

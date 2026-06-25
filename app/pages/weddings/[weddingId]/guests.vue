@@ -105,7 +105,8 @@ const schema = z.object({
   diet: z.enum(['meat', 'vegetarian']),
   category: z.string().trim().min(1, '請輸入分類'),
   contact: z.string().trim(),
-  needChildSeat: z.boolean(),
+  plusOneCount: z.number().min(0), // 同行人數（攜伴大人＋會自己坐吃大人菜的小孩；佔正常席）
+  childChairCount: z.number().min(0), // 兒童椅嬰兒數（額外加位、不佔正常席）
   notes: z.string().trim(),
 })
 
@@ -121,7 +122,8 @@ const state = reactive<Schema>({
   diet: 'meat',
   category: '',
   contact: '',
-  needChildSeat: false,
+  plusOneCount: 0,
+  childChairCount: 0,
   notes: '',
 })
 
@@ -131,7 +133,8 @@ function resetState() {
   state.diet = 'meat'
   state.category = ''
   state.contact = ''
-  state.needChildSeat = false
+  state.plusOneCount = 0
+  state.childChairCount = 0
   state.notes = ''
 }
 
@@ -150,7 +153,9 @@ function openEdit(guest: GuestListItem) {
   state.diet = guest.diet
   state.category = guest.category
   state.contact = guest.contact
-  state.needChildSeat = guest.needChildSeat
+  state.childChairCount = guest.childChairCount
+  // partySize 含本人＋同行＋兒童椅嬰兒，回填時拆出同行人數
+  state.plusOneCount = Math.max(0, guest.partySize - 1 - guest.childChairCount)
   state.notes = guest.notes ?? ''
   isFormOpen.value = true
 }
@@ -169,7 +174,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         diet: data.diet,
         category: data.category,
         contact: data.contact,
-        needChildSeat: data.needChildSeat,
+        partySize: 1 + data.plusOneCount + data.childChairCount,
+        childChairCount: data.childChairCount,
         notes: data.notes,
       }
       await updateGuest(weddingId.value, editingId.value, body)
@@ -182,7 +188,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         diet: data.diet,
         category: data.category,
         contact: data.contact,
-        needChildSeat: data.needChildSeat,
+        partySize: 1 + data.plusOneCount + data.childChairCount,
+        childChairCount: data.childChairCount,
         notes: data.notes || undefined,
       }
       await createGuest(weddingId.value, body)
@@ -425,7 +432,7 @@ async function confirmImport() {
             </td>
             <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
               <span>{{ dietLabel(guest.diet) }}</span>
-              <span v-if="guest.needChildSeat" class="text-ink-300"> · 兒童椅</span>
+              <span v-if="guest.childChairCount > 0" class="text-ink-300"> · 兒童椅 ×{{ guest.childChairCount }}</span>
             </td>
             <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
               {{ guest.category }}
@@ -519,120 +526,149 @@ async function confirmImport() {
     <!-- 新增 / 編輯賓客 Modal -->
     <UModal v-model:open="isFormOpen">
       <template #content>
-        <div data-testid="guest-form-modal" class="bg-paper p-8 dark:bg-neutral-900">
-          <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
-            {{ editingId ? '編輯賓客' : '新增賓客' }}
-          </h3>
+        <div data-testid="guest-form-modal" class="flex max-h-[85dvh] flex-col bg-paper dark:bg-neutral-900">
+          <!-- 固定標題區 -->
+          <div class="px-8 pt-8">
+            <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
+              {{ editingId ? '編輯賓客' : '新增賓客' }}
+            </h3>
 
-          <UAlert
-            v-if="formError"
-            data-testid="guest-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="formError"
-            class="mb-4"
-          />
+            <UAlert
+              v-if="formError"
+              data-testid="guest-error"
+              icon="i-heroicons-exclamation-triangle"
+              color="error"
+              variant="soft"
+              :title="formError"
+              class="mb-0"
+            />
+          </div>
 
           <UForm
             :schema="schema"
             :state="state"
-            class="space-y-4"
+            class="flex min-h-0 flex-1 flex-col"
             @submit="onSubmit"
           >
-            <UFormField
-              label="姓名"
-              name="name"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="state.name"
-                data-testid="guest-name"
-                placeholder="請輸入賓客姓名"
-                class="w-full"
-              />
-            </UFormField>
+            <!-- 可捲動表單區：欄位過多時只捲這裡，標題與底部按鈕固定 -->
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-8 py-6">
+              <!-- 姓名與分類同排：兩者皆為必填，欄位高度一致，捲動時不會錯版 -->
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField
+                  label="姓名"
+                  name="name"
+                  class="relative mb-6"
+                  :ui="{ error: 'absolute top-full left-0 mt-1' }"
+                >
+                  <UInput
+                    v-model="state.name"
+                    data-testid="guest-name"
+                    placeholder="請輸入賓客姓名"
+                    class="w-full"
+                  />
+                </UFormField>
 
-            <UFormField label="男女方" name="side">
-              <div class="flex gap-2">
-                <UButton
-                  :color="state.side === 'groom' ? 'primary' : 'neutral'"
-                  :variant="state.side === 'groom' ? 'solid' : 'outline'"
-                  @click="state.side = 'groom'"
+                <UFormField
+                  label="分類"
+                  name="category"
+                  class="relative mb-6"
+                  :ui="{ error: 'absolute top-full left-0 mt-1' }"
                 >
-                  男方
-                </UButton>
-                <UButton
-                  :color="state.side === 'bride' ? 'primary' : 'neutral'"
-                  :variant="state.side === 'bride' ? 'solid' : 'outline'"
-                  @click="state.side = 'bride'"
-                >
-                  女方
-                </UButton>
+                  <UInput
+                    v-model="state.category"
+                    data-testid="guest-category"
+                    placeholder="如：同事、家人、朋友"
+                    class="w-full"
+                  />
+                </UFormField>
               </div>
-            </UFormField>
 
-            <UFormField label="飲食" name="diet">
-              <div class="flex gap-2">
-                <UButton
-                  :color="state.diet === 'meat' ? 'primary' : 'neutral'"
-                  :variant="state.diet === 'meat' ? 'solid' : 'outline'"
-                  @click="state.diet = 'meat'"
-                >
-                  葷食
-                </UButton>
-                <UButton
-                  :color="state.diet === 'vegetarian' ? 'primary' : 'neutral'"
-                  :variant="state.diet === 'vegetarian' ? 'solid' : 'outline'"
-                  @click="state.diet = 'vegetarian'"
-                >
-                  素食
-                </UButton>
+              <!-- 男女方與飲食同排 -->
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField label="男女方" name="side">
+                  <div class="flex gap-2">
+                    <UButton
+                      :color="state.side === 'groom' ? 'primary' : 'neutral'"
+                      :variant="state.side === 'groom' ? 'solid' : 'outline'"
+                      @click="state.side = 'groom'"
+                    >
+                      男方
+                    </UButton>
+                    <UButton
+                      :color="state.side === 'bride' ? 'primary' : 'neutral'"
+                      :variant="state.side === 'bride' ? 'solid' : 'outline'"
+                      @click="state.side = 'bride'"
+                    >
+                      女方
+                    </UButton>
+                  </div>
+                </UFormField>
+
+                <UFormField label="飲食" name="diet">
+                  <div class="flex gap-2">
+                    <UButton
+                      :color="state.diet === 'meat' ? 'primary' : 'neutral'"
+                      :variant="state.diet === 'meat' ? 'solid' : 'outline'"
+                      @click="state.diet = 'meat'"
+                    >
+                      葷食
+                    </UButton>
+                    <UButton
+                      :color="state.diet === 'vegetarian' ? 'primary' : 'neutral'"
+                      :variant="state.diet === 'vegetarian' ? 'solid' : 'outline'"
+                      @click="state.diet = 'vegetarian'"
+                    >
+                      素食
+                    </UButton>
+                  </div>
+                </UFormField>
               </div>
-            </UFormField>
 
-            <UFormField
-              label="分類"
-              name="category"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="state.category"
-                data-testid="guest-category"
-                placeholder="如：同事、家人、朋友"
-                class="w-full"
-              />
-            </UFormField>
+              <UFormField label="聯絡方式" name="contact">
+                <UInput
+                  v-model="state.contact"
+                  data-testid="guest-contact"
+                  placeholder="請輸入聯絡電話"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <UFormField label="聯絡方式" name="contact">
-              <UInput
-                v-model="state.contact"
-                data-testid="guest-contact"
-                placeholder="請輸入聯絡電話"
-                class="w-full"
-              />
-            </UFormField>
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField label="同行人數" name="plusOneCount">
+                  <UInput
+                    v-model.number="state.plusOneCount"
+                    data-testid="guest-plus-one"
+                    type="number"
+                    min="0"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="兒童椅嬰兒數" name="childChairCount">
+                  <UInput
+                    v-model.number="state.childChairCount"
+                    data-testid="guest-child-seat"
+                    type="number"
+                    min="0"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+              <p class="-mt-2 text-caption text-ink-300">
+                會自己坐、吃大人菜的小孩請算進「同行人數」；用兒童椅的小嬰兒填「兒童椅嬰兒數」。
+              </p>
 
-            <UFormField name="needChildSeat">
-              <UCheckbox
-                v-model="state.needChildSeat"
-                data-testid="guest-child-seat"
-                label="需要兒童座椅"
-              />
-            </UFormField>
+              <UFormField label="備註" name="notes">
+                <UTextarea
+                  v-model="state.notes"
+                  data-testid="guest-notes"
+                  placeholder="其他備註資訊"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
 
-            <UFormField label="備註" name="notes">
-              <UTextarea
-                v-model="state.notes"
-                data-testid="guest-notes"
-                placeholder="其他備註資訊"
-                class="w-full"
-              />
-            </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
+            <!-- 固定底部按鈕列：正常流、不覆蓋內容 -->
+            <div class="flex justify-end gap-3 border-t border-line bg-paper px-8 py-4 dark:border-neutral-800 dark:bg-neutral-900">
               <UButton
                 color="neutral"
                 variant="outline"

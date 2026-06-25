@@ -7,7 +7,6 @@ import type {
   CreateTableBody,
   EtiquetteSettings,
   EtiquetteSettingsBody,
-  EtiquetteWarningListItem,
   SeatGuestBody,
   SeatListItem,
   TableListItem,
@@ -25,7 +24,6 @@ import {
   getEtiquetteSettings,
   getTableSeats,
   getVenueLayout,
-  listEtiquetteWarnings,
   listGuests,
   listTables,
   seatGuest,
@@ -48,9 +46,6 @@ const { data: tables, refresh: refreshTables } = await listTables(weddingId, {
   default: () => [],
 })
 const { data: guests } = await listGuests(weddingId, { default: () => [] })
-const { data: warnings, refresh: refreshWarnings } = await listEtiquetteWarnings(weddingId, {
-  default: () => [],
-})
 // 場地佈局與禮俗設定：由 GET 讀回，重整後 modal 仍能還原既有值
 const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddingId, {
   default: () => null,
@@ -58,7 +53,9 @@ const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddin
 const { data: etiquetteSettings, refresh: refreshEtiquette } = await getEtiquetteSettings(weddingId)
 
 const activeGuests = computed(() => (guests.value ?? []).filter(g => !g.deletedAt))
-const activeWarnings = computed(() => (warnings.value ?? []).filter(w => !w.dismissed))
+
+// 已被「忽略」的禮俗警告類型（本次階段隱藏；reset / 重整後重新計算）
+const dismissedWarningTypes = ref<string[]>([])
 
 // 每張桌的座位（key = tableId）
 const seatsByTable = ref<Record<string, SeatListItem[]>>({})
@@ -134,13 +131,16 @@ const canvasSize = computed(() => {
   return { width: Math.max(640, maxX + BLOCK + PAD), height: Math.max(420, maxY + BLOCK + PAD) }
 })
 
+// 拖曳期間把 pointermove / pointerup 綁在 window，而非小圓心元素上：
+// 即使游標移出圓心、或瀏覽器未接上 pointer capture，放開時仍能可靠送出 PATCH 持久化。
 function onTablePointerDown(event: PointerEvent, table: TableListItem) {
   if (event.button !== 0)
     return
   movingTableId.value = table.tableId
   const p = tablePos(table)
   dragStart = { px: event.clientX, py: event.clientY, ox: p.x, oy: p.y }
-  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', onTablePointerMove)
+  window.addEventListener('pointerup', onTablePointerUp, { once: true })
   event.preventDefault()
 }
 function onTablePointerMove(event: PointerEvent) {
@@ -153,6 +153,7 @@ function onTablePointerMove(event: PointerEvent) {
   }
 }
 async function onTablePointerUp() {
+  window.removeEventListener('pointermove', onTablePointerMove)
   const id = movingTableId.value
   movingTableId.value = null
   if (!id)
@@ -165,8 +166,13 @@ async function onTablePointerUp() {
   if (pos.x === table.positionX && pos.y === table.positionY)
     return
   try {
+    // 放開即送 PATCH 持久化新座標
     await updateTable(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
     await refreshTables()
+    // 儲存成功後清掉本地暫存覆寫，改由伺服器回傳值呈現（避免本地與後端不同步）
+    delete localPos.value[id]
+    // 拖曳頻繁，提示只要短暫一閃即可（縮短秒數、不帶描述），免得擾民
+    toast.add({ title: '桌位已更新', color: 'success', duration: 1200 })
   }
   catch (error: any) {
     // 失敗則還原本地覆寫
@@ -176,11 +182,18 @@ async function onTablePointerUp() {
   }
 }
 
-// 環繞圓桌的座位座標（百分比，從正上方順時針排列）
-function seatPositions(count: number) {
+// 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onTablePointerMove)
+  window.removeEventListener('pointerup', onTablePointerUp)
+})
+
+// 環繞圓桌的座位座標（百分比，從正上方順時針排列）。
+// offsetRad：整體旋轉角；主桌傳 -π/count 旋半格，使兩個座位對稱跨在正上方（新人並排 C 位）。
+function seatPositions(count: number, offsetRad = 0) {
   const positions: { left: string, top: string }[] = []
   for (let i = 0; i < count; i++) {
-    const angle = (i / count) * 2 * Math.PI - Math.PI / 2
+    const angle = (i / count) * 2 * Math.PI - Math.PI / 2 + offsetRad
     positions.push({
       left: `${(50 + 50 * Math.cos(angle)).toFixed(2)}%`,
       top: `${(50 + 50 * Math.sin(angle)).toFixed(2)}%`,
@@ -189,47 +202,118 @@ function seatPositions(count: number) {
   return positions
 }
 
-// 某桌某座位號的入座賓客（無人則 null）
-function occupantAt(tableId: string, seatNumber: number) {
-  const seat = tableSeats(tableId).find(s => s.seatNumber === seatNumber)
-  if (!seat)
-    return null
+// 由席位資料建出顯示用入座者；label 依類型展開為「名字N」/「名字-兒童N」
+function buildOccupant(seat: SeatListItem) {
+  const name = guestName(seat.guestId)
   return {
     guestId: seat.guestId,
-    name: guestName(seat.guestId),
+    name,
+    label: seat.seatType === 'childChair' ? `${name}-兒童${seat.partyIndex}` : `${name}${seat.partyIndex}`,
     side: guestSide(seat.guestId),
-    needChildSeat: !!guestById(seat.guestId)?.needChildSeat,
+    seatType: seat.seatType,
+    seatNumber: seat.seatNumber,
   }
 }
 
-// 圓桌要畫幾個座位：至少 capacity，若有兒童加位（座號 > capacity）則一併畫出
+// 某桌某座位號的入座席位（無人則 null）；供拖放交換／移動時反查
+function occupantAt(tableId: string, seatNumber: number) {
+  const seat = tableSeats(tableId).find(s => s.seatNumber === seatNumber)
+  return seat ? buildOccupant(seat) : null
+}
+
+// 圓桌要畫幾個座位：至少 capacity，若有展開座位（座號 > capacity）則一併畫出
 function slotCount(table: TableListItem): number {
   const maxSeat = tableSeats(table.tableId).reduce((m, s) => Math.max(m, s.seatNumber), 0)
   return Math.max(table.capacity, maxSeat)
 }
 
-// 下一個可用座位號（拖曳到整桌時用；建議用）
-function nextFreeSeat(table: TableListItem): number {
-  const taken = new Set(tableSeats(table.tableId).map(s => s.seatNumber))
-  for (let n = 1; n <= table.capacity; n++) {
-    if (!taken.has(n))
-      return n
-  }
-  return table.capacity + 1
+// 該桌已用正常席人頭（兒童椅不計）
+function tableNormalHeads(tableId: string): number {
+  return tableSeats(tableId).filter(s => s.seatType === 'normal').length
+}
+// 此賓客組的正常席人頭 = partySize − 兒童椅嬰兒數（至少 1）
+function guestNormalHeads(guestId: string): number {
+  const g = guestById(guestId)
+  return Math.max(1, (g?.partySize ?? 1) - (g?.childChairCount ?? 0))
+}
+// 此桌容得下此賓客組嗎（正常席人頭不超過 capacity；兒童椅額外不計）
+function canSeatGuest(table: TableListItem, guestId: string): boolean {
+  return tableNormalHeads(table.tableId) + guestNormalHeads(guestId) <= table.capacity
 }
 
-// 該賓客可入座的座位號：大人僅限 1~capacity；需兒童椅者於坐滿後可用 capacity+1 加位。
-// 回傳 null 表示此桌對該賓客已滿。
+// 下一個建議起始座號（後端實際會接續該桌現有最大座號 append）
+function nextFreeSeat(table: TableListItem): number {
+  const maxSeat = tableSeats(table.tableId).reduce((m, s) => Math.max(m, s.seatNumber), 0)
+  return maxSeat + 1
+}
+
+// 該賓客可入座則回起始座號；正常席不足回 null。
 function nextSeatFor(table: TableListItem, guestId: string): number | null {
-  const taken = new Set(tableSeats(table.tableId).map(s => s.seatNumber))
-  for (let n = 1; n <= table.capacity; n++) {
-    if (!taken.has(n))
-      return n
+  return canSeatGuest(table, guestId) ? nextFreeSeat(table) : null
+}
+
+// 主桌入座者的角色排序：新人(0) → 雙親(1) → 其他家屬(2)
+function mainSeatRoleRank(guestId: string): number {
+  const category = guestById(guestId)?.category
+  if (category === '新人')
+    return 0
+  if (category === '雙親')
+    return 1
+  return 2
+}
+
+// 某桌「視覺位置 → 入座者」排列。
+// 主桌特別處理：新郎在最靠舞台頂端、新娘並排於其左側；新郎側家屬順時針向右外擴、新娘側家屬逆時針向左外擴。
+// 其餘桌維持依座號環繞。回傳含座標、入座者與供拖放用的座位號。
+function seatSlots(table: TableListItem) {
+  const n = slotCount(table)
+  const isMain = isMainTable(table)
+  // 主桌旋半格，使兩個座位對稱跨在正上方（新人並排於最靠舞台的 C 位）
+  const positions = seatPositions(n, isMain ? -Math.PI / n : 0)
+  const seats = [...tableSeats(table.tableId)].sort((a, b) => a.seatNumber - b.seatNumber)
+  const occupants = Array.from<ReturnType<typeof buildOccupant> | null>({ length: n }).fill(null)
+
+  if (isMain) {
+    const sideRoleSort = (a: SeatListItem, b: SeatListItem) =>
+      mainSeatRoleRank(a.guestId) - mainSeatRoleRank(b.guestId) || a.seatNumber - b.seatNumber
+    const groom = seats.filter(s => guestSide(s.guestId) === 'groom').sort(sideRoleSort)
+    const bride = seats.filter(s => guestSide(s.guestId) === 'bride').sort(sideRoleSort)
+    const rest = seats.filter(s => guestSide(s.guestId) == null)
+    // 全場統一男左女右：新郎(男方)填左半 → 頂端左座(0) 再往左下(n-1, n-2…)；
+    // 新娘(女方)填右半 → 頂端右座(1) 再往右下(2, 3…)。新郎新娘並排於正上方中央。
+    const groomOrder = [0, ...Array.from({ length: n - 1 }, (_, k) => n - 1 - k)]
+    const brideOrder = Array.from({ length: n - 1 }, (_, k) => k + 1)
+    const fillSide = (list: SeatListItem[], order: number[]) => {
+      let p = 0
+      for (const s of list) {
+        while (p < order.length && occupants[order[p]!] != null)
+          p++
+        if (p < order.length)
+          occupants[order[p++]!] = buildOccupant(s)
+      }
+    }
+    fillSide(groom, groomOrder)
+    fillSide(bride, brideOrder)
+    for (const s of rest) {
+      const slot = occupants.findIndex(x => x == null)
+      if (slot >= 0)
+        occupants[slot] = buildOccupant(s)
+    }
   }
-  const bonus = table.capacity + 1
-  if (guestById(guestId)?.needChildSeat && !taken.has(bonus))
-    return bonus
-  return null
+  else {
+    for (const s of seats) {
+      if (s.seatNumber >= 1 && s.seatNumber <= n)
+        occupants[s.seatNumber - 1] = buildOccupant(s)
+    }
+  }
+
+  return positions.map((pos, idx) => ({
+    idx,
+    pos,
+    occupant: occupants[idx],
+    // 已入座用實際座號（供交換／取消反查）；空位用接續座號（後端會 append，避免撞到主桌重排後的他席座號）
+    seatNumber: occupants[idx]?.seatNumber ?? nextFreeSeat(table),
+  }))
 }
 
 // 已入座者 hover 提示：哪一方 · 關係 · 葷素（姓名已顯示在座位上，不重複以免撞 getByText）
@@ -240,30 +324,308 @@ function occupantMeta(guestId: string): string {
   return `${sideLabel(g.side)} · ${g.category} · ${dietLabel(g.diet)}`
 }
 
-// 座位顏色：兒童（需兒童椅）綠色，否則依男方／女方區分（非性別、是家屬方）
-function occupantColorClass(o: { side: GuestSide | null, needChildSeat: boolean }): string {
-  if (o.needChildSeat)
+// === 備餐統計與分類（供桌次圖標示與下載地圖）===
+// 大人 = 正常席（吃大人餐，依賓客葷素分流）；小孩 = 兒童椅嬰兒（不佔正常席、不吃大人餐）
+interface TableMeal { veg: number, meat: number, child: number, adults: number }
+function tableMeal(tableId: string): TableMeal {
+  let veg = 0
+  let meat = 0
+  let child = 0
+  for (const s of tableSeats(tableId)) {
+    if (s.seatType === 'childChair') {
+      child++
+      continue
+    }
+    if (guestById(s.guestId)?.diet === 'vegetarian')
+      veg++
+    else
+      meat++
+  }
+  return { veg, meat, child, adults: veg + meat }
+}
+// 餐點分類：尚無入座 / 全素食桌 / 全葷食桌 / 葷食桌（含 N 位素食）。cls 供畫面、fill/stroke/text 供 canvas
+type MealCatKey = 'empty' | 'veg' | 'meat' | 'mixed'
+interface MealCategory { key: MealCatKey, label: string, cls: string, fill: string, stroke: string, text: string }
+function mealCategory(tableId: string): MealCategory {
+  const m = tableMeal(tableId)
+  if (m.adults === 0)
+    return { key: 'empty', label: '尚無入座', cls: 'border-line text-ink-300', fill: '#f7f5f0', stroke: '#d9d4c7', text: '#9b9486' }
+  if (m.meat === 0)
+    return { key: 'veg', label: '全素食桌', cls: 'border-success-600 text-success-700', fill: '#e9f5ec', stroke: '#2f7d4f', text: '#256b41' }
+  if (m.veg === 0)
+    return { key: 'meat', label: '全葷食桌', cls: 'border-info-600 text-info-700', fill: '#eef3f7', stroke: '#3f6f9a', text: '#345b80' }
+  return { key: 'mixed', label: `葷食桌（含素 ${m.veg}）`, cls: 'border-gold text-gold-deep', fill: '#fbf2dd', stroke: '#c79a3a', text: '#90701c' }
+}
+// 全場備餐總計（地圖抬頭）
+const totalMeal = computed(() => {
+  let veg = 0
+  let meat = 0
+  let child = 0
+  for (const t of tables.value ?? []) {
+    const m = tableMeal(t.tableId)
+    veg += m.veg
+    meat += m.meat
+    child += m.child
+  }
+  return { veg, meat, child }
+})
+// 地圖桌序：主桌排前
+const chartTables = computed(() => {
+  const main = mainTable.value
+  const rest = (tables.value ?? []).filter(t => t.tableId !== main?.tableId)
+  return main ? [main, ...rest] : rest
+})
+
+// === 下載桌次圖：以 canvas 依桌位 positionX/Y 畫圓桌地圖（標餐點分類、不含賓客姓名），匯出 JPEG / PDF ===
+// 餐廳人員據此知道哪桌在哪、各桌素葷與兒童需求
+// A4 直式畫布尺寸（pt；下載時整頁縮放讓所有桌次塞進一頁）
+const A4_W = 595
+const A4_H = 842
+function buildChartCanvas(): HTMLCanvasElement {
+  const list = chartTables.value
+  const M = 24
+  const TITLE_H = 70
+  const dpr = 4 // 高解析，列印清晰
+  const canvas = document.createElement('canvas')
+  canvas.width = A4_W * dpr
+  canvas.height = A4_H * dpr
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(dpr, dpr)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, A4_W, A4_H)
+  const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
+
+  // 抬頭、總計、圖例（固定於頁首）
+  ctx.fillStyle = '#26221b'
+  ctx.font = `600 16px ${FONT}`
+  ctx.fillText('桌次圖 · 備餐需求', M, 24)
+  ctx.font = `9px ${FONT}`
+  ctx.fillStyle = '#6b6457'
+  ctx.fillText(`素食 ${totalMeal.value.veg} 份 · 葷食 ${totalMeal.value.meat} 份 · 兒童椅 ${totalMeal.value.child}`, M, 40)
+  let lx = M
+  for (const item of [{ c: '#2f7d4f', t: '全素食桌' }, { c: '#c79a3a', t: '葷食含素' }, { c: '#3f6f9a', t: '全葷食桌' }]) {
+    ctx.fillStyle = item.c
+    ctx.beginPath()
+    ctx.arc(lx + 4, 53, 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#6b6457'
+    ctx.fillText(item.t, lx + 12, 56)
+    lx += 12 + ctx.measureText(item.t).width + 14
+  }
+
+  if (list.length === 0)
+    return canvas
+
+  // 緊湊重排（桌間距固定縮小、不沿用畫面上的鬆散座標）：
+  // 主桌置頂置中，其餘依「男左女右」分兩欄、各欄依原 Y 序由上而下密排。
+  const centerXOf = (t: TableListItem) => t.positionX + (isMainTable(t) ? 100 : 84)
+  const main = list.find(t => isMainTable(t)) ?? null
+  const others = list.filter(t => !isMainTable(t))
+  const xs = others.map(centerXOf)
+  const axis = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0
+  const leftCol = others.filter(t => centerXOf(t) <= axis).sort((a, b) => a.positionY - b.positionY)
+  const rightCol = others.filter(t => centerXOf(t) > axis).sort((a, b) => a.positionY - b.positionY)
+
+  const R = 54
+  const RM = 70
+  const colStep = 2 * R + 36 // 欄距 = 圓桌直徑 + 緊密間隙
+  const rowStep = 2 * R + 28 // 列距 = 圓桌直徑 + 緊密間隙
+  const leftCx = R
+  const rightCx = R + colStep
+  const STAGE_H = 26
+  interface ChartItem { t: TableListItem, cx: number, cy: number, r: number, isMain: boolean }
+  const items: ChartItem[] = []
+  if (main)
+    items.push({ t: main, cx: (leftCx + rightCx) / 2, cy: STAGE_H + RM, r: RM, isMain: true })
+  const startY = STAGE_H + (main ? 2 * RM + 26 : 0) + R
+  const rowCount = Math.max(leftCol.length, rightCol.length)
+  for (let i = 0; i < rowCount; i++) {
+    const cy = startY + i * rowStep
+    if (leftCol[i])
+      items.push({ t: leftCol[i]!, cx: leftCx, cy, r: R, isMain: false })
+    if (rightCol[i])
+      items.push({ t: rightCol[i]!, cx: rightCx, cy, r: R, isMain: false })
+  }
+
+  // 內容範圍 → 等比縮放置中塞進可用區
+  let minX = Infinity
+  const minY = 0
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const it of items) {
+    minX = Math.min(minX, it.cx - it.r)
+    maxX = Math.max(maxX, it.cx + it.r)
+    maxY = Math.max(maxY, it.cy + it.r)
+  }
+  const contentW = Math.max(1, maxX - minX)
+  const contentH = Math.max(1, maxY - minY)
+  const availW = A4_W - M * 2
+  const availH = A4_H - TITLE_H - M
+  const scale = Math.min(availW / contentW, availH / contentH)
+  const baseX = M + (availW - contentW * scale) / 2 - minX * scale
+  const baseY = TITLE_H + (availH - contentH * scale) / 2 - minY * scale
+
+  // 舞台（內容頂端置中）
+  const stageCx = baseX + ((minX + maxX) / 2) * scale
+  ctx.strokeStyle = '#cfc8ba'
+  ctx.setLineDash([4, 3])
+  ctx.strokeRect(stageCx - 30, baseY + 2, 60, 16)
+  ctx.setLineDash([])
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#9b9486'
+  ctx.font = `9px ${FONT}`
+  ctx.fillText('舞台', stageCx, baseY + 13)
+
+  // 桌次圓（位置、半徑、字級皆隨整體縮放）
+  for (const it of items) {
+    const cx = baseX + it.cx * scale
+    const cy = baseY + it.cy * scale
+    const r = it.r * scale
+    const cat = mealCategory(it.t.tableId)
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, 0, Math.PI * 2)
+    ctx.fillStyle = cat.fill
+    ctx.fill()
+    ctx.lineWidth = Math.max(0.8, (it.isMain ? 3 : 2) * scale)
+    ctx.strokeStyle = cat.stroke
+    ctx.stroke()
+    const child = tableMeal(it.t.tableId).child
+    const nameFont = Math.max(8, (it.isMain ? 17 : 14) * scale)
+    const subFont = Math.max(7, 11 * scale)
+    ctx.fillStyle = '#26221b'
+    ctx.font = `600 ${nameFont}px ${FONT}`
+    ctx.fillText(it.t.tableName, cx, cy - (child > 0 ? subFont + 2 : subFont * 0.4), r * 1.7)
+    ctx.font = `${subFont}px ${FONT}`
+    ctx.fillStyle = cat.text
+    ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
+    if (child > 0) {
+      ctx.fillStyle = '#2f7d4f'
+      ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
+    }
+  }
+  ctx.textAlign = 'start'
+  return canvas
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadChartJpeg() {
+  buildChartCanvas().toBlob(
+    (blob) => {
+      if (blob)
+        triggerDownload(blob, `桌次圖-${weddingId.value}.jpg`)
+      else
+        toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
+    },
+    'image/jpeg',
+    0.92,
+  )
+}
+
+// 自製單張影像 PDF：內嵌 canvas 匯出的 JPEG（DCTDecode），免裝套件
+function downloadChartPdf() {
+  const canvas = buildChartCanvas()
+  const bin = atob(canvas.toDataURL('image/jpeg', 0.92).split(',')[1] ?? '')
+  const jpeg = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++)
+    jpeg[i] = bin.charCodeAt(i)
+
+  const enc = (s: string) => new TextEncoder().encode(s)
+  const parts: Uint8Array[] = []
+  let offset = 0
+  const push = (u8: Uint8Array) => {
+    parts.push(u8)
+    offset += u8.length
+  }
+  const xref: number[] = []
+  const obj = (num: number, head: string, stream?: Uint8Array) => {
+    xref[num] = offset
+    push(enc(`${num} 0 obj\n${head}`))
+    if (stream) {
+      push(enc('\nstream\n'))
+      push(stream)
+      push(enc('\nendstream'))
+    }
+    push(enc('\nendobj\n'))
+  }
+  // 頁面用 A4 點數，影像填滿整頁（canvas 本身即 A4 比例，故不變形）
+  const content = `q\n${A4_W} 0 0 ${A4_H} 0 0 cm\n/Im0 Do\nQ\n`
+
+  push(enc('%PDF-1.3\n'))
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>')
+  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+  obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_W} ${A4_H}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`)
+  obj(4, `<< /Length ${content.length} >>`, enc(content))
+  obj(5, `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>`, jpeg)
+  const xrefStart = offset
+  let xs = 'xref\n0 6\n0000000000 65535 f \n'
+  for (let i = 1; i <= 5; i++)
+    xs += `${String(xref[i]).padStart(10, '0')} 00000 n \n`
+  push(enc(xs))
+  push(enc(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`))
+
+  triggerDownload(new Blob(parts as BlobPart[], { type: 'application/pdf' }), `桌次圖-${weddingId.value}.pdf`)
+}
+
+// 下載桌次圖下拉選單：JPEG / PDF
+const downloadItems = [[
+  { label: '下載 JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadChartJpeg() },
+  { label: '下載 PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadChartPdf() },
+]]
+
+// 座位顏色：兒童椅席綠色，否則依男方／女方區分（非性別、是家屬方）
+function occupantColorClass(o: { side: GuestSide | null, seatType: 'normal' | 'childChair' }): string {
+  if (o.seatType === 'childChair')
     return 'border-success-600 bg-success-100 text-success-700 dark:bg-success-900/40'
   if (o.side === 'bride')
     return 'border-gold bg-gold-light/50 text-gold-deep'
   return 'border-info-600 bg-info-100 text-info-700 dark:bg-info-900/40'
 }
 
-// 名單姓名顏色：同一套配色（兒童綠 / 女方金 / 男方藍）
+// 名單姓名顏色：有兒童椅嬰兒者標綠，否則女方金 / 男方藍
 function nameColorClass(g: GuestListItem): string {
-  if (g.needChildSeat)
+  if (g.childChairCount > 0)
     return 'text-success-700'
   return g.side === 'bride' ? 'text-gold-deep' : 'text-info-700'
 }
 
 // === 賓客名單側欄：待排席 ===
+// 主桌專屬賓客：新郎新娘（新人）與雙方父母（雙親），推薦排序時優先帶入主桌
+function isMainTableGuest(g: GuestListItem): boolean {
+  return g.category === '新人' || g.category === '雙親'
+}
+// 縱向尊卑分層（數字小＝越靠主桌/舞台）：新人 → 家屬長輩 → 主管摯友 → 一般同學同事
+const FAMILY_CATEGORY_RE = /雙親|父母|家人|家屬|長輩|親戚/
+const VIP_CATEGORY_RE = /主管|貴賓|vip|摯友|朋友/i
+function seniorityTier(category: string): number {
+  if (category === '新人')
+    return 0
+  if (FAMILY_CATEGORY_RE.test(category))
+    return 1
+  if (VIP_CATEGORY_RE.test(category))
+    return 2
+  return 3
+}
+// 視角：以舞台為上方、面向賓客（由上往下看）。桌位中心 X 供左右分流：中軸線左＝男方、右＝女方
+function tableCenterX(table: TableListItem): number {
+  return table.positionX + (isMainTable(table) ? 100 : 84)
+}
+
 const SIDE_ORDER: Record<GuestSide, number> = { groom: 0, bride: 1 }
 // 素食優先（盡量排同一桌）：素食 0、葷食 1
 const DIET_ORDER: Record<GuestDiet, number> = { vegetarian: 0, meat: 1 }
-// 排序：男方/女方 → 素食優先 → 分類 → 姓名
-// （先分男女方分桌；同方內素食集中同桌；再依同類別相鄰）
+// 排序：男方/女方 → 尊卑分層（長輩近主桌）→ 素食優先 → 分類 → 姓名
+// （先分男女方分桌；同方內長輩家屬在前、一般同事同學在後；素食集中同桌；同類別相鄰）
 function bySeatingPriority(a: GuestListItem, b: GuestListItem) {
   return SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
+    || seniorityTier(a.category) - seniorityTier(b.category)
     || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
     || a.category.localeCompare(b.category, 'zh-Hant')
     || a.name.localeCompare(b.name, 'zh-Hant')
@@ -285,79 +647,104 @@ const seatedCount = computed(() => activeGuests.value.length - unseatedGuests.va
 // 側欄固定依男女方→分類分群顯示，方便辨識
 const sidebarGuests = computed(() => [...unseatedGuests.value].sort(bySeatingPriority))
 
-// === 推薦排序：點擊即自動帶入座位 ===
-// 規則：男方／女方分桌（不把男方排到女方桌），同方內同類別盡量同桌；主桌保留給 VIP 手動安排。
+// === 推薦排序：依「主桌帶入新人雙親 × 男左女右 × 長輩近主桌」自動帶入座位 ===
+// 規則：① 主桌先帶入新郎新娘與雙方父母（最靠舞台的 C 位）；② 男方親友排中軸線左側、女方排右側；
+//      ③ 同側內長輩家屬靠前（近主桌）、一般同學同事靠後；④ 某側專屬桌不足時跨界外溢到後方桌。
 const isAutoSeating = ref(false)
 
 async function autoSeat() {
   if (isAutoSeating.value)
     return
-  // 先分男女方、素食優先、再依分類排序，讓素食集中、同類別相鄰
-  const pending = [...unseatedGuests.value].sort(bySeatingPriority)
+  const pending = [...unseatedGuests.value]
   if (pending.length === 0) {
     toast.add({ title: '沒有待排席的賓客', color: 'info' })
     return
   }
-  // 可填入的桌（排除主桌，保留給 VIP 手動安排）
-  const fillTables = (tables.value ?? []).filter(t => !isMainTable(t))
-  if (fillTables.length === 0) {
-    toast.add({ title: '沒有可安排的桌次', description: '請先新增主桌以外的桌次', color: 'warning' })
+  const allTables = tables.value ?? []
+  const main = mainTable.value
+  const fillTables = allTables.filter(t => !isMainTable(t))
+  if (!main && fillTables.length === 0) {
+    toast.add({ title: '沒有可安排的桌次', description: '請先新增桌次', color: 'warning' })
     return
   }
+
   isAutoSeating.value = true
   try {
-    // 各桌：已用座號 + 已歸屬的「方」（已有人坐則沿用其方，否則待指定）
-    const used: Record<string, Set<number>> = {}
-    const tableSide: Record<string, GuestSide | null> = {}
-    for (const t of fillTables) {
-      const seats = tableSeats(t.tableId)
-      used[t.tableId] = new Set(seats.map(s => s.seatNumber))
-      tableSide[t.tableId] = seats.length ? guestSide(seats[0]!.guestId) : null
+    // 各桌目前已用正常席人頭（推薦排序在既有座位上接續安排，兒童椅額外不計）
+    const usedNormal: Record<string, number> = {}
+    for (const t of allTables)
+      usedNormal[t.tableId] = tableSeats(t.tableId).filter(s => s.seatType === 'normal').length
+    const canFit = (table: TableListItem, guestId: string): boolean =>
+      usedNormal[table.tableId]! + guestNormalHeads(guestId) <= table.capacity
+    const plan: { tableId: string, guestId: string }[] = []
+    const assign = (table: TableListItem, guest: GuestListItem) => {
+      usedNormal[table.tableId]! += guestNormalHeads(guest.guestId)
+      plan.push({ tableId: table.tableId, guestId: guest.guestId })
     }
 
-    // 該桌對此賓客的下一個可坐座號（含兒童加位）；滿則回傳 null
-    const localSeat = (table: TableListItem, guestId: string, taken: Set<number>): number | null => {
-      for (let n = 1; n <= table.capacity; n++) {
-        if (!taken.has(n))
-          return n
+    // ① 主桌：先帶入新郎新娘（新人）與雙方父母（雙親）；新郎→新娘→父母依序送出，最靠舞台先排
+    if (main) {
+      const mainGuests = pending
+        .filter(isMainTableGuest)
+        .sort((a, b) =>
+          seniorityTier(a.category) - seniorityTier(b.category)
+          || SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
+          || a.name.localeCompare(b.name, 'zh-Hant'))
+      for (const g of mainGuests) {
+        if (canFit(main, g.guestId))
+          assign(main, g)
       }
-      if (guestById(guestId)?.needChildSeat && !taken.has(table.capacity + 1))
-        return table.capacity + 1
-      return null
     }
-    // 為賓客挑桌：先找「同方且有空位」續坐聚桌，否則開一張尚未歸屬的空桌；都沒有則 null
+
+    // ② 其餘賓客：左右分流 + 縱向尊卑（已排進主桌者排除）
+    // 「同分類同桌」開啟時才以分類聚桌；關閉則不強制同類別相鄰（讓開關真正影響排序）
+    const clusterByCategory = etiquetteSettings.value?.sameCategoryTogether ?? false
+    const restSort = (a: GuestListItem, b: GuestListItem) =>
+      SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
+      || seniorityTier(a.category) - seniorityTier(b.category)
+      || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
+      || (clusterByCategory ? a.category.localeCompare(b.category, 'zh-Hant') : 0)
+      || a.name.localeCompare(b.name, 'zh-Hant')
+    const planned = new Set(plan.map(p => p.guestId))
+    const rest = pending.filter(g => !planned.has(g.guestId)).sort(restSort)
+
+    // 中軸線：以可填入桌的中心 X 取中點，左側＝男方區、右側＝女方區
+    const centers = fillTables.map(tableCenterX)
+    const axisX = centers.length ? (Math.min(...centers) + Math.max(...centers)) / 2 : 0
+    const byFront = (a: TableListItem, b: TableListItem) => a.positionY - b.positionY // Y 小＝靠主桌/舞台＝前排
+    const leftTables = fillTables.filter(t => tableCenterX(t) <= axisX).sort(byFront)
+    const rightTables = fillTables.filter(t => tableCenterX(t) > axisX).sort(byFront)
+    const backmost = [...fillTables].sort((a, b) => b.positionY - a.positionY) // 跨界外溢優先靠後方
+
     const pickTable = (guest: GuestListItem): TableListItem | null => {
-      for (const t of fillTables) {
-        if (tableSide[t.tableId] === guest.side && localSeat(t, guest.guestId, used[t.tableId]!) != null)
-          return t
-      }
-      for (const t of fillTables) {
-        if (tableSide[t.tableId] === null && localSeat(t, guest.guestId, used[t.tableId]!) != null)
-          return t
-      }
-      return null
+      // 同側專屬區由前往後找第一張坐得下的（長輩已排前面、自然落在靠主桌的前排桌）
+      const zone = guest.side === 'groom' ? leftTables : rightTables
+      const inZone = zone.find(t => canFit(t, guest.guestId))
+      if (inZone)
+        return inZone
+      // 該側桌不足 → 跨界外溢到後方任一坐得下的桌
+      return backmost.find(t => canFit(t, guest.guestId)) ?? null
     }
 
-    const plan: { tableId: string, guestId: string, seatNumber: number }[] = []
-    for (const g of pending) {
+    for (const g of rest) {
       const table = pickTable(g)
-      if (!table)
-        continue
-      const seatNumber = localSeat(table, g.guestId, used[table.tableId]!)!
-      used[table.tableId]!.add(seatNumber)
-      tableSide[table.tableId] = g.side
-      plan.push({ tableId: table.tableId, guestId: g.guestId, seatNumber })
+      if (table)
+        assign(table, g)
     }
 
-    // 逐筆送出（同步座號，避免同桌併發超賣）
+    // 逐筆送出（座號交由後端接續展開，避免同桌併發超賣）
     for (const a of plan)
-      await seatGuest(weddingId.value, a.tableId, { guestId: a.guestId, seatNumber: a.seatNumber })
+      await seatGuest(weddingId.value, a.tableId, { guestId: a.guestId, seatNumber: 1 })
     await refreshAll()
 
     const remain = pending.length - plan.length
+    const mainCount = plan.filter(p => p.tableId === main?.tableId).length
+    const mainNote = mainCount > 0 ? `主桌帶入 ${mainCount} 位主角／雙親，` : ''
     toast.add({
       title: `已自動帶入 ${plan.length} 位`,
-      description: remain > 0 ? `尚有 ${remain} 位待排席（桌次不足）` : '男方／女方已分桌，素食與同類別盡量同桌',
+      description: remain > 0
+        ? `${mainNote}尚有 ${remain} 位待排席（桌次不足）`
+        : `${mainNote}其餘依男左女右、長輩近主桌分流`,
       color: 'success',
     })
   }
@@ -388,10 +775,18 @@ async function confirmClearAll() {
     return
   isClearing.value = true
   try {
+    // 取消端點一次清掉該賓客在該桌的所有席位，故同一 (桌,賓客) 只送一次
+    // （一組賓客 partySize>1 會展開多席位，逐席位送會在第二筆撞「賓客不在此桌」）
+    const seen = new Set<string>()
     const all: { tableId: string, guestId: string }[] = []
     for (const [tableId, seats] of Object.entries(seatsByTable.value)) {
-      for (const s of seats)
+      for (const s of seats) {
+        const key = `${tableId}::${s.guestId}`
+        if (seen.has(key))
+          continue
+        seen.add(key)
         all.push({ tableId, guestId: s.guestId })
+      }
     }
     for (const a of all)
       await unseatGuest(weddingId.value, a.tableId, a.guestId)
@@ -823,21 +1218,17 @@ const isEtiquetteSubmitting = ref(false)
 const etiquetteError = ref('')
 const etiquetteState = reactive<EtiquetteSettings>({
   elderNearMain: true,
-  conflictWarning: true,
-  genderSeparation: true,
-  mainTableNearStage: true,
+  mainTableFull: true,
   sameCategoryTogether: false,
 })
 
 function openEtiquette() {
   etiquetteError.value = ''
-  // 用 GET 讀回的既有設定填入五開關
+  // 用 GET 讀回的既有設定填入三開關
   const settings = etiquetteSettings.value
   if (settings) {
     etiquetteState.elderNearMain = settings.elderNearMain
-    etiquetteState.conflictWarning = settings.conflictWarning
-    etiquetteState.genderSeparation = settings.genderSeparation
-    etiquetteState.mainTableNearStage = settings.mainTableNearStage
+    etiquetteState.mainTableFull = settings.mainTableFull
     etiquetteState.sameCategoryTogether = settings.sameCategoryTogether
   }
   isEtiquetteOpen.value = true
@@ -865,19 +1256,77 @@ async function confirmEtiquette() {
   }
 }
 
-// === 覆寫禮俗警告 ===
+// === 禮俗警告（依設定 + 當前座位即時計算，違反才跳；可忽略） ===
+interface SeatingWarning {
+  warningId: string
+  warningType: string
+  message: string
+}
+
+// 某桌入座賓客的輩份分層集合（去重賓客後取 seniorityTier）
+function tableTierSet(tableId: string): number[] {
+  const ids = new Set(tableSeats(tableId).map(s => s.guestId))
+  return Array.from(ids, id => seniorityTier(guestById(id)?.category ?? ''))
+}
+
+const computedWarnings = computed<SeatingWarning[]>(() => {
+  const settings = etiquetteSettings.value
+  if (!settings)
+    return []
+  const list: SeatingWarning[] = []
+
+  // 主桌坐滿：主桌正常席人頭 < capacity 時提醒（求圓滿）
+  const main = mainTable.value
+  if (settings.mainTableFull && main) {
+    const seated = tableNormalHeads(main.tableId)
+    if (seated < main.capacity) {
+      list.push({
+        warningId: 'warning-main-table-full',
+        warningType: 'main-table-not-full',
+        message: `主桌尚未坐滿（${seated}/${main.capacity} 席），建議坐滿以求圓滿`,
+      })
+    }
+  }
+
+  // 長輩靠近主桌：有長輩／家屬被排在比一般賓客更後方的客桌時提醒
+  if (settings.elderNearMain) {
+    const fill = (tables.value ?? []).filter(t => !isMainTable(t))
+    const elderTables = fill.filter(t => tableTierSet(t.tableId).includes(1)) // tier 1 = 家人／雙親／長輩
+    const casualTables = fill.filter(t => tableTierSet(t.tableId).some(tr => tr >= 2)) // tier ≥2 = 一般賓客
+    if (elderTables.length && casualTables.length) {
+      const maxElderY = Math.max(...elderTables.map(t => t.positionY))
+      const minCasualY = Math.min(...casualTables.map(t => t.positionY))
+      if (maxElderY > minCasualY) {
+        list.push({
+          warningId: 'warning-elder-near-main',
+          warningType: 'elder-near-main',
+          message: '長輩靠近主桌：偵測到長輩／家屬被排在一般賓客後方，建議移到較前排',
+        })
+      }
+    }
+  }
+
+  return list
+})
+
+const activeWarnings = computed(() =>
+  computedWarnings.value.filter(w => !dismissedWarningTypes.value.includes(w.warningType)),
+)
+
 const dismissingId = ref<string | null>(null)
 
-async function dismissWarning(warning: EtiquetteWarningListItem) {
+async function dismissWarning(warning: SeatingWarning) {
   if (dismissingId.value)
     return
   dismissingId.value = warning.warningId
   try {
+    // 仍呼叫 dismiss API（保留覆寫警告合約），並於前端即時隱藏該類型警告
     await dismissEtiquetteWarning(weddingId.value, warning.warningId, {
       warningType: warning.warningType,
     })
-    toast.add({ title: '已忽略警告', color: 'success' })
-    await refreshWarnings()
+    if (!dismissedWarningTypes.value.includes(warning.warningType))
+      dismissedWarningTypes.value.push(warning.warningType)
+    toast.add({ title: '已忽略警告', color: 'success', duration: 1500 })
   }
   catch (error: any) {
     const message
@@ -938,15 +1387,18 @@ function guestMeta(g: GuestListItem): string {
           >
             設定場地佈局
           </UButton>
-          <UButton
-            data-testid="seat-guest"
-            icon="i-heroicons-user-plus"
-            color="neutral"
-            variant="outline"
-            @click="openSeatForm"
-          >
-            安排座位
-          </UButton>
+          <!-- 下載桌次圖：餐廳備餐用地圖（含餐點分類）；點開下拉選 JPEG / PDF -->
+          <UDropdownMenu :items="downloadItems" :content="{ align: 'end' }">
+            <UButton
+              data-testid="vibe-seating-download"
+              icon="i-heroicons-arrow-down-tray"
+              color="neutral"
+              variant="outline"
+              trailing-icon="i-heroicons-chevron-down-20-solid"
+            >
+              下載桌次圖
+            </UButton>
+          </UDropdownMenu>
           <UButton
             data-testid="table-create"
             icon="i-heroicons-plus"
@@ -954,25 +1406,25 @@ function guestMeta(g: GuestListItem): string {
             variant="solid"
             @click="openCreateTable"
           >
-            新增桌
+            新增桌子
           </UButton>
         </div>
       </template>
     </PageHeader>
 
-    <!-- 禮俗警告區（全寬） -->
-    <section v-if="activeWarnings.length > 0" data-testid="warning-list" class="mb-6 shrink-0 space-y-3">
+    <!-- 禮俗警告區（精簡：小字、低高度，不擋操作視覺） -->
+    <section v-if="activeWarnings.length > 0" data-testid="warning-list" class="mb-3 shrink-0 space-y-1.5">
       <div
         v-for="warning in activeWarnings"
         :key="warning.warningId"
         role="alert"
         :data-testid="`warning-row-${warning.warningId}`"
         :aria-label="warning.message"
-        class="flex items-start justify-between gap-4 rounded-lg border border-l-[3px] border-line border-l-warning-500 bg-paper p-4 dark:border-neutral-800 dark:border-l-warning-500 dark:bg-neutral-900"
+        class="flex items-center justify-between gap-3 rounded-md border border-l-[3px] border-line border-l-warning-500 bg-warning-50/60 px-3 py-1.5 dark:border-neutral-800 dark:border-l-warning-500 dark:bg-warning-900/10"
       >
-        <div class="flex items-start gap-3">
-          <UIcon name="i-heroicons-exclamation-triangle" class="mt-0.5 size-5 shrink-0 text-warning-600" />
-          <p class="text-body text-ink-700 dark:text-neutral-200">
+        <div class="flex min-w-0 items-center gap-2">
+          <UIcon name="i-heroicons-exclamation-triangle" class="size-4 shrink-0 text-warning-600" />
+          <p class="truncate text-caption text-ink-600 dark:text-neutral-300">
             {{ warning.message }}
           </p>
         </div>
@@ -980,7 +1432,7 @@ function guestMeta(g: GuestListItem): string {
           data-testid="warning-dismiss"
           color="warning"
           variant="ghost"
-          size="sm"
+          size="xs"
           :loading="dismissingId === warning.warningId"
           :aria-label="`忽略 ${warning.message}`"
           @click="dismissWarning(warning)"
@@ -992,15 +1444,15 @@ function guestMeta(g: GuestListItem): string {
 
     <!-- 兩欄：左 圓桌平面（寬） / 右 賓客名單（窄） -->
     <div class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
-      <!-- 左欄：圓桌現場平面圖 -->
-      <div class="flex min-h-0 flex-1 flex-col">
+      <!-- 左欄：圓桌現場平面圖（min-w-0 讓寬畫布於內部捲動，不把右側名單推出邊界） -->
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           v-if="(tables ?? []).length === 0"
           data-testid="table-list-empty"
         >
           <EmptyState
             title="目前沒有桌次"
-            description="點擊右上「新增桌」開始規劃座位"
+            description="點擊右上「新增桌子」開始規劃座位"
           />
         </div>
 
@@ -1049,8 +1501,6 @@ function guestMeta(g: GuestListItem): string {
                   ]"
                   title="按住可移動桌位"
                   @pointerdown="onTablePointerDown($event, table)"
-                  @pointermove="onTablePointerMove"
-                  @pointerup="onTablePointerUp"
                   @dragover="onTableDragOver($event, table.tableId)"
                   @drop="onDropToTable($event, table)"
                 >
@@ -1061,43 +1511,43 @@ function guestMeta(g: GuestListItem): string {
                   <span class="mt-0.5 text-caption text-ink-300">{{ table.capacity }} 席</span>
                 </div>
 
-                <!-- 座位環（座位數含兒童加位） -->
-                <template v-for="(pos, idx) in seatPositions(slotCount(table))" :key="idx">
+                <!-- 座位環（座位數含兒童加位；主桌新人並排、雙方家屬各自外擴） -->
+                <template v-for="slot in seatSlots(table)" :key="slot.idx">
                   <!-- 已入座：點擊取消座位、可拖曳互換 / 移動座位（兒童綠 / 女方金 / 男方藍） -->
                   <button
-                    v-if="occupantAt(table.tableId, idx + 1)"
+                    v-if="slot.occupant"
                     type="button"
                     draggable="true"
-                    :data-testid="`${table.tableId}-seat-${idx + 1}`"
-                    :aria-label="`取消座位 ${occupantAt(table.tableId, idx + 1)!.name}`"
+                    :data-testid="`${table.tableId}-seat-${slot.seatNumber}`"
+                    :aria-label="`取消座位 ${slot.occupant.name}`"
                     class="group/seat absolute z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 text-center text-[10px] font-medium leading-none shadow-sm transition-transform hover:z-50 hover:scale-110 active:cursor-grabbing"
-                    :class="occupantColorClass(occupantAt(table.tableId, idx + 1)!)"
-                    :style="{ left: pos.left, top: pos.top }"
-                    @click="openUnseat(table.tableId, occupantAt(table.tableId, idx + 1)!.guestId)"
-                    @dragstart="onSeatDragStart($event, table.tableId, idx + 1, occupantAt(table.tableId, idx + 1)!.guestId)"
+                    :class="occupantColorClass(slot.occupant)"
+                    :style="{ left: slot.pos.left, top: slot.pos.top }"
+                    @click="openUnseat(table.tableId, slot.occupant.guestId)"
+                    @dragstart="onSeatDragStart($event, table.tableId, slot.seatNumber, slot.occupant.guestId)"
                     @dragend="onGuestDragEnd"
                     @dragover="onTableDragOver($event, table.tableId)"
-                    @drop="onDropToSeat($event, table, idx + 1)"
+                    @drop="onDropToSeat($event, table, slot.seatNumber)"
                   >
-                    <span class="line-clamp-2 px-0.5">{{ occupantAt(table.tableId, idx + 1)!.name }}</span>
+                    <span class="line-clamp-2 px-0.5">{{ slot.occupant.label }}</span>
                     <!-- hover 提示：哪一方 · 關係 · 葷素（即時可見，取代不穩定的原生 title） -->
                     <span
                       class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-[11px] font-normal leading-none text-paper shadow-lg group-hover/seat:block dark:bg-neutral-700"
                     >
-                      {{ occupantMeta(occupantAt(table.tableId, idx + 1)!.guestId) }}
+                      {{ occupantMeta(slot.occupant.guestId) }}
                     </span>
                   </button>
                   <!-- 空位：拖曳賓客至此可入座 -->
                   <div
                     v-else
-                    :data-testid="`${table.tableId}-empty-${idx + 1}`"
+                    :data-testid="`${table.tableId}-empty-${slot.idx + 1}`"
                     class="absolute flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed text-ink-300 transition-colors"
                     :class="dragOverTableId === table.tableId
                       ? 'border-gold bg-gold-light/30 text-gold-deep'
                       : 'border-line/70 bg-paper/60 dark:border-neutral-700 dark:bg-neutral-900/40'"
-                    :style="{ left: pos.left, top: pos.top }"
+                    :style="{ left: slot.pos.left, top: slot.pos.top }"
                     @dragover="onTableDragOver($event, table.tableId)"
-                    @drop="onDropToSeat($event, table, idx + 1)"
+                    @drop="onDropToSeat($event, table, slot.seatNumber)"
                   >
                     <UIcon name="i-heroicons-plus" class="size-4" />
                   </div>
@@ -1145,34 +1595,47 @@ function guestMeta(g: GuestListItem): string {
               待排席 {{ unseatedGuests.length }} 位 · 已排席 {{ seatedCount }} 位
             </p>
           </div>
-          <div class="flex shrink-0 items-center gap-2">
+          <div class="flex shrink-0 flex-col items-end gap-2">
+            <!-- 安排座位（表單入口）：置於推薦排序上方 -->
             <UButton
-              data-testid="vibe-seating-clear"
-              icon="i-heroicons-arrow-uturn-left"
+              data-testid="seat-guest"
+              icon="i-heroicons-user-plus"
               color="neutral"
               variant="outline"
               size="sm"
-              :disabled="isClearing || seatedCount === 0"
-              @click="openClearAll"
+              @click="openSeatForm"
             >
-              一鍵取消
+              安排座位
             </UButton>
-            <UButton
-              data-testid="vibe-seating-recommend"
-              icon="i-heroicons-sparkles"
-              color="primary"
-              variant="solid"
-              size="sm"
-              :loading="isAutoSeating"
-              @click="autoSeat"
-            >
-              推薦排序
-            </UButton>
+            <div class="flex items-center gap-2">
+              <UButton
+                data-testid="vibe-seating-clear"
+                icon="i-heroicons-arrow-uturn-left"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="isClearing || seatedCount === 0"
+                @click="openClearAll"
+              >
+                一鍵取消
+              </UButton>
+              <UButton
+                data-testid="vibe-seating-recommend"
+                icon="i-heroicons-sparkles"
+                color="primary"
+                variant="solid"
+                size="sm"
+                :loading="isAutoSeating"
+                @click="autoSeat"
+              >
+                推薦排序
+              </UButton>
+            </div>
           </div>
         </div>
 
         <p class="mb-3 shrink-0 text-caption text-ink-300">
-          點「推薦排序」自動將同類別賓客帶入同桌，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置
+          點「推薦排序」依「主桌帶入新人與雙親、男左女右、長輩近主桌」自動帶位，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置
         </p>
 
         <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
@@ -1190,7 +1653,7 @@ function guestMeta(g: GuestListItem): string {
             <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }}</span>
             <span class="min-w-0 flex-1 truncate text-caption text-ink-500 dark:text-neutral-400">{{ guestMeta(guest) }}</span>
             <UIcon
-              v-if="guest.needChildSeat"
+              v-if="guest.childChairCount > 0"
               name="i-heroicons-sparkles"
               class="size-4 shrink-0 text-gold-deep"
               title="需兒童椅"
@@ -1494,26 +1957,27 @@ function guestMeta(g: GuestListItem): string {
             class="mb-4"
           />
 
-          <div class="space-y-3">
+          <div class="space-y-1">
+            <p class="mb-2 text-caption text-ink-500 dark:text-neutral-400">
+              開關啟用後，只有座位實際違反時才會在上方跳出提醒
+            </p>
             <USwitch
               v-model="etiquetteState.elderNearMain"
               data-testid="etiquette-elder-near-main"
               label="長輩靠近主桌"
+              description="長輩／家屬被排在一般賓客後方時提醒"
             />
             <USwitch
-              v-model="etiquetteState.conflictWarning"
-              data-testid="etiquette-conflict-warning"
-              label="衝突警告"
-            />
-            <USwitch
-              v-model="etiquetteState.mainTableNearStage"
-              data-testid="etiquette-main-table-near-stage"
-              label="主桌靠近舞台"
+              v-model="etiquetteState.mainTableFull"
+              data-testid="etiquette-main-table-full"
+              label="主桌坐滿"
+              description="主桌尚未坐滿時提醒（求圓滿）"
             />
             <USwitch
               v-model="etiquetteState.sameCategoryTogether"
               data-testid="etiquette-same-category-together"
               label="同分類同桌"
+              description="推薦排序時盡量把同類別賓客排同桌"
             />
 
             <div class="flex justify-end gap-3 pt-4">
