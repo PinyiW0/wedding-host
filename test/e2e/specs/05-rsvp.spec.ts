@@ -70,7 +70,7 @@ test.describe('RSVP 管理（Admin 端）', () => {
       const submit = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-001/rsvp',
         {
-          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, needChildSeat: false },
+          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
         },
       )
       expect(submit.ok()).toBeTruthy()
@@ -151,7 +151,7 @@ test.describe('賓客提交 RSVP（Guest 端）', () => {
         attending: 'attending',
         diet: 'meat',
         plusOneCount: 1,
-        needChildSeat: false,
+        childChairCount: 0,
       })
 
       // Then：使用者能感知提交成功
@@ -165,7 +165,7 @@ test.describe('賓客提交 RSVP（Guest 端）', () => {
       const res = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-999/rsvp',
         {
-          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, needChildSeat: false },
+          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
         },
       )
       expect(res.status()).toBe(404)
@@ -180,7 +180,7 @@ test.describe('賓客提交 RSVP（Guest 端）', () => {
       const first = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-001/rsvp',
         {
-          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, needChildSeat: false },
+          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
         },
       )
       expect(first.ok()).toBeTruthy()
@@ -189,7 +189,7 @@ test.describe('賓客提交 RSVP（Guest 端）', () => {
       const res = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-001/rsvp',
         {
-          data: { attending: 'declined', diet: 'meat', plusOneCount: 0, needChildSeat: false },
+          data: { attending: 'declined', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
         },
       )
       expect(res.status()).toBe(409)
