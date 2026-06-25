@@ -15,8 +15,10 @@ export interface RsvpInvitationSentEvent {
 export interface SubmitRsvpBody {
   attending: AttendingStatus
   diet: 'meat' | 'vegetarian'
+  // 同行人數（攜伴大人＋會自己坐吃大人菜的小孩；皆佔正常席）
   plusOneCount: number
-  needChildSeat: boolean
+  // 兒童椅嬰兒數（不吃大人菜、不佔正常席、該桌額外加位）
+  childChairCount: number
 }
 
 export interface RsvpSubmittedEvent {
@@ -24,7 +26,7 @@ export interface RsvpSubmittedEvent {
   attending: AttendingStatus
   diet: 'meat' | 'vegetarian'
   plusOneCount: number
-  needChildSeat: boolean
+  childChairCount: number
 }
 
 export interface OverrideRsvpBody {

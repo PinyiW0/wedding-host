@@ -11,7 +11,8 @@ export interface MockGuest {
   diet: 'meat' | 'vegetarian'
   category: string
   contact: string
-  needChildSeat: boolean
+  // 兒童椅嬰兒數（不吃大人菜、不佔正常席、該桌額外加位）
+  childChairCount: number
   notes: string | null
   lineUserId: string | null
   // 接待 / RSVP 狀態
@@ -19,7 +20,7 @@ export interface MockGuest {
   checkedInAt: string | null
   giftAmount: number | null
   cakeBoxDistributedTypeId: string | null
-  // 這組總人數（本人＋攜伴）與桌次（display 用，真實後端應由座位安排推導）
+  // 這組總人數（本人＋同行＋兒童椅嬰兒）；正常席人頭 = partySize − childChairCount
   partySize: number
   tableName: string | null
   deletedAt: string | null
@@ -29,7 +30,7 @@ function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 's
   return {
     weddingId: 'wedding-001',
     contact: '0900000000',
-    needChildSeat: false,
+    childChairCount: 0,
     notes: null,
     lineUserId: null,
     rsvpAttending: null,
@@ -55,7 +56,15 @@ export const mockGuests: MockGuest[] = [
   g({ guestId: 'guest-009', name: '鄭家豪', side: 'groom', diet: 'meat', category: '朋友', contact: '0900111222', partySize: 2, tableName: '男方家屬桌' }),
   g({ guestId: 'guest-010', name: '許雅雯', side: 'bride', diet: 'meat', category: '同事', contact: '0900333444', partySize: 1, tableName: '主桌' }),
   g({ guestId: 'guest-011', name: '謝明哲', side: 'groom', diet: 'meat', category: '家人', contact: '0900555666', partySize: 3, tableName: '男方家屬桌' }),
-  g({ guestId: 'guest-012', name: '周佳穎', side: 'bride', diet: 'vegetarian', category: '朋友', contact: '0900777888', needChildSeat: true, partySize: 3, tableName: '女方家屬桌' }),
+  g({ guestId: 'guest-012', name: '周佳穎', side: 'bride', diet: 'vegetarian', category: '朋友', contact: '0900777888', childChairCount: 1, partySize: 3, tableName: '女方家屬桌' }),
   // guest-013：主桌（12 座）坐滿後的溢位賓客，供 04-seating「桌次已滿」測試使用
   g({ guestId: 'guest-013', name: '趙建國', side: 'groom', diet: 'meat', category: '同事', contact: '0900999111', partySize: 1, tableName: null }),
+  // 婚禮主角與雙方父母：主桌專屬名單（category 新人／雙親）。
+  // 預設不入座，按「推薦排序」時優先帶入主桌；新郎左、新娘右最靠舞台。
+  g({ guestId: 'guest-101', name: '新郎 周岳辰', side: 'groom', diet: 'meat', category: '新人', contact: '0911000001', partySize: 1 }),
+  g({ guestId: 'guest-102', name: '新娘 林映彤', side: 'bride', diet: 'meat', category: '新人', contact: '0911000002', partySize: 1 }),
+  g({ guestId: 'guest-103', name: '周建宏', side: 'groom', diet: 'meat', category: '雙親', contact: '0911000003', notes: '新郎父親', partySize: 1 }),
+  g({ guestId: 'guest-104', name: '蘇麗華', side: 'groom', diet: 'meat', category: '雙親', contact: '0911000004', notes: '新郎母親', partySize: 1 }),
+  g({ guestId: 'guest-105', name: '林文德', side: 'bride', diet: 'meat', category: '雙親', contact: '0911000005', notes: '新娘父親', partySize: 1 }),
+  g({ guestId: 'guest-106', name: '陳秀琴', side: 'bride', diet: 'meat', category: '雙親', contact: '0911000006', notes: '新娘母親', partySize: 1 }),
 ]

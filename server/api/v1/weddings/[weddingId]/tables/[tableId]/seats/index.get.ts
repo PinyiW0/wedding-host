@@ -7,5 +7,11 @@ export default defineEventHandler((event: H3Event): SeatListItem[] => {
   const tableId = getRouterParam(event, 'tableId')
   return mockSeats
     .filter(s => s.tableId === tableId)
-    .map(s => ({ guestId: s.guestId, tableId: s.tableId, seatNumber: s.seatNumber }))
+    .map(s => ({
+      guestId: s.guestId,
+      tableId: s.tableId,
+      seatNumber: s.seatNumber,
+      seatType: s.seatType,
+      partyIndex: s.partyIndex,
+    }))
 })

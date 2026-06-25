@@ -15,7 +15,7 @@ export default defineEventHandler((event: H3Event): GuestListItem[] => {
       diet: g.diet,
       category: g.category,
       contact: g.contact,
-      needChildSeat: g.needChildSeat,
+      childChairCount: g.childChairCount,
       notes: g.notes,
       lineUserId: g.lineUserId,
       rsvpAttending: g.rsvpAttending,

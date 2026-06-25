@@ -73,19 +73,19 @@ api_contract:
     # --- guests.ts ---
     GuestListItem:
       file: guests.ts
-      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null', lineUserId: 'string | null', deletedAt: 'string | null' }
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, childChairCount: number, notes: 'string | null', lineUserId: 'string | null', partySize: number, deletedAt: 'string | null' }
     CreateGuestBody:
       file: guests.ts
-      fields: { name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, 'notes?': string }
+      fields: { name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, 'partySize?': number, 'childChairCount?': number, 'notes?': string }
     GuestCreatedEvent:
       file: guests.ts
-      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null' }
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, partySize: number, childChairCount: number, notes: 'string | null' }
     UpdateGuestBody:
       file: guests.ts
-      fields: { 'name?': string, 'side?': GuestSide, 'diet?': GuestDiet, 'category?': string, 'contact?': string, 'needChildSeat?': boolean, 'notes?': string }
+      fields: { 'name?': string, 'side?': GuestSide, 'diet?': GuestDiet, 'category?': string, 'contact?': string, 'partySize?': number, 'childChairCount?': number, 'notes?': string }
     GuestUpdatedEvent:
       file: guests.ts
-      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, needChildSeat: boolean, notes: 'string | null' }
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, partySize: number, childChairCount: number, notes: 'string | null' }
     GuestRestoredEvent:
       file: guests.ts
       fields: { guestId: string }
@@ -119,7 +119,7 @@ api_contract:
       fields: { tableId: string, tableName: string, capacity: number, positionX: number, positionY: number }
     SeatListItem:
       file: seating.ts
-      fields: { guestId: string, tableId: string, seatNumber: number }
+      fields: { guestId: string, tableId: string, seatNumber: number, seatType: "'normal' | 'childChair'", partyIndex: number }
     SeatGuestBody:
       file: seating.ts
       fields: { guestId: string, seatNumber: number }
@@ -134,10 +134,10 @@ api_contract:
       fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number }
     EtiquetteSettings:
       file: seating.ts
-      fields: { elderNearMain: boolean, conflictWarning: boolean, genderSeparation: boolean, mainTableNearStage: boolean, sameCategoryTogether: boolean }
+      fields: { elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }
     EtiquetteSettingsUpdatedEvent:
       file: seating.ts
-      fields: { weddingId: string, elderNearMain: boolean, conflictWarning: boolean, genderSeparation: boolean, mainTableNearStage: boolean, sameCategoryTogether: boolean }
+      fields: { weddingId: string, elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }
     EtiquetteWarningListItem:
       file: seating.ts
       fields: { warningId: string, warningType: string, message: string, dismissed: boolean }
@@ -156,10 +156,10 @@ api_contract:
       fields: { guestId: string, channel: RsvpChannel }
     SubmitRsvpBody:
       file: rsvp.ts
-      fields: { attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, needChildSeat: boolean }
+      fields: { attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, childChairCount: number }
     RsvpSubmittedEvent:
       file: rsvp.ts
-      fields: { guestId: string, attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, needChildSeat: boolean }
+      fields: { guestId: string, attending: AttendingStatus, diet: 'meat | vegetarian', plusOneCount: number, childChairCount: number }
     OverrideRsvpBody:
       file: rsvp.ts
       fields: { attending: AttendingStatus, reason: string }

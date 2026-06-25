@@ -16,7 +16,9 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   }
   guest.rsvpAttending = body.attending
   guest.diet = body.diet
-  guest.needChildSeat = body.needChildSeat
+  guest.childChairCount = body.childChairCount
+  // 同步總人數：本人 + 同行（plusOneCount）+ 兒童椅嬰兒
+  guest.partySize = 1 + body.plusOneCount + body.childChairCount
 
   setResponseStatus(event, 201)
   return {
@@ -24,6 +26,6 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
     attending: body.attending,
     diet: body.diet,
     plusOneCount: body.plusOneCount,
-    needChildSeat: body.needChildSeat,
+    childChairCount: body.childChairCount,
   }
 })
