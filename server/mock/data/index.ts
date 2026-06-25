@@ -1,7 +1,7 @@
 // 統一 re-export mock 資料
 import { mockReceptionAccounts } from './accounts'
 import { mockBlessings } from './blessings'
-import { mockCakeBoxAssignments, mockCakeBoxTypes } from './cakebox'
+import { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 import { mockGuests } from './guests'
 import { mockLineOas } from './line'
 import {
@@ -17,7 +17,7 @@ import { mockWeddings } from './weddings'
 
 export { mockReceptionAccounts } from './accounts'
 export { mockBlessings } from './blessings'
-export { mockCakeBoxAssignments, mockCakeBoxTypes } from './cakebox'
+export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'
 export {
@@ -37,6 +37,8 @@ const stores = [
   mockReceptionAccounts,
   mockBlessings,
   mockCakeBoxAssignments,
+  mockCakeBoxExclusions,
+  mockCakeBoxExtraOrders,
   mockCakeBoxTypes,
   mockGuests,
   mockLineOas,

@@ -13,10 +13,16 @@ export {
 } from './blessings.api'
 export {
   configureCakeBoxAssignment,
+  createCakeBoxExtraOrder,
   createCakeBoxType,
+  deleteCakeBoxExtraOrder,
   deleteCakeBoxType,
+  excludeGuestCakeBox,
   listCakeBoxAssignments,
+  listCakeBoxExclusions,
+  listCakeBoxExtraOrders,
   listCakeBoxTypes,
+  removeCakeBoxExclusion,
   updateCakeBoxType,
 } from './cakebox.api'
 export {

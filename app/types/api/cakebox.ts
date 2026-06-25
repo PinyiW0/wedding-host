@@ -6,12 +6,17 @@ export interface CakeBoxTypeListItem {
   name: string
   description: string | null
   isDefault: boolean
+  // 縮圖（上傳後存成 base64 data URL）與單價（元），皆可為空
+  imageUrl: string | null
+  price: number | null
 }
 
 export interface CreateCakeBoxTypeBody {
   name: string
   description?: string
   isDefault: boolean
+  imageUrl?: string
+  price?: number
 }
 
 export interface CakeBoxTypeCreatedEvent {
@@ -20,17 +25,26 @@ export interface CakeBoxTypeCreatedEvent {
   name: string
   description: string | null
   isDefault: boolean
+  imageUrl: string | null
+  price: number | null
 }
 
 export interface UpdateCakeBoxTypeBody {
   name?: string
   description?: string
+  // 可事後切換預設款（設為 true 時其他款式自動取消預設）、更新縮圖與單價
+  isDefault?: boolean
+  imageUrl?: string
+  price?: number
 }
 
 export interface CakeBoxTypeUpdatedEvent {
   cakeBoxTypeId: string
   name: string
   description: string | null
+  isDefault: boolean
+  imageUrl: string | null
+  price: number | null
 }
 
 export interface ConfigureCakeBoxAssignmentBody {
@@ -50,4 +64,39 @@ export interface CakeBoxAssignmentListItem {
   cakeBoxTypeName: string
   guestId: string
   assignmentRule: string
+}
+
+// === 不發放：新人本人等不需喜餅者（排除在訂購數量與領取清單外） ===
+export interface CakeBoxExclusionListItem {
+  guestId: string
+}
+
+export interface ExcludeGuestCakeBoxBody {
+  guestId: string
+}
+
+export interface CakeBoxGuestExcludedEvent {
+  guestId: string
+}
+
+// === 額外配發：公關／公司公餅（非賓客；只計入訂購總數） ===
+export interface CakeBoxExtraOrderListItem {
+  extraOrderId: string
+  cakeBoxTypeId: string
+  cakeBoxTypeName: string
+  quantity: number
+  note: string | null
+}
+
+export interface CreateCakeBoxExtraOrderBody {
+  cakeBoxTypeId: string
+  quantity: number
+  note?: string
+}
+
+export interface CakeBoxExtraOrderCreatedEvent {
+  extraOrderId: string
+  cakeBoxTypeId: string
+  quantity: number
+  note: string | null
 }

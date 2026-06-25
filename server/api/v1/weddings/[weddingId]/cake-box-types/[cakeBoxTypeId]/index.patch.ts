@@ -16,6 +16,27 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
     cakeBoxType.name = body.name
   if (body.description !== undefined)
     cakeBoxType.description = body.description
+  if (body.imageUrl !== undefined)
+    cakeBoxType.imageUrl = body.imageUrl
+  if (body.price !== undefined)
+    cakeBoxType.price = body.price
+  // 切換預設款：設為預設時取消同婚禮其他款式的預設（維持單一預設）
+  if (body.isDefault !== undefined) {
+    cakeBoxType.isDefault = body.isDefault
+    if (body.isDefault) {
+      for (const c of mockCakeBoxTypes) {
+        if (c.weddingId === cakeBoxType.weddingId && c.cakeBoxTypeId !== cakeBoxType.cakeBoxTypeId)
+          c.isDefault = false
+      }
+    }
+  }
 
-  return { cakeBoxTypeId: cakeBoxType.cakeBoxTypeId, name: cakeBoxType.name, description: cakeBoxType.description }
+  return {
+    cakeBoxTypeId: cakeBoxType.cakeBoxTypeId,
+    name: cakeBoxType.name,
+    description: cakeBoxType.description,
+    isDefault: cakeBoxType.isDefault,
+    imageUrl: cakeBoxType.imageUrl,
+    price: cakeBoxType.price,
+  }
 })
