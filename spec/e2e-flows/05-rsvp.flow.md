@@ -13,7 +13,7 @@
 ## Business Invariants（合約核心）
 
 1. 管理員能透過指定管道（如 LINE）發送 RSVP 邀請連結給賓客
-2. 賓客能透過 LIFF 提交出席回覆（出席狀態、飲食、加一人數、是否需兒童座椅）
+2. 賓客能透過 LIFF 提交出席回覆（出席狀態、飲食、加一人數（同行）、兒童椅嬰兒數）
 3. 管理員能手動覆寫賓客的出席狀態並記錄原因
 4. 各種不存在 / 已提交的操作，使用者能感知失敗原因
 
@@ -66,12 +66,12 @@ API 邊界保護。
 2. 填寫回覆：
    - 出席狀態 → 出席（attending）
    - 飲食 → 葷食（meat）
-   - 加一人數 → 1
-   - 是否需兒童座椅 → 否
+   - 加一人數（同行）→ 1
+   - 兒童椅嬰兒數 → 0
 3. 提交
 
 ### Verification 策略
-- API spy：`POST .../guests/guest-001/rsvp`，payload 含 attending / diet / plusOneCount / needChildSeat
+- API spy：`POST .../guests/guest-001/rsvp`，payload 含 attending / diet / plusOneCount / childChairCount
 - UI：使用者能感知提交成功（「回覆已送出」/「感謝您的回覆」反饋）
 
 ### 不再凍結

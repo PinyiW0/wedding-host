@@ -15,10 +15,10 @@
 1. 管理員能在平面圖新增 / 更新 / 移除桌次（名稱、座位數、座標位置）
 2. 桌次上仍有賓客入座時不可移除
 3. 管理員能設定場地佈局（舞台位置與大小）
-4. 管理員能將賓客安排至指定桌次座位、也能取消座位
-5. 桌次已滿 / 賓客已有座位時不可重複安排；賓客不在此桌時不可取消
+4. 管理員能將賓客（含同行與兒童椅嬰兒）安排至桌次、也能取消座位；一個賓客組依人數展開為多個席位（正常席「名字N」、兒童椅「名字-兒童N」）
+5. 容量以「人頭」計：一桌正常席人頭（partySize − 兒童椅嬰兒數）不可超過 capacity（兒童椅額外加位、不佔正常席）；正常席已滿 / 賓客已有座位時不可重複安排；賓客不在此桌時不可取消
 6. 管理員能更新禮俗建議引擎開關設定，並能覆寫（忽略）特定禮俗警告
-7. 桌次的識別欄位（tableName）與座位數（capacity）可被使用者讀到
+7. 桌次的識別欄位（tableName）與正常席容量（capacity）可被使用者讀到
 
 ---
 
@@ -186,11 +186,11 @@ API 邊界保護。
 > 對應 Feature: 安排座位 → Scenario: 桌次已滿
 
 ### 業務脈絡
-- table-001（capacity 10）已坐滿 10 位賓客
+- table-001 的正常席人頭已達 capacity（兒童椅額外、不佔正常席）
 
 ### E2E 驗證流程
 1. 進入 `/weddings/wedding-001/seating`
-2. 嘗試將 guest-011 安排至已滿的 table-001
+2. 嘗試將賓客安排至正常席已滿的 table-001（其正常席人頭會超過 capacity）
 3. 期待：使用者看到錯誤訊息：含「桌次已滿，無法再安排座位」
 
 ### Verification 策略
@@ -309,16 +309,14 @@ API 邊界保護。
 
 ### E2E 驗證流程
 1. 進入 `/weddings/wedding-001/seating` 的禮俗設定入口
-2. 切換禮俗開關：
-   - 長輩靠近主桌（elderNearMain）→ 開
-   - 衝突警告（conflictWarning）→ 開
-   - 男女分桌（genderSeparation）→ 開
-   - 主桌靠近舞台（mainTableNearStage）→ 開
-   - 同分類同桌（sameCategoryTogether）→ 關
+2. 切換禮俗開關（三開關，每個對應一條實際規則）：
+   - 長輩靠近主桌（elderNearMain）→ 開（警告：長輩被排在一般賓客後方時提醒）
+   - 主桌坐滿（mainTableFull）→ 開（警告：主桌未坐滿時提醒）
+   - 同分類同桌（sameCategoryTogether）→ 關（推薦排序偏好）
 3. 儲存設定
 
 ### Verification 策略
-- API spy：`PUT/PATCH .../etiquette-settings`，payload 含五個布林開關
+- API spy：`PUT/PATCH .../etiquette-settings`，payload 含三個布林開關
 - UI：開關狀態反映已儲存（成功反饋 / 開關保持新狀態）
 
 ### 不再凍結
@@ -344,18 +342,19 @@ API 邊界保護。
 > 對應 Feature: 覆寫禮俗警告 → Scenario: 成功覆寫禮俗警告
 
 ### 業務脈絡
-- wedding-001 已建立，存在禮俗警告 warning-001（gender-separation）
+- wedding-001 已建立；禮俗警告改由前端依「設定 + 當前座位」即時計算（違反才跳）。
+- 進站時主桌尚未坐滿（mainTableFull 開啟），故出現「主桌尚未坐滿」警告（warning-main-table-full / main-table-not-full）。
 
 ### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/seating`，禮俗警告區顯示 warning-001
-2. 在 warning-001 範圍內觸發「忽略 / 覆寫此警告」
+1. 進入 `/weddings/wedding-001/seating`，禮俗警告區顯示「主桌尚未坐滿」警告
+2. 在該警告範圍內觸發「忽略 / 覆寫此警告」
 3. 期待：
-   - API spy：`POST .../etiquette-warnings/warning-001/dismiss`，payload 含 warningType
-   - warning-001 不再以未處理狀態顯示（或標示為已忽略）
+   - API spy：`POST .../etiquette-warnings/warning-main-table-full/dismiss`，payload 含 warningType（main-table-not-full）
+   - 該警告不再以未處理狀態顯示（前端即時隱藏）
 
 ### Verification 策略
 - API spy（dismiss 端點）
-- UI：警告 warning-001 從未處理清單消失或標記已忽略
+- UI：該警告從未處理清單消失
 
 ### 不再凍結
 - 警告呈現（banner / list / inline）、忽略觸發形式
@@ -370,7 +369,7 @@ API 邊界保護。
 API 邊界保護。
 
 ### 驗證流程
-- `POST /api/v1/weddings/wedding-999/etiquette-warnings/warning-001/dismiss` 帶 warningType
+- `POST /api/v1/weddings/wedding-999/etiquette-warnings/warning-main-table-full/dismiss` 帶 warningType
 - 期待：4xx，訊息含「婚禮不存在」
 
 ---
@@ -389,7 +388,7 @@ API 邊界保護。
 - seed：wedding-001、table-001（主桌 / 10 座 / 100,200）
 - `POST .../tables` 回 201；`PATCH .../tables/{id}` 不存在回 404「桌次不存在」
 - `DELETE .../tables/{id}`：有人入座回 409「桌次上還有賓客，無法移除」；不存在回 404
-- seat 端點：滿回 409「桌次已滿，無法再安排座位」；重複回 409「賓客已有座位」；桌次不存在回 404
-- unseat 端點：桌次不存在回 404「桌次不存在」；賓客不在桌回 404「賓客不在此桌」
+- seat 端點：依賓客 partySize / childChairCount 展開為多筆座位（正常席 normal + 兒童椅 childChair）；正常席人頭超過 capacity 回 409「桌次已滿，無法再安排座位」；重複回 409「賓客已有座位」；桌次不存在回 404
+- unseat 端點：一次清除該賓客在該桌的所有座位；桌次不存在回 404「桌次不存在」；賓客不在桌回 404「賓客不在此桌」
 - venue-layout / etiquette-settings：婚禮不存在回 404「婚禮不存在」
 - etiquette-warnings dismiss：婚禮不存在回 404「婚禮不存在」

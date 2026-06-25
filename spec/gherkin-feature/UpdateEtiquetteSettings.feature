@@ -25,9 +25,7 @@ Feature: 更新禮俗設定
         {
           "weddingId": "wedding-001",
           "elderNearMain": true,
-          "conflictWarning": true,
-          "genderSeparation": true,
-          "mainTableNearStage": true,
+          "mainTableFull": true,
           "sameCategoryTogether": false
         }
         """
@@ -35,9 +33,7 @@ Feature: 更新禮俗設定
         """
         {
           "elderNearMain": true,
-          "conflictWarning": true,
-          "genderSeparation": true,
-          "mainTableNearStage": true,
+          "mainTableFull": true,
           "sameCategoryTogether": false
         }
         """
@@ -54,9 +50,7 @@ Feature: 更新禮俗設定
         {
           "weddingId": "wedding-999",
           "elderNearMain": true,
-          "conflictWarning": true,
-          "genderSeparation": true,
-          "mainTableNearStage": true,
+          "mainTableFull": true,
           "sameCategoryTogether": false
         }
         """

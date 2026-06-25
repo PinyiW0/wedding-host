@@ -20,7 +20,7 @@ Feature: 發放喜餅
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Receptionist sends DistributeCakeBox on stream "guest-001":
@@ -71,7 +71,7 @@ Feature: 發放喜餅
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       And the CakeBoxDistributed event has occurred on stream "guest-001":

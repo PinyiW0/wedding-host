@@ -20,7 +20,7 @@ Feature: 自助報到
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Guest sends SelfCheckIn on stream "guest-001":
@@ -68,7 +68,7 @@ Feature: 自助報到
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       And the GuestSelfCheckedIn event has occurred on stream "guest-001":

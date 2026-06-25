@@ -20,7 +20,7 @@ Feature: 更新賓客
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Admin sends UpdateGuest on stream "guest-001":
@@ -32,7 +32,7 @@ Feature: 更新賓客
           "notes": "改為素食",
           "contact": "0987654321",
           "category": "朋友",
-          "needChildSeat": true
+          "childChairCount": 1
         }
         """
       Then the GuestUpdated event is emitted with:
@@ -44,7 +44,7 @@ Feature: 更新賓客
           "notes": "改為素食",
           "contact": "0987654321",
           "category": "朋友",
-          "needChildSeat": true
+          "childChairCount": 1
         }
         """
 
@@ -64,7 +64,7 @@ Feature: 更新賓客
           "notes": "",
           "contact": "0900000000",
           "category": "朋友",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       Then the operation fails with: 賓客不存在

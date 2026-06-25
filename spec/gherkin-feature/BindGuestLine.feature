@@ -20,7 +20,7 @@ Feature: 綁定賓客 LINE
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Guest sends BindGuestLine on stream "guest-001":
@@ -70,7 +70,7 @@ Feature: 綁定賓客 LINE
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       And the GuestLineBound event has occurred on stream "guest-001":

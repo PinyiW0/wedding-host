@@ -21,7 +21,7 @@ Feature: 新增賓客
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       Then the GuestAdded event is emitted with:
@@ -34,6 +34,6 @@ Feature: 新增賓客
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
