@@ -21,6 +21,12 @@ export default defineEventHandler((event: H3Event): GuestListItem[] => {
       rsvpAttending: g.rsvpAttending,
       partySize: g.partySize,
       tableName: g.tableName,
+      invitationPreference: g.invitationPreference ?? null,
+      mailingAddress: g.mailingAddress ?? null,
+      blessing: g.blessing ?? null,
+      flowerDrawing: g.flowerDrawing ?? null,
+      needsShuttle: g.needsShuttle ?? null,
+      shuttleCount: g.shuttleCount ?? null,
       deletedAt: g.deletedAt,
     }))
 })

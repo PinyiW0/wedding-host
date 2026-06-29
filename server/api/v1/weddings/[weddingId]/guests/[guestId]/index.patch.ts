@@ -28,6 +28,15 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     guest.childChairCount = body.childChairCount
   if (body.notes !== undefined)
     guest.notes = body.notes
+  // 管理員修正的 RSVP 回覆欄位（接駁／喜帖）
+  if (body.needsShuttle !== undefined)
+    guest.needsShuttle = body.needsShuttle
+  if (body.shuttleCount !== undefined)
+    guest.shuttleCount = body.shuttleCount
+  if (body.invitationPreference !== undefined)
+    guest.invitationPreference = body.invitationPreference
+  if (body.mailingAddress !== undefined)
+    guest.mailingAddress = body.mailingAddress
 
   return {
     guestId: guest.guestId,

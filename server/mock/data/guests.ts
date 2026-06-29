@@ -1,7 +1,10 @@
 // 賓客 mock 資料（含報到 / 禮金 / 喜餅 / RSVP 等接待狀態欄位）
 // seed：guest-001（陳大明 / 男方 / 葷食 / 同事 / 未綁定 LINE / 未報到 / 未登記禮金 / 未發放喜餅）
 
-import type { AttendingStatus } from '../../../app/types/api/rsvp'
+import type { AttendingStatus, InvitationPreference } from '../../../app/types/api/rsvp'
+
+// 範例手繪小花（120×120 透明底 PNG）：供後台「查看回覆 / 下載花朵」即時示範
+const SAMPLE_FLOWER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAB2klEQVR42u3cwW0CMRRFUdeXZcpgQSPpIMWwSl9BFJBR0Nhj+/1zJa9YIP2jGQFj05okSZIkHfa4ff6aQgjku8vUQmFBF4EFXQQWdCFcyAVwIRfAhVwAFzJg7Y4LGbB2x4UMWLvjQgYswAKcBpkAXB5+ZTBXPFjQYItAAwyGhhaMDCsYGVIwMpxwZDDBwFDCkYEEA+80tJ/vD8gpwC/M/y7AG+G+A7sDNOAOsCtDA+6MuxpyeeARuCshlwYeibsKclngK3BXQHb1uorzkK/EnY1c8hYNOBh4Bu5MZMCAAQMGDHgV5ErA5R4XzsSdgVzyoT9cwIB3Rq4AXHrbLOBw5HRgx1eCf4t2AC0YuO2W58EOgpcHbknZk1Xgz1jsqvRPO/H7ouEWONkAOPxsEtwCpwsBh58PBuwEP2DAgAEDBgwXMmS3aAswYMCAAQMGDBgyXMCAIduyAxhyv3X/usFNA36h/rUAb4x8BDsDulVrFdwrkFvVKgC36q2AOwq5qT/0CsA0B0LPBKY3GPoM7hlkWp3hj14/g3vmfXVRo4AFWCsjmxpg7YpsWqHQphOIbQqA5RatbT5omZJP0fI9WIAFWINwIbuCBViA5XuwOiObUjCy6QRim4IkSRrdE+f3PrB7gDi1AAAAAElFTkSuQmCC'
 
 export interface MockGuest {
   guestId: string
@@ -24,6 +27,14 @@ export interface MockGuest {
   partySize: number
   tableName: string | null
   deletedAt: string | null
+  // 訪客 RSVP 表單補充欄位（選填）
+  invitationPreference?: InvitationPreference | null
+  mailingAddress?: string | null
+  blessing?: string | null
+  flowerDrawing?: string | null
+  // 接駁車（限男方親友／高雄地區）
+  needsShuttle?: boolean | null
+  shuttleCount?: number | null
 }
 
 function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 'side' | 'diet' | 'category'>): MockGuest {
@@ -47,7 +58,7 @@ function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 's
 export const mockGuests: MockGuest[] = [
   g({ guestId: 'guest-001', name: '陳大明', side: 'groom', diet: 'meat', category: '同事', contact: '0912345678', notes: '需要靠近舞台', partySize: 2, tableName: '主桌' }),
   g({ guestId: 'guest-002', name: '林美麗', side: 'bride', diet: 'vegetarian', category: '朋友', contact: '0922222222', partySize: 1, tableName: '女方家屬桌' }),
-  g({ guestId: 'guest-003', name: '王志強', side: 'groom', diet: 'meat', category: '家人', contact: '0933333333', lineUserId: 'line-u-003', rsvpAttending: 'attending', partySize: 4, tableName: '主桌' }),
+  g({ guestId: 'guest-003', name: '王志強', side: 'groom', diet: 'meat', category: '家人', contact: '0933333333', lineUserId: 'line-u-003', rsvpAttending: 'attending', partySize: 4, tableName: '主桌', needsShuttle: true, shuttleCount: 2, invitationPreference: 'e-card', blessing: '新婚快樂，永浴愛河！祝振茗與品儀白頭偕老。', flowerDrawing: SAMPLE_FLOWER }),
   g({ guestId: 'guest-004', name: '李淑芬', side: 'bride', diet: 'meat', category: '同學', contact: '0944444444', partySize: 2, tableName: '女方家屬桌' }),
   g({ guestId: 'guest-005', name: '張文彬', side: 'groom', diet: 'vegetarian', category: '同事', contact: '0955555555', partySize: 1, tableName: null }),
   g({ guestId: 'guest-006', name: '黃雅婷', side: 'bride', diet: 'meat', category: '朋友', contact: '0966666666', partySize: 3, tableName: '女方家屬桌' }),
