@@ -25,29 +25,18 @@ test.describe('RSVP 管理（Admin 端）', () => {
   })
 
   test.describe('規則：透過 LINE 發送 RSVP 邀請', () => {
-    test('透過 LINE 發送 RSVP 邀請', async ({ page }) => {
-      // Given：guest-001（陳大明）已新增，進入 RSVP 管理頁
-      await page.goto('/weddings/wedding-001/rsvp', { waitUntil: 'networkidle' })
-
-      // When：在 guest-001 範圍觸發「發送 RSVP 邀請」，選擇管道 LINE 並提交
-      await findEntity(page, /陳大明/)
-        .getByRole('button', { name: /發送.*邀請|邀請/ })
-        .click()
-      // 管道 → LINE（下拉預設 line，仍顯式選擇以對齊流程）
-      await selectOption(page, 'rsvp-invitation-channel', /LINE/)
-
-      // 主要 outcome：API spy 驗證 POST .../guests/guest-001/rsvp-invitation，payload channel=line
-      const apiCall = waitForApiCall(
-        page,
-        /\/guests\/guest-001\/rsvp-invitation(\?|$)/,
-        'POST',
+    // 後台 UI 已依需求移除「發送邀請」入口（先拿掉），但邀請能力仍保留於後端契約，
+    // 故此規則改於 API 邊界驗證（invariant：管理員能透過指定管道發送邀請仍成立）。
+    test('透過 LINE 發送 RSVP 邀請（API 邊界）', async ({ page }) => {
+      // Given：guest-001（陳大明）已存在
+      // When：以指定管道 line 發送邀請
+      const res = await page.request.post(
+        '/api/v1/weddings/wedding-001/guests/guest-001/rsvp-invitation',
+        { data: { channel: 'line' } },
       )
-      await page.getByRole('button', { name: /送出|發送|確定/ }).click()
-      const request = await apiCall
-      expect(request.postDataJSON()).toMatchObject({ channel: 'line' })
-
-      // Then：使用者能感知已發送
-      await expect(getFeedbackElement(page)).toBeVisible()
+      // Then：發送成功，回應含 channel=line
+      expect(res.ok()).toBeTruthy()
+      expect(await res.json()).toMatchObject({ guestId: 'guest-001', channel: 'line' })
     })
   })
 

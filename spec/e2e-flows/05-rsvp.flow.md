@@ -1,7 +1,7 @@
 # Flow: RSVP 出席管理
 
 > 對應規格：spec/gherkin-feature/SendRsvpInvitation.feature, SubmitRsvp.feature, OverrideRsvp.feature
-> 涵蓋頁面：/weddings/[weddingId]/rsvp（管理員端：發送邀請 + 覆寫回覆）、賓客 LIFF /rsvp/[guestId]（賓客端：提交出席回覆）
+> 涵蓋頁面：/weddings/[weddingId]/rsvp（管理員端：覆寫回覆；發送邀請改於 API 邊界驗證）、賓客 LIFF /rsvp/[guestId]（賓客端：提交出席回覆）
 
 ## Background
 - 管理員（Admin）發送邀請、覆寫回覆
@@ -23,20 +23,18 @@
 
 > 對應 Feature: 發送 RSVP 邀請 → Scenario: 透過 LINE 發送 RSVP 邀請
 
+### 性質
+能力保留於後端契約；後台 UI 已移除「發送邀請」入口（改由分享連結 / LINE OA 既有流程觸發），故此規則於 API 邊界驗證。invariant「管理員能透過指定管道發送邀請」仍成立。
+
 ### 業務脈絡
 - guest-001（陳大明）已新增
 
-### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/rsvp`（或賓客列表的 RSVP 動作）
-2. 在 guest-001 範圍內觸發「發送 RSVP 邀請」，選擇管道 → LINE
-3. 提交
-
-### Verification 策略
-- API spy：`POST /api/v1/weddings/wedding-001/guests/guest-001/rsvp-invitation`，payload 含 channel=line
-- UI：使用者能感知已發送（「邀請已發送」反饋 / 賓客狀態標示已邀請）
+### 驗證流程
+- `POST /api/v1/weddings/wedding-001/guests/guest-001/rsvp-invitation`，payload 含 channel=line
+- 期待：2xx，回應含 guestId=guest-001 / channel=line
 
 ### 不再凍結
-- 管道選擇形式（下拉 / 按鈕）、批次或單發
+- 是否提供 UI 入口、管道選擇形式、批次或單發
 
 ---
 
@@ -146,7 +144,7 @@ API 邊界保護。
 ## Selector 策略（v2 通則）
 
 1. role + name regex 找賓客實體：`getByRole('row', { name: /陳大明/ })`
-2. 動作按鈕：`getByRole('button', { name: /發送.*邀請|提交|送出|覆寫/ })`
+2. 動作按鈕：`getByRole('button', { name: /提交|送出|覆寫/ })`（發送邀請已無 UI 入口）
 3. 出席狀態文字：`getByText(/出席|缺席|不出席/)`
 4. 反饋 / 錯誤：`getByRole('alert')` 或 `getByText(/賓客不存在|已提交過 RSVP/)`
 5. async outcome：`page.waitForRequest`（invitation / rsvp / override 端點）
