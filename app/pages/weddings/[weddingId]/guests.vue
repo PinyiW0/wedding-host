@@ -21,6 +21,7 @@ import {
   restoreGuest,
   updateGuest,
 } from '~/api'
+import { rsvpAttendingMeta } from '~/utils/statusMeta'
 
 definePageMeta({ layout: 'default' })
 
@@ -44,16 +45,8 @@ const deletedGuests = computed(() =>
 const sideLabel = (side: GuestSide) => (side === 'groom' ? '男方' : '女方')
 const dietLabel = (diet: GuestDiet) => (diet === 'meat' ? '葷食' : '素食')
 
-// RSVP 出席狀態顯示（null = 待回覆）
-function rsvpMeta(s: GuestListItem['rsvpAttending']) {
-  if (s === 'attending')
-    return { label: '出席', color: 'success' as const }
-  if (s === 'declined')
-    return { label: '不出席', color: 'neutral' as const }
-  if (s === 'absent')
-    return { label: '缺席', color: 'error' as const }
-  return { label: '待回覆', color: 'warning' as const }
-}
+// RSVP 出席狀態顯示（null = 待回覆）；文字與語意色由 statusMeta 統一（declined 統一為 error）
+const rsvpMeta = (s: GuestListItem['rsvpAttending']) => rsvpAttendingMeta(s)
 
 // === 篩選膠囊（純前端，預設「全部」；膠囊帶數量避免與表單「男方」按鈕撞名）===
 type GuestFilter = 'all' | 'groom' | 'bride' | 'pending'
@@ -379,7 +372,7 @@ async function confirmImport() {
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 space-y-10 overflow-auto">
+    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
       <!-- 賓客名單（未移除）— 編輯式表格 -->
       <table
         data-testid="guest-list"
@@ -438,9 +431,9 @@ async function confirmImport() {
               {{ guest.category }}
             </td>
             <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
-              <UBadge :color="rsvpMeta(guest.rsvpAttending).color" variant="soft" size="sm">
+              <StatusBadge :color="rsvpMeta(guest.rsvpAttending).color">
                 {{ rsvpMeta(guest.rsvpAttending).label }}
-              </UBadge>
+              </StatusBadge>
             </td>
             <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
               <div class="flex justify-end gap-1">

@@ -354,6 +354,8 @@ async function submitTable() {
 const isGuestOpen = ref(false)
 const isGuestSubmitting = ref(false)
 const guestError = ref('')
+// 「先不排桌」哨兵值（不可用空字串：USelectMenu/Combobox 禁止空字串 value，否則下拉打不開）
+const NO_TABLE = '__none__'
 const newGuestForm = reactive<{
   name: string
   side: GuestListItem['side']
@@ -362,7 +364,7 @@ const newGuestForm = reactive<{
   contact: string
   plusOneCount: number // 同行人數（攜伴大人＋會自己坐吃大人菜的小孩；皆佔正常席）
   childChairCount: number // 兒童椅嬰兒數（不佔正常席、額外加位）
-  tableId: string // 空字串 = 先不排桌
+  tableId: string // 哨兵 NO_TABLE = 先不排桌
 }>({
   name: '',
   side: 'groom',
@@ -371,7 +373,7 @@ const newGuestForm = reactive<{
   contact: '',
   plusOneCount: 0,
   childChairCount: 0,
-  tableId: '',
+  tableId: NO_TABLE,
 })
 const sideOptions = [
   { label: '男方', value: 'groom' },
@@ -408,7 +410,7 @@ function seatChipClass(seat: SeatListItem): string {
 const newGuestNormalHeads = computed(() => 1 + (Number(newGuestForm.plusOneCount) || 0))
 // 桌次選項：首項為「先不排桌」，其餘標示正常席入座 / 座位數，現場一眼看出哪桌還有空位
 const tableOptions = computed(() => [
-  { label: '先不排桌', value: '' },
+  { label: '先不排桌', value: NO_TABLE },
   ...(tables.value ?? []).map(t => ({
     label: `${t.tableName}（${normalSeatCount(t.tableId)}/${t.capacity}）`,
     value: t.tableId,
@@ -440,7 +442,7 @@ function openGuest() {
   newGuestForm.contact = ''
   newGuestForm.plusOneCount = 0
   newGuestForm.childChairCount = 0
-  newGuestForm.tableId = ''
+  newGuestForm.tableId = NO_TABLE
   isGuestOpen.value = true
 }
 
@@ -452,10 +454,10 @@ async function submitGuest() {
     return
   }
   // 若選了桌次：先以同一容量規則前端預檢，滿了就擋（不建檔，避免產生未入座的半成品賓客）
-  const targetTable = newGuestForm.tableId
+  const targetTable = newGuestForm.tableId !== NO_TABLE
     ? (tables.value ?? []).find(t => t.tableId === newGuestForm.tableId)
     : null
-  if (newGuestForm.tableId && !targetTable) {
+  if (newGuestForm.tableId !== NO_TABLE && !targetTable) {
     guestError.value = '桌次不存在'
     return
   }
@@ -615,12 +617,12 @@ async function submitCake() {
                   <p class="font-display text-2xl font-medium leading-tight text-ink dark:text-paper">
                     {{ guest.name }}
                   </p>
-                  <UBadge v-if="status[guest.guestId]?.checkedIn" color="success" variant="soft" size="md">
+                  <StatusBadge v-if="status[guest.guestId]?.checkedIn" color="success" size="md">
                     已報到
-                  </UBadge>
-                  <UBadge v-else color="warning" variant="outline" size="md">
+                  </StatusBadge>
+                  <StatusBadge v-else color="warning" size="md">
                     未報到
-                  </UBadge>
+                  </StatusBadge>
                 </div>
                 <p class="mt-0.5 text-body text-ink-500 dark:text-neutral-400">
                   {{ guestDetail(guest) }}

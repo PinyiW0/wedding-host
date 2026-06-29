@@ -151,9 +151,9 @@ function avatarInitial(name: string) {
             </div>
           </div>
           <!-- 權限 badge -->
-          <UBadge color="primary" variant="outline" size="sm">
+          <StatusBadge color="warning">
             受限
-          </UBadge>
+          </StatusBadge>
           <UButton
             data-testid="account-remove"
             icon="i-heroicons-trash"

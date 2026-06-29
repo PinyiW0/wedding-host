@@ -6,6 +6,7 @@ import type {
   RejectBlessingBody,
 } from '~/types/api/blessings'
 import { approveBlessing, listBlessings, rejectBlessing } from '~/api'
+import { blessingStatusMeta } from '~/utils/statusMeta'
 
 definePageMeta({ layout: 'default' })
 
@@ -16,17 +17,6 @@ const weddingId = computed(() => String(route.params.weddingId))
 const { data: blessings } = await listBlessings(weddingId, { default: () => [] })
 
 const items = computed(() => blessings.value ?? [])
-
-const STATUS_LABEL: Record<BlessingStatus, string> = {
-  submitted: '待審',
-  approved: '已通過',
-  rejected: '已拒絕',
-}
-const STATUS_COLOR: Record<BlessingStatus, 'warning' | 'success' | 'error'> = {
-  submitted: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
 
 // 頭像金圓首字：取留言內容首字作為編輯式裝飾（無姓名欄位時的視覺替代）
 function initialOf(blessing: BlessingListItem) {
@@ -148,13 +138,9 @@ async function submitReject() {
                   賓客 · {{ blessing.guestId }}
                 </p>
                 <div class="flex shrink-0 items-center gap-2">
-                  <UBadge
-                    :color="STATUS_COLOR[blessing.status]"
-                    variant="soft"
-                    size="sm"
-                  >
-                    {{ STATUS_LABEL[blessing.status] }}
-                  </UBadge>
+                  <StatusBadge :color="blessingStatusMeta(blessing.status).color">
+                    {{ blessingStatusMeta(blessing.status).label }}
+                  </StatusBadge>
                 </div>
               </div>
 

@@ -86,9 +86,9 @@ async function submitConnect() {
           <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
             <div v-if="connectedOa" data-testid="line-oa-status" class="space-y-4">
               <div class="flex items-center gap-3">
-                <UBadge color="success" variant="subtle">
+                <StatusBadge color="success" size="md">
                   已連結
-                </UBadge>
+                </StatusBadge>
                 <span class="font-display text-h2 font-semibold text-ink dark:text-paper">
                   {{ connectedOa.oaName }}
                 </span>

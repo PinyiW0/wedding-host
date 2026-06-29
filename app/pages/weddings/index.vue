@@ -209,7 +209,7 @@ async function confirmRestore() {
       />
     </div>
 
-    <div class="min-h-0 flex-1 space-y-12 overflow-auto">
+    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
       <!-- 婚禮列表（未刪除）：管理用表格 -->
       <div v-if="showActive">
         <div
@@ -276,9 +276,9 @@ async function confirmRestore() {
                     </span>
                   </td>
                   <td class="px-5 py-4">
-                    <UBadge color="success" variant="subtle">
+                    <StatusBadge color="success">
                       進行中
-                    </UBadge>
+                    </StatusBadge>
                   </td>
                   <td class="px-5 py-4">
                     <div class="flex items-center justify-end gap-1">

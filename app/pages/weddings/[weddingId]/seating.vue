@@ -343,18 +343,31 @@ function tableMeal(tableId: string): TableMeal {
   }
   return { veg, meat, child, adults: veg + meat }
 }
-// 餐點分類：尚無入座 / 全素食桌 / 全葷食桌 / 葷食桌（含 N 位素食）。cls 供畫面、fill/stroke/text 供 canvas
+// 桌次圖 canvas 配色：對齊 main.css 設計 token，使下載圖與畫面語意色（cls）一致
+const CHART = {
+  paper: '#ffffff', // 列印白底
+  ink: '#111111', // 主標 / 桌名（ink）
+  inkSoft: '#6B655C', // 副標（ink-500）
+  inkFaint: '#A8A096', // 舞台 / 次要（ink-300）
+  line: '#DCD4C7', // 舞台框（line）
+  empty: { fill: '#FAF7F1', stroke: '#DCD4C7', text: '#A8A096' }, // paper / line / ink-300
+  veg: { fill: '#E0E8E1', stroke: '#3D4E41', text: '#323F35' }, // success 100 / 600 / 700
+  meat: { fill: '#DCE3EC', stroke: '#344358', text: '#2B3748' }, // info 100 / 600 / 700
+  mixed: { fill: '#F4EAD3', stroke: '#B8965A', text: '#9A7B43' }, // primary 100 / 500(gold) / 600(gold-deep)
+} as const
+
+// 餐點分類：尚無入座 / 全素食桌 / 全葷食桌 / 葷食桌（含 N 位素食）。cls 供畫面、fill/stroke/text 供 canvas（對齊 CHART token）
 type MealCatKey = 'empty' | 'veg' | 'meat' | 'mixed'
 interface MealCategory { key: MealCatKey, label: string, cls: string, fill: string, stroke: string, text: string }
 function mealCategory(tableId: string): MealCategory {
   const m = tableMeal(tableId)
   if (m.adults === 0)
-    return { key: 'empty', label: '尚無入座', cls: 'border-line text-ink-300', fill: '#f7f5f0', stroke: '#d9d4c7', text: '#9b9486' }
+    return { key: 'empty', label: '尚無入座', cls: 'border-line text-ink-300', ...CHART.empty }
   if (m.meat === 0)
-    return { key: 'veg', label: '全素食桌', cls: 'border-success-600 text-success-700', fill: '#e9f5ec', stroke: '#2f7d4f', text: '#256b41' }
+    return { key: 'veg', label: '全素食桌', cls: 'border-success-600 text-success-700', ...CHART.veg }
   if (m.veg === 0)
-    return { key: 'meat', label: '全葷食桌', cls: 'border-info-600 text-info-700', fill: '#eef3f7', stroke: '#3f6f9a', text: '#345b80' }
-  return { key: 'mixed', label: `葷食桌（含素 ${m.veg}）`, cls: 'border-gold text-gold-deep', fill: '#fbf2dd', stroke: '#c79a3a', text: '#90701c' }
+    return { key: 'meat', label: '全葷食桌', cls: 'border-info-600 text-info-700', ...CHART.meat }
+  return { key: 'mixed', label: `葷食桌（含素 ${m.veg}）`, cls: 'border-gold text-gold-deep', ...CHART.mixed }
 }
 // 全場備餐總計（地圖抬頭）
 const totalMeal = computed(() => {
@@ -391,24 +404,24 @@ function buildChartCanvas(): HTMLCanvasElement {
   canvas.height = A4_H * dpr
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = CHART.paper
   ctx.fillRect(0, 0, A4_W, A4_H)
   const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
 
   // 抬頭、總計、圖例（固定於頁首）
-  ctx.fillStyle = '#26221b'
+  ctx.fillStyle = CHART.ink
   ctx.font = `600 16px ${FONT}`
   ctx.fillText('桌次圖 · 備餐需求', M, 24)
   ctx.font = `9px ${FONT}`
-  ctx.fillStyle = '#6b6457'
+  ctx.fillStyle = CHART.inkSoft
   ctx.fillText(`素食 ${totalMeal.value.veg} 份 · 葷食 ${totalMeal.value.meat} 份 · 兒童椅 ${totalMeal.value.child}`, M, 40)
   let lx = M
-  for (const item of [{ c: '#2f7d4f', t: '全素食桌' }, { c: '#c79a3a', t: '葷食含素' }, { c: '#3f6f9a', t: '全葷食桌' }]) {
+  for (const item of [{ c: CHART.veg.stroke, t: '全素食桌' }, { c: CHART.mixed.stroke, t: '葷食含素' }, { c: CHART.meat.stroke, t: '全葷食桌' }]) {
     ctx.fillStyle = item.c
     ctx.beginPath()
     ctx.arc(lx + 4, 53, 4, 0, Math.PI * 2)
     ctx.fill()
-    ctx.fillStyle = '#6b6457'
+    ctx.fillStyle = CHART.inkSoft
     ctx.fillText(item.t, lx + 12, 56)
     lx += 12 + ctx.measureText(item.t).width + 14
   }
@@ -467,12 +480,12 @@ function buildChartCanvas(): HTMLCanvasElement {
 
   // 舞台（內容頂端置中）
   const stageCx = baseX + ((minX + maxX) / 2) * scale
-  ctx.strokeStyle = '#cfc8ba'
+  ctx.strokeStyle = CHART.line
   ctx.setLineDash([4, 3])
   ctx.strokeRect(stageCx - 30, baseY + 2, 60, 16)
   ctx.setLineDash([])
   ctx.textAlign = 'center'
-  ctx.fillStyle = '#9b9486'
+  ctx.fillStyle = CHART.inkFaint
   ctx.font = `9px ${FONT}`
   ctx.fillText('舞台', stageCx, baseY + 13)
 
@@ -492,14 +505,14 @@ function buildChartCanvas(): HTMLCanvasElement {
     const child = tableMeal(it.t.tableId).child
     const nameFont = Math.max(8, (it.isMain ? 17 : 14) * scale)
     const subFont = Math.max(7, 11 * scale)
-    ctx.fillStyle = '#26221b'
+    ctx.fillStyle = CHART.ink
     ctx.font = `600 ${nameFont}px ${FONT}`
     ctx.fillText(it.t.tableName, cx, cy - (child > 0 ? subFont + 2 : subFont * 0.4), r * 1.7)
     ctx.font = `${subFont}px ${FONT}`
     ctx.fillStyle = cat.text
     ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
     if (child > 0) {
-      ctx.fillStyle = '#2f7d4f'
+      ctx.fillStyle = CHART.veg.stroke
       ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
     }
   }
@@ -1588,7 +1601,7 @@ function guestMeta(g: GuestListItem): string {
       <aside class="flex min-h-0 flex-col lg:w-[320px] lg:shrink-0">
         <div class="mb-3 flex shrink-0 items-end justify-between gap-3">
           <div>
-            <h2 class="font-display text-xl font-semibold leading-none text-ink dark:text-paper">
+            <h2 class="font-display text-body-l font-semibold leading-none text-ink dark:text-paper">
               賓客名單
             </h2>
             <p class="mt-1.5 text-caption text-ink-500 dark:text-neutral-400">
