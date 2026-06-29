@@ -80,17 +80,22 @@ export interface CakeBoxGuestExcludedEvent {
 }
 
 // === 額外配發：公關／公司公餅（非賓客；只計入訂購總數） ===
+// 可填具名收餅對象（姓名／聯絡，皆選填），讓非賓客也能逐人留資料而不污染賓客名單
 export interface CakeBoxExtraOrderListItem {
   extraOrderId: string
   cakeBoxTypeId: string
   cakeBoxTypeName: string
   quantity: number
+  recipientName: string | null
+  recipientContact: string | null
   note: string | null
 }
 
 export interface CreateCakeBoxExtraOrderBody {
   cakeBoxTypeId: string
   quantity: number
+  recipientName?: string
+  recipientContact?: string
   note?: string
 }
 
@@ -98,5 +103,7 @@ export interface CakeBoxExtraOrderCreatedEvent {
   extraOrderId: string
   cakeBoxTypeId: string
   quantity: number
+  recipientName: string | null
+  recipientContact: string | null
   note: string | null
 }

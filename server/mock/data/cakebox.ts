@@ -24,11 +24,14 @@ export interface MockCakeBoxExclusion {
 }
 
 // 額外配發：公關／公司公餅等非賓客對象，只計入訂購總數、不進賓客名單
+// recipientName / recipientContact 為具名收餅對象（皆可空，匿名批量時留 null）
 export interface MockCakeBoxExtraOrder {
   extraOrderId: string
   weddingId: string
   cakeBoxTypeId: string
   quantity: number
+  recipientName: string | null
+  recipientContact: string | null
   note: string | null
 }
 

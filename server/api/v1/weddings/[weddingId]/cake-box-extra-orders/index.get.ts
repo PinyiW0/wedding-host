@@ -16,6 +16,8 @@ export default defineEventHandler((event: H3Event): CakeBoxExtraOrderListItem[] 
       cakeBoxTypeId: o.cakeBoxTypeId,
       cakeBoxTypeName: typeMap.get(o.cakeBoxTypeId) ?? '（已刪除款式）',
       quantity: o.quantity,
+      recipientName: o.recipientName,
+      recipientContact: o.recipientContact,
       note: o.note,
     }))
 })

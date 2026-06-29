@@ -532,17 +532,19 @@ const extraTotal = computed(() => (extraOrders.value ?? []).reduce((s, o) => s +
 const orderTotal = computed(() => includedPickup.value.length + extraTotal.value)
 
 // 表格篩選：搜尋姓名 + 分類選擇
+// 「全部分類」用哨兵值（不可用空字串：Reka Combobox/USelectMenu 禁止空字串 value，否則整個下拉 render 失敗）
+const ALL_CATEGORIES = '__all__'
 const nameQuery = ref('')
-const categoryFilter = ref('') // '' = 全部分類
+const categoryFilter = ref(ALL_CATEGORIES)
 const categoryFilterOptions = computed(() => [
-  { label: '全部分類', value: '' },
+  { label: '全部分類', value: ALL_CATEGORIES },
   ...distinctCategories.value.map(c => ({ label: c, value: c })),
 ])
 const filteredPickup = computed(() => {
   const q = nameQuery.value.trim().toLowerCase()
   return pickupList.value.filter((r) => {
     const matchName = !q || r.name.toLowerCase().includes(q)
-    const matchCat = !categoryFilter.value || r.category === categoryFilter.value
+    const matchCat = categoryFilter.value === ALL_CATEGORIES || r.category === categoryFilter.value
     return matchName && matchCat
   })
 })
@@ -582,9 +584,9 @@ function downloadPickupCsv() {
   ]
   // 第二段：額外配發明細（公關用）
   if ((extraOrders.value ?? []).length > 0) {
-    rows.push([], ['額外配發（公關用）'], ['款式', '數量', '備註'])
+    rows.push([], ['額外配發（公關用）'], ['款式', '數量', '姓名', '聯絡', '備註'])
     for (const o of extraOrders.value ?? [])
-      rows.push([o.cakeBoxTypeName, String(o.quantity), o.note ?? ''])
+      rows.push([o.cakeBoxTypeName, String(o.quantity), o.recipientName ?? '', o.recipientContact ?? '', o.note ?? ''])
   }
   // 第三段：訂購數量小計（賓客 + 額外 = 合計）+ 總計
   rows.push([], ['款式', '賓客數量', '額外配發', '合計'])
@@ -605,6 +607,8 @@ function formatPrice(p: number | null): string {
 // === 額外配發（公關／公司公餅）===
 const extraTypeId = ref('')
 const extraQtyText = ref('')
+const extraName = ref('') // 具名收餅對象姓名（選填）
+const extraContact = ref('') // 收餅對象聯絡（選填）
 const extraNote = ref('')
 const isAddingExtra = ref(false)
 const extraError = ref('')
@@ -627,11 +631,15 @@ async function addExtraOrder() {
     await createCakeBoxExtraOrder(weddingId.value, {
       cakeBoxTypeId: extraTypeId.value,
       quantity: qty,
+      recipientName: extraName.value.trim() || undefined,
+      recipientContact: extraContact.value.trim() || undefined,
       note: extraNote.value.trim() || undefined,
     })
     await refreshExtra()
     extraTypeId.value = ''
     extraQtyText.value = ''
+    extraName.value = ''
+    extraContact.value = ''
     extraNote.value = ''
     toast.add({ title: '已新增額外配發', color: 'success' })
   }
@@ -677,7 +685,7 @@ async function removeExtraOrder(extraOrderId: string) {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto pr-4">
-      <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div class="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <!-- 右欄（設定型內容）：source 在前以滿足 findEntity 順序，視覺用 grid 擺右並常駐 -->
         <aside class="space-y-6 self-start lg:col-start-2 lg:row-start-1 lg:sticky lg:top-0">
           <!-- 喜餅款式 — 面板：扁平款式清單 -->
@@ -726,7 +734,7 @@ async function removeExtraOrder(extraOrderId: string) {
                       class="size-4 shrink-0 text-gold"
                     />
                     <span v-if="type.isDefault" class="sr-only">預設款</span>
-                    <h3 class="truncate font-display text-base font-medium text-ink dark:text-paper">
+                    <h3 class="truncate font-display text-body-l font-medium text-ink dark:text-paper">
                       {{ type.name }}
                     </h3>
                     <span v-if="type.price != null" class="font-medium text-gold-deep">
@@ -790,7 +798,7 @@ async function removeExtraOrder(extraOrderId: string) {
               <span class="h-px flex-1 bg-line" />
             </div>
             <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
-              發給非賓客的對象（公司同事、合作廠商等），只併入上方訂購總數、不進賓客名單。
+              發給非賓客的對象（公司同事、合作廠商等），可逐人填姓名／聯絡；只併入上方訂購總數、不進賓客名單。
             </p>
 
             <!-- 已新增的額外配發：扁平列 -->
@@ -801,7 +809,9 @@ async function removeExtraOrder(extraOrderId: string) {
                 class="flex flex-wrap items-center gap-3 py-3 first:pt-0"
               >
                 <span class="font-medium text-ink dark:text-paper">{{ o.cakeBoxTypeName }}</span>
-                <span class="font-display text-lg font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
+                <span class="font-display text-body-l font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
+                <span v-if="o.recipientName" class="text-body-s font-medium text-ink dark:text-paper">{{ o.recipientName }}</span>
+                <span v-if="o.recipientContact" class="text-caption text-ink-400 dark:text-neutral-500">{{ o.recipientContact }}</span>
                 <span v-if="o.note" class="text-caption text-ink-500 dark:text-neutral-400">{{ o.note }}</span>
                 <UButton
                   icon="i-heroicons-trash"
@@ -847,7 +857,23 @@ async function removeExtraOrder(extraOrderId: string) {
                     class="w-full"
                   />
                 </UFormField>
-                <UFormField label="備註" class="min-w-40 flex-1">
+                <UFormField label="姓名" class="min-w-36 flex-1">
+                  <UInput
+                    v-model="extraName"
+                    data-testid="cake-box-extra-name"
+                    placeholder="收餅人姓名（選填）"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="聯絡" class="min-w-36 flex-1">
+                  <UInput
+                    v-model="extraContact"
+                    data-testid="cake-box-extra-contact"
+                    placeholder="電話／地址（選填）"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="備註" class="min-w-36 flex-1">
                   <UInput
                     v-model="extraNote"
                     data-testid="cake-box-extra-note"
@@ -876,7 +902,7 @@ async function removeExtraOrder(extraOrderId: string) {
           <!-- 賓客分配：訂購總覽 + 全賓客表（款式欄就地下拉改款）；testid 供持久化測試定位 -->
           <section
             data-testid="cake-box-assignment-list"
-            class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            class="rounded-xl border border-line bg-white p-5 shadow-sm lg:flex lg:h-full lg:flex-col dark:border-neutral-800 dark:bg-neutral-900"
           >
             <div class="mb-2 flex flex-wrap items-center gap-3">
               <span class="text-overline uppercase text-gold-deep">賓客分配</span>
@@ -902,7 +928,7 @@ async function removeExtraOrder(extraOrderId: string) {
                   >
                     <span class="size-2 shrink-0 self-center rounded-full bg-gold" />
                     <span class="text-caption text-ink-500 dark:text-neutral-400">{{ grp.cakeBoxTypeName }}</span>
-                    <span class="font-display text-lg font-semibold text-ink dark:text-paper">{{ grp.total }}</span>
+                    <span class="font-display text-body-l font-semibold text-ink dark:text-paper">{{ grp.total }}</span>
                     <span class="text-caption text-ink-400">盒</span>
                     <span v-if="grp.extraQty > 0" class="text-caption text-ink-400 dark:text-neutral-500">
                       （賓客 {{ grp.guestQty }}＋額外 {{ grp.extraQty }}）
@@ -979,7 +1005,7 @@ async function removeExtraOrder(extraOrderId: string) {
               </p>
 
               <!-- 全賓客表（姓名 / 分類 / 禮盒款式：款式欄就地下拉改款）；固定高度、表頭 sticky，只有列在表格內捲 -->
-              <div class="max-h-[58vh] overflow-auto rounded-lg border border-line dark:border-neutral-800">
+              <div class="max-h-[58vh] overflow-auto rounded-lg border border-line lg:max-h-none lg:min-h-0 lg:flex-1 dark:border-neutral-800">
                 <table class="w-full text-left text-body-s">
                   <thead class="sticky top-0 z-10 bg-white dark:bg-neutral-900">
                     <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
@@ -1065,7 +1091,7 @@ async function removeExtraOrder(extraOrderId: string) {
     >
       <template #content>
         <div data-testid="cake-box-form-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-4 font-display text-body-l font-semibold text-ink dark:text-paper">
             {{ editingId ? '編輯喜餅款式' : '新增喜餅款式' }}
           </h3>
 
@@ -1210,7 +1236,7 @@ async function removeExtraOrder(extraOrderId: string) {
     <UModal v-model:open="isAssignOpen">
       <template #content>
         <div data-testid="cake-box-assign-modal" class="p-6">
-          <h3 class="mb-1 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-1 font-display text-body-l font-semibold text-ink dark:text-paper">
             設定喜餅指派規則
           </h3>
           <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
@@ -1291,7 +1317,7 @@ async function removeExtraOrder(extraOrderId: string) {
     <UModal v-model:open="isAutoOpen">
       <template #content>
         <div data-testid="cake-box-auto-modal" class="p-6">
-          <h3 class="mb-1 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-1 font-display text-body-l font-semibold text-ink dark:text-paper">
             依分類帶入喜餅
           </h3>
           <p class="mb-4 text-body text-ink-500 dark:text-neutral-400">
