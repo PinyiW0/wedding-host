@@ -24,6 +24,8 @@ const schema = z.object({
   venue: z.string().trim().min(1, '請輸入場地'),
   address: z.string().trim().min(1, '請輸入地址'),
   date: z.string().trim().min(1, '請選擇日期'),
+  groomName: z.string().trim().optional(),
+  brideName: z.string().trim().optional(),
   mapLink: z.string().trim().optional(),
   parkingInfo: z.string().trim().optional(),
   transportInfo: z.string().trim().optional(),
@@ -38,6 +40,8 @@ const state = reactive<Schema>({
   venue: '',
   address: '',
   date: '',
+  groomName: '',
+  brideName: '',
   mapLink: '',
   parkingInfo: '',
   transportInfo: '',
@@ -48,6 +52,8 @@ function openEdit() {
   state.venue = wedding.value?.venue ?? ''
   state.address = wedding.value?.address ?? ''
   state.date = wedding.value?.date ?? ''
+  state.groomName = wedding.value?.groomName ?? ''
+  state.brideName = wedding.value?.brideName ?? ''
   state.mapLink = wedding.value?.mapLink ?? ''
   state.parkingInfo = wedding.value?.parkingInfo ?? ''
   state.transportInfo = wedding.value?.transportInfo ?? ''
@@ -64,6 +70,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       venue: event.data.venue,
       address: event.data.address,
       date: event.data.date,
+      groomName: event.data.groomName ?? '',
+      brideName: event.data.brideName ?? '',
       mapLink: event.data.mapLink ?? '',
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
@@ -123,6 +131,21 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             </dt>
             <dd class="font-display text-body-l text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.title }}
+            </dd>
+          </div>
+
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
+              新人姓名
+            </dt>
+            <dd
+              data-testid="wedding-couple-display"
+              class="text-ink sm:col-span-2 dark:text-paper"
+            >
+              <span v-if="wedding?.groomName || wedding?.brideName">
+                {{ wedding?.groomName || '—' }} &amp; {{ wedding?.brideName || '—' }}
+              </span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
 
@@ -228,6 +251,36 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                 class="w-full"
               />
             </UFormField>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <UFormField
+                label="新郎姓名"
+                name="groomName"
+                class="relative mb-6"
+                :ui="{ error: 'absolute top-full left-0 mt-1' }"
+              >
+                <UInput
+                  v-model="state.groomName"
+                  data-testid="wedding-groom-name"
+                  placeholder="例：振茗"
+                  class="w-full"
+                />
+              </UFormField>
+
+              <UFormField
+                label="新娘姓名"
+                name="brideName"
+                class="relative mb-6"
+                :ui="{ error: 'absolute top-full left-0 mt-1' }"
+              >
+                <UInput
+                  v-model="state.brideName"
+                  data-testid="wedding-bride-name"
+                  placeholder="例：品儀"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
 
             <UFormField
               label="場地"

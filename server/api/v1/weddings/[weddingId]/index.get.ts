@@ -15,6 +15,8 @@ export default defineEventHandler((event: H3Event): WeddingDetail => {
     venue: wedding.venue,
     address: wedding.address,
     date: wedding.date,
+    groomName: wedding.groomName ?? null,
+    brideName: wedding.brideName ?? null,
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,

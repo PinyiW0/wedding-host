@@ -20,6 +20,10 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     wedding.address = body.address
   if (body.date !== undefined)
     wedding.date = body.date
+  if (body.groomName !== undefined)
+    wedding.groomName = body.groomName
+  if (body.brideName !== undefined)
+    wedding.brideName = body.brideName
   if (body.mapLink !== undefined)
     wedding.mapLink = body.mapLink
   if (body.parkingInfo !== undefined)
@@ -33,6 +37,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     venue: wedding.venue,
     address: wedding.address,
     date: wedding.date,
+    groomName: wedding.groomName ?? null,
+    brideName: wedding.brideName ?? null,
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,

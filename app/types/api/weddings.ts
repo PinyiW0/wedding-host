@@ -16,6 +16,9 @@ export interface WeddingDetail {
   venue: string
   address: string
   date: string // YYYY-MM-DD
+  // 新人姓名（供訪客頁顯示與「與新人的關係」選項；由後台維護）
+  groomName: string | null
+  brideName: string | null
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
@@ -42,6 +45,8 @@ export interface UpdateWeddingBody {
   venue?: string
   address?: string
   date?: string
+  groomName?: string
+  brideName?: string
   mapLink?: string
   parkingInfo?: string
   transportInfo?: string
@@ -53,6 +58,8 @@ export interface WeddingUpdatedEvent {
   venue: string
   address: string
   date: string
+  groomName: string | null
+  brideName: string | null
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
