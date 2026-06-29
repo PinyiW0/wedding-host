@@ -17,8 +17,9 @@ import {
 
 definePageMeta({ layout: 'default' })
 
-// 謝卡預覽日期格式化用（避免每次呼叫重編譯 regex）
+// 謝卡預覽格式化用（regex 提至 module scope 避免重編譯）
 const DATE_SEPARATOR_RE = /-/g
+const COUPLE_SUFFIX_RE = /的婚禮$/
 
 const route = useRoute()
 const toast = useToast()
@@ -47,21 +48,69 @@ const { data: template, refresh: refreshTemplate } = await getThankYouTemplate(w
 })
 const templateContent = computed(() => template.value?.templateContent ?? '')
 
-// === 設定謝卡範本 ===
-const isTemplateOpen = ref(false)
+// === 設定謝卡範本（inline 編輯，右欄即時預覽）===
+const isTemplateEditing = ref(false)
+const isCustomizeEditing = ref(false) // 客製 inline 編輯（可與範本同時展開）
 const isTemplateSubmitting = ref(false)
 const templateError = ref('')
 const templateContentInput = ref('')
 const templateImageUrl = ref<string | null>(null)
+// 信箋文字覆寫緩衝（留空＝沿用婚禮資料自動帶入）
+const greetingInput = ref('')
+const signatureInput = ref('')
+const signatureDateInput = ref('')
 
-function openTemplate() {
+// 右欄信箋即時預覽：編輯中顯示輸入值，否則顯示 GET 還原的已存值
+const previewContent = computed(() =>
+  isTemplateEditing.value ? templateContentInput.value : templateContent.value,
+)
+// 編輯中：完全反映編輯緩衝（含上傳 / 移除，移除後即時隱藏）；非編輯：顯示 GET 還原值
+const previewImageUrl = computed(() =>
+  isTemplateEditing.value ? templateImageUrl.value : (template.value?.templateImageUrl ?? null),
+)
+// 信箋署名預設：去除「的婚禮」後綴，僅以新人名落款（較短、避免窄欄斷行）
+const coupleSignature = computed(() =>
+  coupleName.value.replace(COUPLE_SUFFIX_RE, '') || coupleName.value,
+)
+// 信箋三段文字：編輯中顯示緩衝、否則 GET 還原值；皆留空時自動帶入婚禮資料當預設
+const previewGreeting = computed(() => {
+  const v = isTemplateEditing.value ? greetingInput.value : (template.value?.greeting ?? '')
+  return v.trim() || 'With Gratitude'
+})
+const previewSignature = computed(() => {
+  const v = isTemplateEditing.value ? signatureInput.value : (template.value?.signature ?? '')
+  return v.trim() || coupleSignature.value
+})
+const previewDate = computed(() => {
+  const v = isTemplateEditing.value ? signatureDateInput.value : (template.value?.signatureDate ?? '')
+  return v.trim() || weddingDate.value
+})
+// 金箔圓印：取署名前兩字
+const coupleInitials = computed(() => previewSignature.value.slice(0, 2) || '囍')
+
+function openTemplateEdit() {
   templateContentInput.value = templateContent.value
+  // 回填已存圖片：避免重新編輯時誤判圖片消失，也避免未重傳就再存被後端覆寫為 null
+  templateImageUrl.value = template.value?.templateImageUrl ?? null
+  // 回填信箋文字覆寫（同上：避免再存時被後端覆寫為 null）
+  greetingInput.value = template.value?.greeting ?? ''
+  signatureInput.value = template.value?.signature ?? ''
+  signatureDateInput.value = template.value?.signatureDate ?? ''
   templateError.value = ''
-  isTemplateOpen.value = true
+  isTemplateEditing.value = true
+}
+
+function cancelTemplateEdit() {
+  isTemplateEditing.value = false
+  templateError.value = ''
 }
 
 function onTemplateImageSelected(payload: { dataUrl: string }) {
   templateImageUrl.value = payload.dataUrl
+}
+
+function removeTemplateImage() {
+  templateImageUrl.value = null
 }
 
 async function submitTemplate() {
@@ -77,11 +126,14 @@ async function submitTemplate() {
     const body: SetThankYouTemplateBody = {
       templateContent: templateContentInput.value.trim(),
       ...(templateImageUrl.value ? { templateImageUrl: templateImageUrl.value } : {}),
+      ...(greetingInput.value.trim() ? { greeting: greetingInput.value.trim() } : {}),
+      ...(signatureInput.value.trim() ? { signature: signatureInput.value.trim() } : {}),
+      ...(signatureDateInput.value.trim() ? { signatureDate: signatureDateInput.value.trim() } : {}),
     }
     await setThankYouTemplate(weddingId.value, body)
     await refreshTemplate()
     toast.add({ title: '謝卡範本已儲存', color: 'success' })
-    isTemplateOpen.value = false
+    isTemplateEditing.value = false
   }
   catch (error: any) {
     templateError.value
@@ -92,8 +144,7 @@ async function submitTemplate() {
   }
 }
 
-// === 客製謝卡 ===
-const isCustomizeOpen = ref(false)
+// === 客製謝卡（inline 編輯）===
 const isCustomizeSubmitting = ref(false)
 const customizeError = ref('')
 const customizeGuestId = ref('')
@@ -104,11 +155,16 @@ const { data: customizations, refresh: refreshCustomizations } = await listThank
   { default: () => [] },
 )
 
-function openCustomize() {
+function openCustomizeEdit() {
   customizeGuestId.value = ''
   customizeContent.value = ''
   customizeError.value = ''
-  isCustomizeOpen.value = true
+  isCustomizeEditing.value = true
+}
+
+function cancelCustomizeEdit() {
+  isCustomizeEditing.value = false
+  customizeError.value = ''
 }
 
 async function submitCustomize() {
@@ -132,7 +188,7 @@ async function submitCustomize() {
     await customizeThankYouCard(weddingId.value, body)
     await refreshCustomizations()
     toast.add({ title: '謝卡客製已儲存', color: 'success' })
-    isCustomizeOpen.value = false
+    isCustomizeEditing.value = false
   }
   catch (error: any) {
     customizeError.value
@@ -203,6 +259,14 @@ function openFallback() {
   isFallbackOpen.value = true
 }
 
+// 從客製卡「寄這張謝卡」進入：預填該賓客
+function openFallbackFor(guestId: string) {
+  fallbackGuestId.value = guestId
+  fallbackChannel.value = 'link'
+  fallbackError.value = ''
+  isFallbackOpen.value = true
+}
+
 async function submitFallback() {
   if (isFallbackSending.value)
     return
@@ -239,215 +303,225 @@ async function submitFallback() {
     <PageHeader
       title="謝卡與感謝"
       eyebrow="With Gratitude"
-      description="設定謝卡範本、客製個別謝卡，並群發或替代發送感謝訊息"
-    >
-      <template #actions>
-        <div class="flex flex-wrap gap-2">
-          <UButton color="neutral" variant="outline" @click="openFallback">
-            替代感謝
-          </UButton>
-          <UButton color="neutral" variant="solid" @click="openBatch">
-            群發感謝訊息
-          </UButton>
-        </div>
-      </template>
-    </PageHeader>
+      description="寫一封謝卡、為個別賓客客製，再群發或替代寄出感謝"
+    />
 
     <div class="min-h-0 flex-1 overflow-auto">
-      <div class="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_minmax(320px,400px)]">
-        <!-- 左：編輯區 -->
-        <div class="space-y-10">
-          <!-- 謝卡範本 -->
-          <section>
-            <div class="mb-4 flex items-center gap-3">
-              <span class="text-overline uppercase text-gold-deep">謝卡範本</span>
-              <span class="h-px flex-1 bg-line" />
-            </div>
-            <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-              <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0 flex-1">
-                  <p
-                    v-if="templateContent"
-                    data-testid="template-preview"
-                    class="whitespace-pre-line text-body-l leading-relaxed text-ink-700 dark:text-neutral-300"
-                  >
-                    {{ templateContent }}
-                  </p>
-                  <p v-else class="text-body text-ink-300">
-                    尚未設定謝卡範本
-                  </p>
-                </div>
+      <div class="mx-auto max-w-5xl space-y-12 pb-8">
+        <!-- ═══ Step 01 · 寫一封謝卡 ═══ -->
+        <section>
+          <div class="mb-4 flex items-center gap-3">
+            <span class="text-overline uppercase text-gold-deep">Step 01 · 寫一封謝卡</span>
+            <span class="h-px flex-1 bg-line" />
+          </div>
+          <div class="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_minmax(320px,380px)]">
+            <!-- 左：範本 inline 編輯 -->
+            <div>
+              <!-- 摺疊態 -->
+              <div
+                v-if="!isTemplateEditing"
+                class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <p
+                  v-if="templateContent"
+                  class="whitespace-pre-line text-body-l leading-relaxed text-ink-700 dark:text-neutral-300"
+                >
+                  {{ templateContent }}
+                </p>
+                <p v-else class="text-body text-ink-300">
+                  點擊下方按鈕，開始撰寫您的謝卡。
+                </p>
                 <UButton
+                  class="mt-4"
                   color="neutral"
                   variant="outline"
-                  class="shrink-0"
-                  @click="openTemplate"
+                  @click="openTemplateEdit"
                 >
                   編輯謝卡範本
                 </UButton>
               </div>
-            </div>
-          </section>
-
-          <!-- 已群發結果 -->
-          <section
-            v-if="batchResultCount !== null"
-            data-testid="batch-result"
-            class="rounded-lg border border-line border-l-[3px] border-l-gold bg-paper p-5 dark:border-neutral-800 dark:bg-neutral-900"
-          >
-            <p class="text-ink-700 dark:text-neutral-300">
-              已發送給 {{ batchResultCount }} 位賓客
-            </p>
-          </section>
-
-          <!-- 客製謝卡 -->
-          <section>
-            <div class="mb-4 flex items-center justify-between gap-4">
-              <div class="flex flex-1 items-center gap-3">
-                <span class="text-overline uppercase text-gold-deep">個別客製謝卡</span>
-                <span class="h-px flex-1 bg-line" />
+              <!-- 展開態（inline，右欄即時預覽） -->
+              <div
+                v-else
+                class="space-y-4 rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <UAlert
+                  v-if="templateError"
+                  data-testid="template-error"
+                  icon="i-heroicons-exclamation-triangle"
+                  color="error"
+                  variant="soft"
+                  :title="templateError"
+                />
+                <UFormField label="致謝詞" name="greeting">
+                  <UInput
+                    v-model="greetingInput"
+                    placeholder="With Gratitude"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="範本內容" name="templateContent">
+                  <UTextarea
+                    v-model="templateContentInput"
+                    data-testid="template-content-input"
+                    :rows="4"
+                    placeholder="請輸入謝卡範本內容"
+                    class="w-full"
+                  />
+                </UFormField>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <UFormField label="新人署名" name="signature">
+                    <UInput
+                      v-model="signatureInput"
+                      :placeholder="coupleSignature"
+                      class="w-full"
+                    />
+                  </UFormField>
+                  <UFormField label="信箋日期" name="signatureDate">
+                    <UInput
+                      v-model="signatureDateInput"
+                      :placeholder="weddingDate"
+                      class="w-full"
+                    />
+                  </UFormField>
+                </div>
+                <p class="text-caption text-ink-500">
+                  致謝詞、署名與日期留空時，將自動帶入婚禮基本資料。
+                </p>
+                <UFormField label="範本圖片" name="templateImageUrl">
+                  <!-- 目前已套用的圖片：讓使用者明確看到圖片仍在、可替換或移除 -->
+                  <div
+                    v-if="templateImageUrl"
+                    class="mb-3 flex items-center gap-3 rounded-lg border border-line bg-paper p-3 dark:border-neutral-800 dark:bg-neutral-900"
+                  >
+                    <img
+                      :src="templateImageUrl"
+                      alt="目前謝卡圖片"
+                      class="h-16 w-24 shrink-0 rounded border border-line object-cover"
+                    >
+                    <span class="flex-1 text-caption text-ink-500">
+                      目前已套用此圖片，重新上傳可替換。
+                    </span>
+                    <UButton
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      icon="i-heroicons-trash"
+                      @click="removeTemplateImage"
+                    >
+                      移除
+                    </UButton>
+                  </div>
+                  <FileUpload
+                    accept="image/*"
+                    :label="templateImageUrl ? '點擊或拖放上傳新圖片以替換' : '點擊或拖放上傳謝卡圖片'"
+                    @selected="onTemplateImageSelected"
+                  />
+                </UFormField>
+                <div class="flex justify-end gap-3">
+                  <UButton
+                    color="neutral"
+                    variant="outline"
+                    :disabled="isTemplateSubmitting"
+                    @click="cancelTemplateEdit"
+                  >
+                    取消
+                  </UButton>
+                  <UButton
+                    data-testid="template-submit"
+                    color="neutral"
+                    variant="solid"
+                    :loading="isTemplateSubmitting"
+                    @click="submitTemplate"
+                  >
+                    儲存範本
+                  </UButton>
+                </div>
               </div>
-              <UButton color="neutral" variant="outline" @click="openCustomize">
-                客製謝卡
-              </UButton>
             </div>
 
-            <div v-if="customizationList.length === 0">
-              <EmptyState title="尚無客製謝卡" description="可為個別賓客客製專屬謝卡內容" />
-            </div>
-            <ul v-else class="space-y-2.5">
-              <li
-                v-for="c in customizationList"
-                :key="c.guestId"
-                :aria-label="c.name"
-                class="rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
-              >
-                <p class="font-medium text-ink dark:text-paper">
-                  {{ c.name }}
-                </p>
-                <p class="mt-1 text-body text-ink-500 dark:text-neutral-400">
-                  {{ c.content }}
-                </p>
-              </li>
-            </ul>
-          </section>
-        </div>
-
-        <!-- 右：謝卡風即時預覽（With Gratitude / Cormorant italic / 金線 / 新人名 Cormorant） -->
-        <aside class="lg:sticky lg:top-0">
-          <div class="mb-4 flex items-center gap-3">
-            <span class="text-overline uppercase text-gold-deep">即時預覽</span>
-            <span class="h-px flex-1 bg-line" />
+            <!-- 右：精緻信箋即時預覽 -->
+            <aside class="lg:sticky lg:top-4">
+              <div class="mb-3 flex items-center justify-center gap-3">
+                <span class="h-px w-8 bg-gold" />
+                <span class="text-overline uppercase text-gold-deep">Live Preview</span>
+                <span class="h-px w-8 bg-gold" />
+              </div>
+              <article class="relative overflow-hidden rounded-lg bg-paper shadow-lg dark:bg-neutral-900">
+                <!-- 內金線框 -->
+                <span class="pointer-events-none absolute inset-2.5 z-10 rounded border border-gold/30" />
+                <!-- 頂部主視覺帶（有上傳圖才顯示） -->
+                <div v-if="previewImageUrl" class="relative">
+                  <img :src="previewImageUrl" alt="" class="h-36 w-full object-cover">
+                  <span class="block h-px w-full bg-gold/50" />
+                </div>
+                <div class="relative flex flex-col items-center px-8 py-10 text-center">
+                  <p class="text-overline uppercase text-gold-deep">
+                    {{ previewGreeting }}
+                  </p>
+                  <!-- 金箔圓印（新人名縮寫） -->
+                  <div class="mt-6 flex size-14 items-center justify-center rounded-full bg-gold-light font-display text-body-l font-semibold text-gold-deep">
+                    {{ coupleInitials }}
+                  </div>
+                  <span class="my-6 h-px w-10 bg-gold" />
+                  <!-- 即時範本文字 -->
+                  <p
+                    v-if="previewContent"
+                    data-testid="template-preview"
+                    class="max-w-xs whitespace-pre-line text-body-l leading-relaxed text-ink-700 dark:text-neutral-300"
+                  >
+                    {{ previewContent }}
+                  </p>
+                  <p v-else class="max-w-xs text-body leading-loose text-ink-300">
+                    尚未設定謝卡範本
+                  </p>
+                  <p
+                    v-if="previewSignature"
+                    class="mt-8 text-balance font-display text-h2 font-semibold leading-tight text-ink dark:text-paper"
+                  >
+                    {{ previewSignature }}
+                  </p>
+                  <p v-if="previewDate" class="mt-2 text-caption tracking-widest text-ink-500">
+                    {{ previewDate }}
+                  </p>
+                </div>
+              </article>
+            </aside>
           </div>
-          <div class="flex flex-col items-center rounded-lg border border-line bg-paper px-8 py-12 text-center dark:border-neutral-800 dark:bg-neutral-900">
-            <p class="text-overline uppercase tracking-[0.32em] text-gold-deep">
-              With Gratitude
-            </p>
-            <p class="mt-8 font-display text-3xl italic leading-snug text-gold">
-              謝謝你，<br>來見證我們的開始
-            </p>
-            <span class="my-8 h-px w-10 bg-gold" />
-            <p class="max-w-xs whitespace-pre-line text-body leading-loose text-ink-700 dark:text-neutral-300">
-              {{ templateContent || '在此設定謝卡範本，賓客將收到這份感謝。' }}
-            </p>
-            <p
-              v-if="coupleName"
-              class="mt-10 font-display text-4xl font-semibold leading-none text-ink dark:text-paper"
+        </section>
+
+        <!-- ═══ Step 02 · 為個別賓客客製 ═══ -->
+        <section>
+          <div class="mb-4 flex items-center justify-between gap-4">
+            <div class="flex flex-1 items-center gap-3">
+              <span class="text-overline uppercase text-gold-deep">Step 02 · 個別客製</span>
+              <span class="h-px flex-1 bg-line" />
+            </div>
+            <UButton
+              v-if="!isCustomizeEditing"
+              color="neutral"
+              variant="outline"
+              @click="openCustomizeEdit"
             >
-              {{ coupleName }}
-            </p>
-            <p v-if="weddingDate" class="mt-2 text-caption tracking-widest text-ink-500">
-              {{ weddingDate }}
-            </p>
-            <span class="my-8 h-px w-full bg-line" />
-            <span class="text-body text-gold-deep">
-              為新人留下祝福 →
-            </span>
+              客製謝卡
+            </UButton>
           </div>
-        </aside>
-      </div>
-    </div>
-
-    <!-- 設定謝卡範本 Modal -->
-    <UModal v-model:open="isTemplateOpen">
-      <template #content>
-        <div data-testid="template-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
-            設定謝卡範本
-          </h3>
-
-          <UAlert
-            v-if="templateError"
-            data-testid="template-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="templateError"
-            class="mb-4"
-          />
-
-          <div class="space-y-4">
-            <UFormField label="範本內容" name="templateContent">
-              <UTextarea
-                v-model="templateContentInput"
-                data-testid="template-content-input"
-                :rows="3"
-                placeholder="請輸入謝卡範本內容"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UFormField label="範本圖片" name="templateImageUrl">
-              <FileUpload
-                accept="image/*"
-                label="點擊或拖放上傳謝卡圖片"
-                @selected="onTemplateImageSelected"
-              />
-            </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isTemplateSubmitting"
-                @click="isTemplateOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                data-testid="template-submit"
-                color="neutral"
-                variant="solid"
-                :loading="isTemplateSubmitting"
-                @click="submitTemplate"
-              >
-                儲存範本
-              </UButton>
-            </div>
-          </div>
-        </div>
-      </template>
-    </UModal>
-
-    <!-- 客製謝卡 Modal -->
-    <UModal v-model:open="isCustomizeOpen">
-      <template #content>
-        <div data-testid="customize-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
-            客製謝卡
-          </h3>
-
-          <UAlert
-            v-if="customizeError"
-            data-testid="customize-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="customizeError"
-            class="mb-4"
-          />
-
-          <div class="space-y-4">
+          <p class="mb-4 text-caption text-ink-500">
+            為特定賓客覆蓋專屬內容；寄送時將以客製內容取代範本。
+          </p>
+          <!-- 客製 inline 編輯 -->
+          <div
+            v-if="isCustomizeEditing"
+            class="mb-6 space-y-4 rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <UAlert
+              v-if="customizeError"
+              data-testid="customize-error"
+              icon="i-heroicons-exclamation-triangle"
+              color="error"
+              variant="soft"
+              :title="customizeError"
+            />
             <UFormField label="客製內容" name="customContent">
               <UTextarea
                 v-model="customizeContent"
@@ -457,7 +531,6 @@ async function submitFallback() {
                 class="w-full"
               />
             </UFormField>
-
             <UFormField label="賓客" name="guestId">
               <USelectMenu
                 v-model="customizeGuestId"
@@ -468,13 +541,12 @@ async function submitFallback() {
                 class="w-full"
               />
             </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
+            <div class="flex justify-end gap-3">
               <UButton
                 color="neutral"
                 variant="outline"
                 :disabled="isCustomizeSubmitting"
-                @click="isCustomizeOpen = false"
+                @click="cancelCustomizeEdit"
               >
                 取消
               </UButton>
@@ -489,15 +561,95 @@ async function submitFallback() {
               </UButton>
             </div>
           </div>
-        </div>
-      </template>
-    </UModal>
+          <!-- 客製清單：mini 信箋卡 -->
+          <div v-if="customizationList.length === 0">
+            <EmptyState title="尚無客製謝卡" description="可為個別賓客客製專屬謝卡內容" />
+          </div>
+          <ul v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <li
+              v-for="c in customizationList"
+              :key="c.guestId"
+              :aria-label="c.name"
+              class="rounded-lg bg-paper p-5 shadow-sm ring-1 ring-gold/20 dark:bg-neutral-900"
+            >
+              <div class="flex items-center gap-2.5">
+                <span class="flex size-8 items-center justify-center rounded-full bg-gold-light text-caption font-medium text-gold-deep">
+                  {{ c.name.slice(0, 1) }}
+                </span>
+                <p class="font-display text-body-l font-medium text-ink dark:text-paper">
+                  {{ c.name }}
+                </p>
+              </div>
+              <span class="my-3 block h-px w-8 bg-gold" />
+              <p class="whitespace-pre-line text-body leading-relaxed text-ink-700 dark:text-neutral-300">
+                {{ c.content }}
+              </p>
+              <div class="mt-3 flex justify-end">
+                <UButton color="primary" variant="link" @click="openFallbackFor(c.guestId)">
+                  寄這張謝卡 →
+                </UButton>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <!-- ═══ Step 03 · 寄出感謝 ═══ -->
+        <section>
+          <div class="mb-4 flex items-center gap-3">
+            <span class="text-overline uppercase text-gold-deep">Step 03 · 寄出感謝</span>
+            <span class="h-px flex-1 bg-line" />
+          </div>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <!-- A 群發 LINE -->
+            <div class="flex flex-col rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div class="flex items-center gap-2 text-gold-deep">
+                <UIcon name="i-heroicons-chat-bubble-left-right" class="size-5" />
+                <p class="font-display text-body-l font-medium text-ink dark:text-paper">
+                  群發感謝（LINE）
+                </p>
+              </div>
+              <p class="mt-2 flex-1 text-body text-ink-500 dark:text-neutral-400">
+                一鍵送給所有<span class="text-ink dark:text-paper">已綁定 LINE</span> 的賓客。
+              </p>
+              <UButton class="mt-4" color="neutral" variant="solid" block @click="openBatch">
+                群發感謝訊息
+              </UButton>
+            </div>
+            <!-- B 替代感謝 -->
+            <div class="flex flex-col rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div class="flex items-center gap-2 text-gold-deep">
+                <UIcon name="i-heroicons-envelope" class="size-5" />
+                <p class="font-display text-body-l font-medium text-ink dark:text-paper">
+                  替代感謝（Email／連結）
+                </p>
+              </div>
+              <p class="mt-2 flex-1 text-body text-ink-500 dark:text-neutral-400">
+                給<span class="text-ink dark:text-paper">未加 LINE 好友</span>的賓客，改用 Email 或專屬連結逐一送達。
+              </p>
+              <UButton class="mt-4" color="neutral" variant="outline" block @click="openFallback">
+                替代感謝
+              </UButton>
+            </div>
+          </div>
+          <!-- 群發結果 -->
+          <section
+            v-if="batchResultCount !== null"
+            data-testid="batch-result"
+            class="mt-4 rounded-lg border border-line border-l-[3px] border-l-gold bg-paper p-5 dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <p class="text-ink-700 dark:text-neutral-300">
+              已發送給 {{ batchResultCount }} 位賓客
+            </p>
+          </section>
+        </section>
+      </div>
+    </div>
 
     <!-- 群發感謝確認 -->
     <UModal v-model:open="isBatchOpen">
       <template #content>
         <div data-testid="batch-modal" class="p-6">
-          <h3 class="text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="font-display text-body-l font-semibold text-ink dark:text-paper">
             群發感謝訊息
           </h3>
           <p class="mt-2 text-neutral-500 dark:text-neutral-400">
@@ -541,7 +693,7 @@ async function submitFallback() {
     <UModal v-model:open="isFallbackOpen">
       <template #content>
         <div data-testid="fallback-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+          <h3 class="mb-4 font-display text-body-l font-semibold text-ink dark:text-paper">
             發送替代感謝
           </h3>
 

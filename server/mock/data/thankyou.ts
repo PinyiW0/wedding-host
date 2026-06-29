@@ -4,6 +4,9 @@ export interface MockThankYouTemplate {
   weddingId: string
   templateContent: string
   templateImageUrl: string | null
+  greeting: string | null
+  signature: string | null
+  signatureDate: string | null
 }
 
 export interface MockThankYouCustomization {
