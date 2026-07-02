@@ -7,7 +7,7 @@ import type {
   InvitationPreference,
   OverrideRsvpBody,
 } from '~/types/api/rsvp'
-import { deleteGuest, getWedding, listGuests, overrideRsvp, updateGuest } from '~/api'
+import { deleteGuest, getRsvpFormConfig, getWedding, listGuests, overrideRsvp, updateGuest } from '~/api'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
 import { createZip, dataUrlToBytes } from '~/utils/zip'
 
@@ -21,6 +21,27 @@ const weddingId = computed(() => String(route.params.weddingId))
 const { data: guests, refresh } = await listGuests(weddingId, { default: () => [] })
 // 新人姓名（顯示「新郎振茗 · 家人」這類關係描述）
 const { data: wedding } = await getWedding(weddingId)
+
+// RSVP 表單設定：用於把自訂題答案的 id 對應回題目標籤
+const { data: rsvpConfig } = await getRsvpFormConfig(weddingId)
+const customLabelMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const q of rsvpConfig.value?.questions ?? []) {
+    if (q.type !== 'builtin')
+      map.set(q.id, q.label)
+  }
+  return map
+})
+// 自訂題答案（key=題目 id）展平成可顯示的 { label, value } 清單
+function customAnswerEntries(guest: GuestListItem) {
+  const answers = guest.customAnswers
+  if (!answers)
+    return []
+  return Object.entries(answers).map(([id, value]) => ({
+    label: customLabelMap.value.get(id) || id,
+    value: Array.isArray(value) ? value.join('、') : value,
+  }))
+}
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -358,6 +379,17 @@ async function confirmRemove() {
     >
       <template #actions>
         <div class="flex items-center gap-5">
+          <UButton
+            data-testid="rsvp-view-flowers"
+            icon="i-heroicons-sparkles"
+            color="neutral"
+            variant="ghost"
+            :to="`/flowers/${weddingId}`"
+            target="_blank"
+            external
+          >
+            查看花田
+          </UButton>
           <UButton
             data-testid="rsvp-download-flowers"
             icon="i-heroicons-photo"
@@ -871,6 +903,18 @@ async function confirmRemove() {
               </dt>
               <dd class="col-span-2 whitespace-pre-line text-ink dark:text-paper">
                 {{ detailTarget.blessing }}
+              </dd>
+            </div>
+            <div
+              v-for="entry in customAnswerEntries(detailTarget)"
+              :key="entry.label"
+              class="grid grid-cols-3 gap-4 py-3"
+            >
+              <dt class="text-caption text-gold-deep">
+                {{ entry.label }}
+              </dt>
+              <dd class="col-span-2 whitespace-pre-line text-ink dark:text-paper">
+                {{ entry.value }}
               </dd>
             </div>
             <div v-if="detailTarget.flowerDrawing" class="grid grid-cols-3 gap-4 py-3">

@@ -36,6 +36,8 @@ export interface SubmitRsvpBody {
   // 接駁車（限男方親友／高雄地區）：是否搭乘、搭車人數
   needsShuttle?: boolean
   shuttleCount?: number
+  // 自訂題答案：key = 自訂題 id，值為單行文字／單選 value，或多選 value 陣列（選填）
+  customAnswers?: Record<string, string | string[]>
 }
 
 export interface RsvpSubmittedEvent {
@@ -54,6 +56,7 @@ export interface RsvpSubmittedEvent {
   flowerDrawing?: string
   needsShuttle?: boolean
   shuttleCount?: number
+  customAnswers?: Record<string, string | string[]>
 }
 
 export interface OverrideRsvpBody {

@@ -43,16 +43,17 @@ test.describe('vibe：訪客 RSVP 條件渲染', () => {
     await expect(page.getByRole('button', { name: /^葷食$/ })).toBeVisible()
   })
 
-  test('男方親友＋出席 → 顯示接駁車；選需要搭乘 → 顯示搭車人數', async ({ page }) => {
+  // 接駁車已由系統題改為「自訂單選題範例」（高雄地區接駁車），常駐顯示並附限定對象說明
+  test('自訂接駁題：顯示限定對象說明與選項（高雄地區的家人）', async ({ page }) => {
     await page.goto(RSVP_URL, { waitUntil: 'networkidle' })
 
-    // 選新郎側（第一顆）；預設為出席 → 接駁車提問出現
-    await page.getByRole('button', { name: /的親友/ }).first().click()
+    // 預設範本含自訂單選題「高雄地區接駁車」，常駐顯示，並附限定對象說明
     await expect(page.getByText(/高雄地區接駁車/)).toBeVisible()
+    await expect(page.getByText(/只有高雄地區的家人/)).toBeVisible()
 
-    // 選「需要搭乘」→ 搭車人數欄位出現
+    // 可選「需要搭乘」（單選，選後維持可見）
     await page.getByRole('button', { name: /需要搭乘/ }).click()
-    await expect(page.getByText(/搭車人數/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /需要搭乘/ })).toBeVisible()
   })
 
   test('喜帖類型切換 → 顯示對應條件欄位（電子＝加 LINE、實體＝地址）', async ({ page }) => {

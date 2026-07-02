@@ -4,6 +4,7 @@ import { mockBlessings } from './blessings'
 import { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 import { mockGuests } from './guests'
 import { mockLineOas } from './line'
+import { mockRsvpFormConfigs } from './rsvp-config'
 import {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
@@ -20,6 +21,7 @@ export { mockBlessings } from './blessings'
 export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'
+export { mockRsvpFormConfigs } from './rsvp-config'
 export {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
@@ -42,6 +44,7 @@ const stores = [
   mockCakeBoxTypes,
   mockGuests,
   mockLineOas,
+  mockRsvpFormConfigs,
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
   mockSeats,

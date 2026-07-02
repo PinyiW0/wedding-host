@@ -41,6 +41,8 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
     guest.needsShuttle = body.needsShuttle
   if (body.shuttleCount !== undefined)
     guest.shuttleCount = body.shuttleCount
+  if (body.customAnswers !== undefined)
+    guest.customAnswers = body.customAnswers
 
   setResponseStatus(event, 201)
   return {
@@ -59,5 +61,6 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
     flowerDrawing: body.flowerDrawing,
     needsShuttle: body.needsShuttle,
     shuttleCount: body.shuttleCount,
+    customAnswers: body.customAnswers,
   }
 })
