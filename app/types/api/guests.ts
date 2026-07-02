@@ -4,6 +4,10 @@ import type { AttendingStatus, InvitationPreference } from './rsvp'
 
 export type GuestSide = 'groom' | 'bride'
 export type GuestDiet = 'meat' | 'vegetarian'
+// 名單狀態：confirmed = 正式名單；pending_review = 公開自助 RSVP 待人工確認
+export type GuestStatus = 'confirmed' | 'pending_review'
+// 來源：manual = 後台手動新增；import = 批次匯入；rsvp = 公開自助回覆
+export type GuestSource = 'manual' | 'import' | 'rsvp'
 
 export interface GuestListItem {
   guestId: string
@@ -30,6 +34,11 @@ export interface GuestListItem {
   flowerDrawing?: string | null
   needsShuttle?: boolean | null
   shuttleCount?: number | null
+  // 自訂題答案（供後台 RSVP 頁檢視；未填為 null）
+  customAnswers?: Record<string, string | string[]> | null
+  // 名單狀態與來源（混合制：公開自助回覆進待確認區）；省略視為 confirmed / manual
+  status?: GuestStatus
+  source?: GuestSource
   deletedAt: string | null
 }
 

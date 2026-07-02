@@ -1,6 +1,7 @@
 // 賓客 mock 資料（含報到 / 禮金 / 喜餅 / RSVP 等接待狀態欄位）
 // seed：guest-001（陳大明 / 男方 / 葷食 / 同事 / 未綁定 LINE / 未報到 / 未登記禮金 / 未發放喜餅）
 
+import type { GuestSource, GuestStatus } from '../../../app/types/api/guests'
 import type { AttendingStatus, InvitationPreference } from '../../../app/types/api/rsvp'
 
 // 範例手繪小花（120×120 透明底 PNG）：供後台「查看回覆 / 下載花朵」即時示範
@@ -35,6 +36,11 @@ export interface MockGuest {
   // 接駁車（限男方親友／高雄地區）
   needsShuttle?: boolean | null
   shuttleCount?: number | null
+  // 自訂題答案（key = 自訂題 id）
+  customAnswers?: Record<string, string | string[]> | null
+  // 名單狀態與來源（混合制）；省略視為 confirmed / manual
+  status?: GuestStatus
+  source?: GuestSource
 }
 
 function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 'side' | 'diet' | 'category'>): MockGuest {

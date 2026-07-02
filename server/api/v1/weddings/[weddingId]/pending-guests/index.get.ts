@@ -3,11 +3,11 @@ import type { GuestListItem } from '../../../../../../app/types/api/guests'
 
 import { mockGuests } from '../../../../../mock/data/guests'
 
+// 待確認賓客清單：公開自助回覆（status='pending_review'）且未略過者
 export default defineEventHandler((event: H3Event): GuestListItem[] => {
   const weddingId = getRouterParam(event, 'weddingId')
   return mockGuests
-    // 待確認賓客（公開自助回覆）不進正式名單，由待確認區獨立端點處理
-    .filter(g => g.weddingId === weddingId && g.status !== 'pending_review')
+    .filter(g => g.weddingId === weddingId && g.status === 'pending_review' && !g.deletedAt)
     .map(g => ({
       guestId: g.guestId,
       weddingId: g.weddingId,

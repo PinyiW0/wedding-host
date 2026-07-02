@@ -11,16 +11,22 @@ import type {
   UpdateGuestBody,
 } from '~/types/api/guests'
 
-import { z } from 'zod'
+import type { MatchConfidence } from '~/utils/guestMatch'
 
+import { z } from 'zod'
 import {
+  confirmPendingGuest,
   createGuest,
   deleteGuest,
   importGuests,
   listGuests,
+  listPendingGuests,
+  mergePendingGuest,
+  rejectPendingGuest,
   restoreGuest,
   updateGuest,
 } from '~/api'
+import { matchConfidenceLabel, suggestMatches } from '~/utils/guestMatch'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
 
 definePageMeta({ layout: 'default' })
@@ -41,6 +47,97 @@ const deletedGuests = computed(() =>
   (guests.value ?? []).filter(g => g.deletedAt),
 )
 
+// 待確認賓客（公開自助回覆，與正式名單隔離；獨立端點）
+const { data: pendingGuests, refresh: refreshPending } = await listPendingGuests(weddingId, {
+  default: () => [],
+})
+const pendingList = computed(() => pendingGuests.value ?? [])
+
+// 姓名提示候選（永不自動合併）：以正式名單比對每筆待確認回覆
+function candidatesFor(pending: GuestListItem) {
+  return suggestMatches(activeGuests.value, pending)
+}
+const confidenceColor: Record<MatchConfidence, 'success' | 'warning' | 'neutral'> = {
+  high: 'success',
+  medium: 'warning',
+  low: 'neutral',
+}
+
+// 待確認動作：併入既有 / 建為新賓客 / 略過
+const actingId = ref<string | null>(null)
+async function doMerge(pending: GuestListItem, target: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await mergePendingGuest(weddingId.value, pending.guestId, { targetGuestId: target.guestId })
+    toast.add({ title: `已併入 ${target.name}`, color: 'success' })
+    await Promise.all([refresh(), refreshPending()])
+  }
+  catch (error: any) {
+    toast.add({
+      title: '併入失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+async function doConfirm(pending: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await confirmPendingGuest(weddingId.value, pending.guestId)
+    toast.add({ title: `已建立賓客 ${pending.name}`, color: 'success' })
+    await Promise.all([refresh(), refreshPending()])
+  }
+  catch (error: any) {
+    toast.add({
+      title: '建立失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+async function doReject(pending: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await rejectPendingGuest(weddingId.value, pending.guestId)
+    toast.add({ title: '已略過此回覆', color: 'success' })
+    await refreshPending()
+  }
+  catch (error: any) {
+    toast.add({
+      title: '略過失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+
+// 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
+async function copyPublicLink() {
+  const url = `${window.location.origin}/rsvp/public/${weddingId.value}`
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: '已複製公開回覆連結', description: url, color: 'success' })
+  }
+  catch {
+    toast.add({ title: '複製失敗', description: url, color: 'error' })
+  }
+}
+
 // 顯示文字對照
 const sideLabel = (side: GuestSide) => (side === 'groom' ? '男方' : '女方')
 const dietLabel = (diet: GuestDiet) => (diet === 'meat' ? '葷食' : '素食')
@@ -49,16 +146,19 @@ const dietLabel = (diet: GuestDiet) => (diet === 'meat' ? '葷食' : '素食')
 const rsvpMeta = (s: GuestListItem['rsvpAttending']) => rsvpAttendingMeta(s)
 
 // === 篩選膠囊（純前端，預設「全部」；膠囊帶數量避免與表單「男方」按鈕撞名）===
-type GuestFilter = 'all' | 'groom' | 'bride' | 'pending'
+type GuestFilter = 'all' | 'groom' | 'bride' | 'pending' | 'review'
 const filter = ref<GuestFilter>('all')
 const filterTabs = [
   { key: 'all', label: '全部' },
   { key: 'groom', label: '男方' },
   { key: 'bride', label: '女方' },
   { key: 'pending', label: '待回覆' },
+  { key: 'review', label: '待確認' },
 ] as const
 
 function countOf(key: GuestFilter) {
+  if (key === 'review')
+    return pendingList.value.length
   const list = activeGuests.value
   if (key === 'groom')
     return list.filter(g => g.side === 'groom').length
@@ -324,6 +424,15 @@ async function confirmImport() {
       <template #actions>
         <div class="flex gap-2">
           <UButton
+            data-testid="guest-public-link"
+            icon="i-heroicons-link"
+            color="neutral"
+            variant="ghost"
+            @click="copyPublicLink"
+          >
+            公開回覆連結
+          </UButton>
+          <UButton
             data-testid="guest-import"
             icon="i-heroicons-arrow-up-tray"
             color="neutral"
@@ -373,147 +482,250 @@ async function confirmImport() {
     </div>
 
     <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 賓客名單（未移除）— 編輯式表格 -->
-      <table
-        data-testid="guest-list"
-        class="w-full border-collapse text-body"
-      >
-        <thead>
-          <tr class="text-left text-overline uppercase text-gold-deep">
-            <th class="border-b border-line px-3 py-3.5 font-medium">
-              姓名
-            </th>
-            <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
-              方
-            </th>
-            <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
-              餐點
-            </th>
-            <th class="hidden border-b border-line px-3 py-3.5 font-medium md:table-cell">
-              分類
-            </th>
-            <th class="border-b border-line px-3 py-3.5 font-medium">
-              RSVP
-            </th>
-            <th class="border-b border-line px-3 py-3.5 text-right font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody class="text-ink-700 dark:text-neutral-300">
-          <tr
-            v-for="guest in filteredGuests"
-            :key="guest.guestId"
-            :data-testid="`guest-row-${guest.guestId}`"
-            class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
+      <!-- 待確認區（公開自助回覆，人工併入；系統永不自動合併） -->
+      <template v-if="filter === 'review'">
+        <EmptyState
+          v-if="pendingList.length === 0"
+          title="目前沒有待確認回覆"
+          description="賓客透過公開連結自助回覆後，會出現在這裡等待人工確認"
+        />
+        <div v-else class="space-y-4">
+          <div
+            v-for="pending in pendingList"
+            :key="pending.guestId"
+            :data-testid="`pending-card-${pending.guestId}`"
+            class="rounded-lg border border-line bg-paper p-5 dark:border-neutral-800 dark:bg-neutral-900"
           >
-            <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
-              <span class="flex items-center gap-2.5">
-                <span
-                  class="size-2 shrink-0 rounded-full"
-                  :class="guest.side === 'groom' ? 'bg-info-500' : 'bg-gold'"
-                />
-                <span class="font-medium text-ink dark:text-paper">
-                  {{ guest.name }}
-                </span>
-              </span>
-            </td>
-            <td class="hidden border-b border-line px-3 py-4 sm:table-cell dark:border-neutral-800">
-              <span :class="guest.side === 'groom' ? 'text-info-500' : 'text-gold'">
-                {{ sideLabel(guest.side) }}
-              </span>
-            </td>
-            <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
-              <span>{{ dietLabel(guest.diet) }}</span>
-              <span v-if="guest.childChairCount > 0" class="text-ink-300"> · 兒童椅 ×{{ guest.childChairCount }}</span>
-            </td>
-            <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
-              {{ guest.category }}
-            </td>
-            <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
-              <StatusBadge :color="rsvpMeta(guest.rsvpAttending).color">
-                {{ rsvpMeta(guest.rsvpAttending).label }}
-              </StatusBadge>
-            </td>
-            <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
-              <div class="flex justify-end gap-1">
-                <UButton
-                  data-testid="guest-edit"
-                  icon="i-heroicons-pencil"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`編輯 ${guest.name}`"
-                  @click="openEdit(guest)"
-                >
-                  編輯
-                </UButton>
-                <UButton
-                  data-testid="guest-remove"
-                  icon="i-heroicons-trash"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`移除 ${guest.name}`"
-                  @click="openRemove(guest)"
-                >
-                  移除
-                </UButton>
+            <!-- 回覆摘要 -->
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-display text-h3 font-semibold text-ink dark:text-paper">
+                  {{ pending.name }}
+                </p>
+                <p class="mt-0.5 text-caption text-ink-300">
+                  {{ sideLabel(pending.side) }} · {{ pending.category }} · {{ dietLabel(pending.diet) }}
+                  <span v-if="pending.contact"> · {{ pending.contact }}</span>
+                </p>
+                <p class="mt-2">
+                  <StatusBadge :color="rsvpMeta(pending.rsvpAttending).color">
+                    {{ rsvpMeta(pending.rsvpAttending).label }}
+                  </StatusBadge>
+                </p>
+                <p v-if="pending.blessing" class="mt-2 whitespace-pre-line text-body text-ink-500">
+                  「{{ pending.blessing }}」
+                </p>
               </div>
-            </td>
-          </tr>
-          <tr v-if="filteredGuests.length === 0">
-            <td colspan="6">
-              <EmptyState
-                title="目前沒有賓客"
-                description="點擊「新增賓客」或「匯入名單」建立賓客名單"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              <UBadge color="warning" variant="soft">
+                待確認
+              </UBadge>
+            </div>
 
-      <!-- 回收區（已移除，常駐渲染供恢復操作可達） -->
-      <div v-if="deletedGuests.length > 0">
-        <div class="mb-3 flex items-center gap-3">
-          <span class="text-overline uppercase text-gold-deep">已移除的賓客</span>
-          <span class="h-px flex-1 bg-line" />
+            <!-- 姓名提示候選 -->
+            <div class="mt-4 border-t border-line pt-4 dark:border-neutral-800">
+              <p class="mb-2 text-overline uppercase text-gold-deep">
+                系統提示候選（永不自動合併，請人工確認）
+              </p>
+              <p v-if="candidatesFor(pending).length === 0" class="text-caption text-ink-300">
+                無相符的既有賓客，建議「建為新賓客」
+              </p>
+              <ul v-else class="space-y-2">
+                <li
+                  v-for="c in candidatesFor(pending)"
+                  :key="c.guest.guestId"
+                  class="flex items-center justify-between gap-3 rounded border border-line px-3 py-2 dark:border-neutral-800"
+                >
+                  <span class="flex min-w-0 flex-wrap items-center gap-2">
+                    <span class="font-medium text-ink dark:text-paper">{{ c.guest.name }}</span>
+                    <UBadge :color="confidenceColor[c.confidence]" variant="soft" size="xs">
+                      {{ matchConfidenceLabel[c.confidence] }}
+                    </UBadge>
+                    <span class="text-caption text-ink-300">{{ c.reason }}</span>
+                  </span>
+                  <UButton
+                    color="primary"
+                    variant="soft"
+                    size="xs"
+                    :loading="actingId === pending.guestId"
+                    :aria-label="`併入${c.guest.name}`"
+                    @click="doMerge(pending, c.guest)"
+                  >
+                    併入
+                  </UButton>
+                </li>
+              </ul>
+            </div>
+
+            <!-- 動作 -->
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-heroicons-user-plus"
+                :loading="actingId === pending.guestId"
+                @click="doConfirm(pending)"
+              >
+                建為新賓客
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-heroicons-x-mark"
+                :loading="actingId === pending.guestId"
+                @click="doReject(pending)"
+              >
+                略過
+              </UButton>
+            </div>
+          </div>
         </div>
+      </template>
+
+      <!-- 正式名單 -->
+      <template v-else>
+        <!-- 賓客名單（未移除）— 編輯式表格 -->
         <table
-          data-testid="guest-deleted-list"
-          class="w-full border-collapse"
+          data-testid="guest-list"
+          class="w-full border-collapse text-body"
         >
-          <tbody>
+          <thead>
+            <tr class="text-left text-overline uppercase text-gold-deep">
+              <th class="border-b border-line px-3 py-3.5 font-medium">
+                姓名
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                方
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                餐點
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium md:table-cell">
+                分類
+              </th>
+              <th class="border-b border-line px-3 py-3.5 font-medium">
+                RSVP
+              </th>
+              <th class="border-b border-line px-3 py-3.5 text-right font-medium">
+                操作
+              </th>
+            </tr>
+          </thead>
+          <tbody class="text-ink-700 dark:text-neutral-300">
             <tr
-              v-for="guest in deletedGuests"
+              v-for="guest in filteredGuests"
               :key="guest.guestId"
               :data-testid="`guest-row-${guest.guestId}`"
+              class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
             >
               <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
-                <span class="font-medium text-ink-300 line-through">
-                  {{ guest.name }}
+                <span class="flex items-center gap-2.5">
+                  <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="guest.side === 'groom' ? 'bg-info-500' : 'bg-gold'"
+                  />
+                  <span class="font-medium text-ink dark:text-paper">
+                    {{ guest.name }}
+                  </span>
                 </span>
               </td>
-              <td class="hidden border-b border-line px-3 py-4 text-ink-300 sm:table-cell dark:border-neutral-800">
-                {{ sideLabel(guest.side) }}
+              <td class="hidden border-b border-line px-3 py-4 sm:table-cell dark:border-neutral-800">
+                <span :class="guest.side === 'groom' ? 'text-info-500' : 'text-gold'">
+                  {{ sideLabel(guest.side) }}
+                </span>
+              </td>
+              <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
+                <span>{{ dietLabel(guest.diet) }}</span>
+                <span v-if="guest.childChairCount > 0" class="text-ink-300"> · 兒童椅 ×{{ guest.childChairCount }}</span>
+              </td>
+              <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
+                {{ guest.category }}
+              </td>
+              <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <StatusBadge :color="rsvpMeta(guest.rsvpAttending).color">
+                  {{ rsvpMeta(guest.rsvpAttending).label }}
+                </StatusBadge>
               </td>
               <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
-                <UButton
-                  data-testid="guest-restore"
-                  icon="i-heroicons-arrow-uturn-left"
-                  color="primary"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`恢復 ${guest.name}`"
-                  @click="openRestore(guest)"
-                >
-                  恢復
-                </UButton>
+                <div class="flex justify-end gap-1">
+                  <UButton
+                    data-testid="guest-edit"
+                    icon="i-heroicons-pencil"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`編輯 ${guest.name}`"
+                    @click="openEdit(guest)"
+                  >
+                    編輯
+                  </UButton>
+                  <UButton
+                    data-testid="guest-remove"
+                    icon="i-heroicons-trash"
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`移除 ${guest.name}`"
+                    @click="openRemove(guest)"
+                  >
+                    移除
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="filteredGuests.length === 0">
+              <td colspan="6">
+                <EmptyState
+                  title="目前沒有賓客"
+                  description="點擊「新增賓客」或「匯入名單」建立賓客名單"
+                />
               </td>
             </tr>
           </tbody>
         </table>
-      </div>
+
+        <!-- 回收區（已移除，常駐渲染供恢復操作可達） -->
+        <div v-if="deletedGuests.length > 0">
+          <div class="mb-3 flex items-center gap-3">
+            <span class="text-overline uppercase text-gold-deep">已移除的賓客</span>
+            <span class="h-px flex-1 bg-line" />
+          </div>
+          <table
+            data-testid="guest-deleted-list"
+            class="w-full border-collapse"
+          >
+            <tbody>
+              <tr
+                v-for="guest in deletedGuests"
+                :key="guest.guestId"
+                :data-testid="`guest-row-${guest.guestId}`"
+              >
+                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                  <span class="font-medium text-ink-300 line-through">
+                    {{ guest.name }}
+                  </span>
+                </td>
+                <td class="hidden border-b border-line px-3 py-4 text-ink-300 sm:table-cell dark:border-neutral-800">
+                  {{ sideLabel(guest.side) }}
+                </td>
+                <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
+                  <UButton
+                    data-testid="guest-restore"
+                    icon="i-heroicons-arrow-uturn-left"
+                    color="primary"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`恢復 ${guest.name}`"
+                    @click="openRestore(guest)"
+                  >
+                    恢復
+                  </UButton>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </div>
 
     <!-- 新增 / 編輯賓客 Modal -->
