@@ -16,6 +16,25 @@ const message = ref('')
 const photoUrl = ref('')
 const photoName = ref('')
 
+// 常用 emoji 面板：點選插入留言游標處
+const EMOJIS = ['🎉', '💍', '💐', '❤️', '🥂', '👏', '😊', '🙏', '💕', '🎊', '🌸', '✨']
+const messageWrap = ref<HTMLElement | null>(null)
+function insertEmoji(emoji: string) {
+  const ta = messageWrap.value?.querySelector('textarea')
+  if (!ta) {
+    message.value += emoji
+    return
+  }
+  const start = ta.selectionStart ?? message.value.length
+  const end = ta.selectionEnd ?? message.value.length
+  message.value = message.value.slice(0, start) + emoji + message.value.slice(end)
+  nextTick(() => {
+    ta.focus()
+    const pos = start + emoji.length
+    ta.setSelectionRange(pos, pos)
+  })
+}
+
 const isSubmitting = ref(false)
 const isSubmitted = ref(false)
 const submitError = ref('')
@@ -105,13 +124,29 @@ async function submitBlessing() {
       @submit.prevent="submitBlessing"
     >
       <UFormField label="祝福留言" name="message">
-        <UTextarea
-          v-model="message"
-          data-testid="blessing-message"
-          :rows="4"
-          placeholder="寫下您的祝福..."
-          class="w-full"
-        />
+        <div ref="messageWrap">
+          <UTextarea
+            v-model="message"
+            data-testid="blessing-message"
+            :rows="4"
+            placeholder="寫下您的祝福..."
+            class="w-full"
+          />
+          <!-- 常用 emoji 面板：點選插入游標處 -->
+          <div data-testid="blessing-emoji-panel" class="mt-2 flex flex-wrap gap-1.5">
+            <button
+              v-for="emoji in EMOJIS"
+              :key="emoji"
+              type="button"
+              :data-testid="`blessing-emoji-${emoji}`"
+              :aria-label="`插入 ${emoji}`"
+              class="flex size-9 items-center justify-center rounded-lg border border-line text-lg transition-colors hover:border-gold-deep hover:bg-paper-soft"
+              @click="insertEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+        </div>
       </UFormField>
 
       <UFormField label="祝福照片" name="photo">

@@ -3,9 +3,10 @@
 import type {
   BlessingListItem,
   BlessingStatus,
+  BlessingWallStatus,
   RejectBlessingBody,
 } from '~/types/api/blessings'
-import { approveBlessing, listBlessings, rejectBlessing } from '~/api'
+import { approveBlessing, listBlessings, projectBlessing, rejectBlessing } from '~/api'
 import { blessingStatusMeta } from '~/utils/statusMeta'
 
 definePageMeta({ layout: 'default' })
@@ -18,16 +19,50 @@ const { data: blessings } = await listBlessings(weddingId, { default: () => [] }
 
 const items = computed(() => blessings.value ?? [])
 
+// 投影即時推送：approve / 推到投影幕 → 通知開著的投影牆即時更新
+const { broadcast } = useProjectionChannel(weddingId)
+
 // 頭像金圓首字：取留言內容首字作為編輯式裝飾（無姓名欄位時的視覺替代）
 function initialOf(blessing: BlessingListItem) {
   return blessing.message.trim().charAt(0) || '祝'
 }
 
-function setStatus(blessingId: string, status: BlessingStatus, reason: string | null = null) {
+function setStatus(
+  blessingId: string,
+  status: BlessingStatus,
+  reason: string | null = null,
+  wallStatus?: BlessingWallStatus,
+) {
   // useFetch 的 data 為 shallowRef，深層 mutate 不觸發響應；以重新賦值整個陣列觸發更新
   blessings.value = (blessings.value ?? []).map(b =>
-    b.blessingId === blessingId ? { ...b, status, rejectReason: reason } : b,
+    b.blessingId === blessingId
+      ? { ...b, status, rejectReason: reason, ...(wallStatus !== undefined ? { wallStatus } : {}) }
+      : b,
   )
+}
+
+// === 推到投影幕 ===
+const projectingId = ref<string | null>(null)
+async function doProject(blessing: BlessingListItem) {
+  if (projectingId.value)
+    return
+  projectingId.value = blessing.blessingId
+  try {
+    const res = await projectBlessing(weddingId.value, blessing.blessingId)
+    setStatus(blessing.blessingId, blessing.status, blessing.rejectReason, res.wallStatus)
+    broadcast()
+    toast.add({ title: '已推到投影幕', color: 'success' })
+  }
+  catch (error: any) {
+    toast.add({
+      title: '推送失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    projectingId.value = null
+  }
 }
 
 // === 審核通過 ===
@@ -47,7 +82,8 @@ async function confirmApprove() {
   const blessingId = approveTarget.value.blessingId
   try {
     const res = await approveBlessing(weddingId.value, blessingId)
-    setStatus(blessingId, res.status)
+    setStatus(blessingId, res.status, null, 'pending_wall')
+    broadcast()
     toast.add({ title: '祝福已通過', color: 'success' })
     isApproveOpen.value = false
   }
@@ -105,10 +141,24 @@ async function submitReject() {
 <template>
   <div data-testid="blessings-page" class="flex h-full flex-col">
     <PageHeader
-      title="祝福審核"
+      title="投影祝福審核"
       eyebrow="Guest Blessings"
-      description="審核賓客提交的祝福留言（通過 / 拒絕）"
-    />
+      description="審核賓客提交的祝福留言（通過 / 拒絕），並推到投影即時牆"
+    >
+      <template #actions>
+        <UButton
+          data-testid="open-projection"
+          icon="i-heroicons-tv"
+          color="primary"
+          variant="solid"
+          :to="`/projection/${weddingId}`"
+          target="_blank"
+          external
+        >
+          開啟投影牆
+        </UButton>
+      </template>
+    </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto">
       <div v-if="items.length === 0">
@@ -182,6 +232,31 @@ async function submitReject() {
                   @click="openReject(blessing)"
                 >
                   拒絕
+                </UButton>
+              </div>
+
+              <!-- 已通過：上牆狀態 + 推到投影幕 -->
+              <div
+                v-else-if="blessing.status === 'approved'"
+                class="mt-4 flex items-center gap-3 border-t border-line pt-4"
+              >
+                <UBadge
+                  :color="blessing.wallStatus === 'on_wall' ? 'success' : 'warning'"
+                  variant="soft"
+                >
+                  {{ blessing.wallStatus === 'on_wall' ? '已上牆' : '待上牆' }}
+                </UBadge>
+                <UButton
+                  v-if="blessing.wallStatus !== 'on_wall'"
+                  :data-testid="`blessing-project-${blessing.blessingId}`"
+                  color="primary"
+                  variant="outline"
+                  size="sm"
+                  icon="i-heroicons-tv"
+                  :loading="projectingId === blessing.blessingId"
+                  @click="doProject(blessing)"
+                >
+                  推到投影幕
                 </UButton>
               </div>
             </div>

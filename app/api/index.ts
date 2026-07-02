@@ -8,6 +8,7 @@ export { login, registerAdmin } from './auth.api'
 export {
   approveBlessing,
   listBlessings,
+  projectBlessing,
   rejectBlessing,
   submitBlessing,
 } from './blessings.api'
@@ -25,6 +26,7 @@ export {
   removeCakeBoxExclusion,
   updateCakeBoxType,
 } from './cakebox.api'
+export { listFlowers } from './flowers.api'
 export {
   bindGuestLine,
   createGuest,
@@ -36,6 +38,13 @@ export {
 } from './guests.api'
 export { connectLineOa, getLineOa } from './line.api'
 export {
+  confirmPendingGuest,
+  listPendingGuests,
+  mergePendingGuest,
+  rejectPendingGuest,
+  submitPublicRsvp,
+} from './pending-guests.api'
+export {
   checkInGuest,
   distributeCakeBox,
   getReceptionStatus,
@@ -43,6 +52,7 @@ export {
   selfCheckInGuest,
   updateGiftMoney,
 } from './reception.api'
+export { configureRsvpForm, getRsvpFormConfig } from './rsvp-config.api'
 export {
   overrideRsvp,
   sendRsvpInvitation,
@@ -67,6 +77,7 @@ export {
   batchSendThankYou,
   customizeThankYouCard,
   fallbackSendThankYou,
+  getPublicThankYouCard,
   getThankYouTemplate,
   listThankYouCustomizations,
   setThankYouTemplate,
