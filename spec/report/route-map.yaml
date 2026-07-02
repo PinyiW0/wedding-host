@@ -166,6 +166,43 @@ api_contract:
     RsvpOverriddenEvent:
       file: rsvp.ts
       fields: { guestId: string, attending: AttendingStatus, reason: string }
+    # --- rsvp-config.ts ---
+    RsvpFormConfigDetail:
+      file: rsvp-config.ts
+      fields: { weddingId: string, theme: RsvpTheme, banner: 'string | null', questions: 'RsvpQuestion[]' }
+    ConfigureRsvpFormBody:
+      file: rsvp-config.ts
+      fields: { weddingId: string, theme: RsvpTheme, 'banner?': 'string | null', questions: 'RsvpQuestion[]' }
+    RsvpFormConfiguredEvent:
+      file: rsvp-config.ts
+      fields: { weddingId: string, theme: RsvpTheme, banner: 'string | null', questions: 'RsvpQuestion[]' }
+    # --- pending-guests.ts（公開自助 RSVP → 待確認區；清單沿用 GuestListItem，加 status/source） ---
+    SubmitPublicRsvpBody:
+      file: pending-guests.ts
+      fields: 'extends SubmitRsvpBody'
+    PublicRsvpSubmittedEvent:
+      file: pending-guests.ts
+      fields: { guestId: string, weddingId: string, status: "'pending_review'" }
+    MergePendingGuestBody:
+      file: pending-guests.ts
+      fields: { targetGuestId: string }
+    PendingGuestMergedEvent:
+      file: pending-guests.ts
+      fields: { guestId: string, targetGuestId: string }
+    PendingGuestConfirmedEvent:
+      file: pending-guests.ts
+      fields: { guestId: string }
+    PendingGuestRejectedEvent:
+      file: pending-guests.ts
+      fields: { guestId: string }
+    # --- flowers.ts ---
+    FlowerWallItem:
+      file: flowers.ts
+      fields: { guestId: string, name: string, flowerDrawing: string }
+    # --- thankyou.ts（新增公開謝卡讀取） ---
+    PublicThankYouCard:
+      file: thankyou.ts
+      fields: { weddingId: string, guestId: string, guestName: string, greeting: string, content: string, signature: string, signatureDate: string, templateImageUrl: 'string | null' }
     # --- cakebox.ts ---
     CakeBoxTypeListItem:
       file: cakebox.ts
@@ -219,7 +256,10 @@ api_contract:
     # --- blessings.ts ---
     BlessingListItem:
       file: blessings.ts
-      fields: { blessingId: string, weddingId: string, guestId: string, message: string, photoUrl: 'string | null', status: BlessingStatus, rejectReason: 'string | null' }
+      fields: { blessingId: string, weddingId: string, guestId: string, message: string, photoUrl: 'string | null', status: BlessingStatus, rejectReason: 'string | null', 'wallStatus?': BlessingWallStatus }
+    BlessingProjectedEvent:
+      file: blessings.ts
+      fields: { blessingId: string, wallStatus: BlessingWallStatus }
     SubmitBlessingBody:
       file: blessings.ts
       fields: { guestId: string, message: string, 'photoUrl?': string }
@@ -306,6 +346,17 @@ api_contract:
     - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-invitation, request: SendRsvpInvitationBody, response: RsvpInvitationSentEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp, request: SubmitRsvpBody, response: RsvpSubmittedEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-override, request: OverrideRsvpBody, response: RsvpOverriddenEvent }
+    # --- rsvp-config ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/rsvp-config, request: '{}', response: RsvpFormConfigDetail }
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/rsvp-config, request: ConfigureRsvpFormBody, response: RsvpFormConfiguredEvent }
+    # --- pending-guests（公開自助 RSVP + 待確認區） ---
+    - { method: POST, path: /api/v1/weddings/{weddingId}/guests/rsvp-public, request: SubmitPublicRsvpBody, response: PublicRsvpSubmittedEvent }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/pending-guests, request: '{}', response: 'GuestListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/pending-guests/{guestId}/merge, request: MergePendingGuestBody, response: PendingGuestMergedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/pending-guests/{guestId}/confirm, request: '{}', response: PendingGuestConfirmedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/pending-guests/{guestId}/reject, request: '{}', response: PendingGuestRejectedEvent }
+    # --- flowers（公開花田） ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/flowers, request: '{}', response: 'FlowerWallItem[]' }
     # --- cake-box types ---
     - { method: GET, path: /api/v1/weddings/{weddingId}/cake-box-types, request: '{}', response: 'CakeBoxTypeListItem[]' }
     - { method: POST, path: /api/v1/weddings/{weddingId}/cake-box-types, request: CreateCakeBoxTypeBody, response: CakeBoxTypeCreatedEvent }
@@ -322,9 +373,11 @@ api_contract:
     - { method: GET, path: /api/v1/weddings/{weddingId}/blessings, request: '{}', response: 'BlessingListItem[]' }
     - { method: POST, path: /api/v1/weddings/{weddingId}/blessings, request: SubmitBlessingBody, response: BlessingSubmittedEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/blessings/{blessingId}/approve, request: '{}', response: BlessingApprovedEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/blessings/{blessingId}/project, request: '{}', response: BlessingProjectedEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/blessings/{blessingId}/reject, request: RejectBlessingBody, response: BlessingRejectedEvent }
     # --- thank-you ---
     - { method: PUT, path: /api/v1/weddings/{weddingId}/thank-you-card/template, request: SetThankYouTemplateBody, response: ThankYouTemplateSetEvent }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/thank-you-card/public/{guestId}, request: '{}', response: PublicThankYouCard }
     - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you-card/customizations, request: CustomizeThankYouCardBody, response: ThankYouCardCustomizedEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you/batch-send, request: '{}', response: ThankYouBatchSentEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you/fallback-send, request: SendThankYouFallbackBody, response: ThankYouFallbackSentEvent }
