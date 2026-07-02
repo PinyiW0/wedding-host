@@ -18,10 +18,12 @@ const isSubmitting = ref(false)
 const formError = ref('')
 const oaName = ref('')
 const channelId = ref('')
+const addFriendUrl = ref('')
 
 function openConnect() {
   oaName.value = connectedOa.value?.oaName ?? ''
   channelId.value = connectedOa.value?.channelId ?? ''
+  addFriendUrl.value = connectedOa.value?.addFriendUrl ?? ''
   formError.value = ''
   isOpen.value = true
 }
@@ -43,6 +45,7 @@ async function submitConnect() {
     const body: ConnectLineOaBody = {
       oaName: oaName.value.trim(),
       channelId: channelId.value.trim(),
+      addFriendUrl: addFriendUrl.value.trim() || undefined,
     }
     await connectLineOa(weddingId.value, body)
     // 寫入成功後重抓，以 GET 為呈現真實來源（重整也靠 GET）
@@ -100,6 +103,19 @@ async function submitConnect() {
                 <p class="mt-1 text-body text-ink-700 dark:text-neutral-300">
                   {{ connectedOa.channelId }}
                 </p>
+              </div>
+              <div v-if="connectedOa.addFriendUrl">
+                <p class="text-caption text-ink-500 dark:text-neutral-400">
+                  加好友連結
+                </p>
+                <a
+                  :href="connectedOa.addFriendUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="mt-1 block break-all text-body text-gold-deep hover:underline"
+                >
+                  {{ connectedOa.addFriendUrl }}
+                </a>
               </div>
             </div>
             <p v-else class="text-body text-ink-300 dark:text-neutral-500">
@@ -168,6 +184,19 @@ async function submitConnect() {
                 v-model="channelId"
                 data-testid="channel-id-input"
                 placeholder="請輸入 Channel ID"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UFormField
+              label="加好友連結（選填）"
+              name="addFriendUrl"
+              help="填寫後，賓客 RSVP 頁會出現「加入新人的 LINE」按鈕；留空則不顯示"
+            >
+              <UInput
+                v-model="addFriendUrl"
+                data-testid="add-friend-url-input"
+                placeholder="例：https://line.me/R/ti/p/@yourid 或 https://lin.ee/xxxx"
                 class="w-full"
               />
             </UFormField>

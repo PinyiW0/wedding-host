@@ -19,11 +19,12 @@ export default defineEventHandler(async (event: H3Event): Promise<LineOaConnecte
   if (existing) {
     existing.oaName = body.oaName
     existing.channelId = body.channelId
+    existing.addFriendUrl = body.addFriendUrl
   }
   else {
-    mockLineOas.push({ weddingId, oaName: body.oaName, channelId: body.channelId })
+    mockLineOas.push({ weddingId, oaName: body.oaName, channelId: body.channelId, addFriendUrl: body.addFriendUrl })
   }
 
   setResponseStatus(event, 201)
-  return { weddingId, oaName: body.oaName, channelId: body.channelId }
+  return { weddingId, oaName: body.oaName, channelId: body.channelId, addFriendUrl: body.addFriendUrl }
 })

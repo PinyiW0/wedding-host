@@ -4,6 +4,7 @@ export interface MockLineOa {
   weddingId: string
   oaName: string
   channelId: string
+  addFriendUrl?: string
 }
 
 export const mockLineOas: MockLineOa[] = []
