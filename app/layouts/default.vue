@@ -10,35 +10,74 @@ const isCollapsed = ref(false)
 
 // 全域導覽（未進入特定婚禮時顯示）；接待員只保留「接待報到」（帶 weddingId）
 const globalNav = computed(() => {
+  // 接待員：接待報到 + 投影祝福審核
   if (authStore.isReceptionist) {
+    const id = authStore.weddingId ?? 'wedding-001'
+    return [
+      { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: `/reception?weddingId=${id}` },
+      { label: '投影祝福審核', icon: 'i-heroicons-sparkles', to: `/weddings/${id}/blessings` },
+    ]
+  }
+  // 新人：只管理自己的婚禮，不顯示「所有婚禮」
+  if (authStore.isCouple) {
     const id = authStore.weddingId ?? 'wedding-001'
     return [
       { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: `/reception?weddingId=${id}` },
     ]
   }
+  // 管理者：可看所有婚禮
   return [
     { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
     { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
   ]
 })
 
+// 導覽項目：單一連結（to）或可展開群組（children）
+interface NavChild { label: string, to: string }
+interface NavItem { label: string, icon: string, to?: string, children?: NavChild[] }
+
 // 婚禮模組導覽（進入某場婚禮後顯示，對齊參考稿後台側邊欄）
-const weddingNav = computed(() => {
+const weddingNav = computed<NavItem[]>(() => {
   const id = weddingId.value
   if (!id)
     return []
-  return [
+  const items: NavItem[] = [
     { label: '婚禮總覽', icon: 'i-heroicons-squares-2x2', to: `/weddings/${id}` },
     { label: '賓客名單', icon: 'i-heroicons-users', to: `/weddings/${id}/guests` },
     { label: '桌次規劃', icon: 'i-heroicons-table-cells', to: `/weddings/${id}/seating` },
-    { label: 'RSVP 回覆', icon: 'i-heroicons-envelope-open', to: `/weddings/${id}/rsvp` },
+    // RSVP 收成子選單（回覆 / 題目 / 外觀），避免側邊欄平鋪過多項目
+    {
+      label: 'RSVP',
+      icon: 'i-heroicons-envelope-open',
+      children: [
+        { label: '回覆總覽', to: `/weddings/${id}/rsvp` },
+        { label: '題目設定', to: `/weddings/${id}/rsvp/questions` },
+        { label: '外觀設定', to: `/weddings/${id}/rsvp/appearance` },
+      ],
+    },
     { label: '喜餅', icon: 'i-heroicons-gift', to: `/weddings/${id}/cake-box` },
-    { label: '祝福審核', icon: 'i-heroicons-chat-bubble-left-heart', to: `/weddings/${id}/blessings` },
+    { label: '投影祝福審核', icon: 'i-heroicons-sparkles', to: `/weddings/${id}/blessings` },
     { label: '電子謝卡', icon: 'i-heroicons-heart', to: `/weddings/${id}/thank-you` },
     { label: 'LINE 邀請', icon: 'i-heroicons-chat-bubble-left-right', to: `/weddings/${id}/line` },
     { label: '帳號設定', icon: 'i-heroicons-cog-6-tooth', to: `/weddings/${id}/accounts` },
   ]
+  // 接待員在婚禮情境下只保留投影祝福審核（其餘後台頁由守衛導回接待台）
+  if (authStore.isReceptionist)
+    return items.filter(item => item.to?.endsWith('/blessings'))
+  return items
 })
+
+// 子選單展開狀態：預設展開「含作用中子頁」的群組，使用者可手動切換
+const openGroups = ref<Record<string, boolean>>({})
+function isGroupActive(item: NavItem) {
+  return !!item.children?.some(c => isActive(c.to))
+}
+function isGroupOpen(item: NavItem) {
+  return openGroups.value[item.label] ?? isGroupActive(item)
+}
+function toggleGroup(item: NavItem) {
+  openGroups.value = { ...openGroups.value, [item.label]: !isGroupOpen(item) }
+}
 
 const inWedding = computed(() => weddingNav.value.length > 0)
 
@@ -46,13 +85,32 @@ const inWedding = computed(() => weddingNav.value.length > 0)
 const avatarChar = computed(() => (authStore.user?.account ?? '?').charAt(0).toUpperCase())
 
 // 角色標籤（依登入者角色顯示）
-const roleLabel = computed(() => (authStore.isReceptionist ? '接待 · 接待員' : '主辦 · 管理員'))
+const roleLabel = computed(() => {
+  if (authStore.isReceptionist)
+    return '接待 · 接待員'
+  if (authStore.isCouple)
+    return '新人 · 婚禮主'
+  return '主辦 · 管理員'
+})
 
 // 婚禮列表與婚禮總覽需精確比對，避免被子頁路徑前綴誤判為作用中
-function isActive(to: string) {
-  if (to === '/weddings' || to === `/weddings/${weddingId.value}`)
+function isActive(to: string | undefined) {
+  if (!to)
+    return false
+  // 列表 / 總覽 / RSVP 回覆首頁需精確比對，避免被子頁路徑前綴誤判為作用中
+  if (
+    to === '/weddings'
+    || to === `/weddings/${weddingId.value}`
+    || to === `/weddings/${weddingId.value}/rsvp`
+  ) {
     return route.path === to
+  }
   return route.path === to || route.path.startsWith(`${to}/`)
+}
+
+// 群組收合時導向第一個子頁（如 RSVP → 回覆總覽）
+function groupFirstTo(item: NavItem) {
+  return item.children?.[0]?.to ?? item.to ?? ''
 }
 
 function toggleSidebar() {
@@ -105,22 +163,70 @@ async function handleLogout() {
           <p v-if="!isCollapsed" class="px-3 pb-1 pt-1 text-overline uppercase text-gold-deep">
             婚禮管理
           </p>
-          <NuxtLink
-            v-for="item in weddingNav"
-            :key="item.to"
-            :to="item.to"
-            :data-testid="isActive(item.to) ? 'vibe-nav-active' : undefined"
-            class="flex items-center rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
-            :class="[
-              isActive(item.to)
-                ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
-                : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400',
-              isCollapsed ? 'justify-center' : 'gap-3',
-            ]"
-          >
-            <UIcon :name="item.icon" class="size-5 shrink-0" :class="isActive(item.to) && 'text-gold-deep'" />
-            <span v-if="!isCollapsed" class="truncate">{{ item.label }}</span>
-          </NuxtLink>
+          <template v-for="item in weddingNav" :key="item.label">
+            <!-- 單一連結 -->
+            <NuxtLink
+              v-if="!item.children"
+              :to="item.to"
+              :data-testid="isActive(item.to) ? 'vibe-nav-active' : undefined"
+              class="flex items-center rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
+              :class="[
+                isActive(item.to)
+                  ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
+                  : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400',
+                isCollapsed ? 'justify-center' : 'gap-3',
+              ]"
+            >
+              <UIcon :name="item.icon" class="size-5 shrink-0" :class="isActive(item.to) && 'text-gold-deep'" />
+              <span v-if="!isCollapsed" class="truncate">{{ item.label }}</span>
+            </NuxtLink>
+
+            <!-- 群組（收合時 → 圖示連到第一個子頁；展開時 → 可切換子選單） -->
+            <NuxtLink
+              v-else-if="isCollapsed"
+              :to="groupFirstTo(item)"
+              class="flex items-center justify-center rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
+              :class="isGroupActive(item)
+                ? 'border-gold bg-primary-100 text-ink dark:bg-primary-950 dark:text-paper'
+                : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+            >
+              <UIcon :name="item.icon" class="size-5 shrink-0" :class="isGroupActive(item) && 'text-gold-deep'" />
+            </NuxtLink>
+            <div v-else>
+              <button
+                type="button"
+                :data-testid="`vibe-nav-group-${item.label}`"
+                :aria-expanded="isGroupOpen(item)"
+                class="flex w-full items-center gap-3 rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
+                :class="isGroupActive(item)
+                  ? 'border-gold font-medium text-ink dark:text-paper'
+                  : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+                @click="toggleGroup(item)"
+              >
+                <UIcon :name="item.icon" class="size-5 shrink-0" :class="isGroupActive(item) && 'text-gold-deep'" />
+                <span class="flex-1 truncate text-left">{{ item.label }}</span>
+                <UIcon
+                  name="i-heroicons-chevron-down"
+                  class="size-4 shrink-0 transition-transform duration-200"
+                  :class="isGroupOpen(item) && 'rotate-180'"
+                />
+              </button>
+              <div v-if="isGroupOpen(item)" class="mt-1 space-y-1">
+                <NuxtLink
+                  v-for="child in item.children"
+                  :key="child.to"
+                  :to="child.to"
+                  :data-testid="isActive(child.to) ? 'vibe-nav-active' : undefined"
+                  class="flex items-center rounded border-l-[3px] py-2 pl-11 pr-3 text-sm transition-colors duration-200"
+                  :class="isActive(child.to)
+                    ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
+                    : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+                >
+                  <span class="truncate">{{ child.label }}</span>
+                </NuxtLink>
+              </div>
+            </div>
+          </template>
           <div class="my-3 border-t border-line dark:border-neutral-800" />
         </template>
 
@@ -213,19 +319,56 @@ async function handleLogout() {
               <p class="px-3 pb-1 text-overline uppercase text-gold-deep">
                 婚禮管理
               </p>
-              <NuxtLink
-                v-for="item in weddingNav"
-                :key="item.to"
-                :to="item.to"
-                class="flex items-center gap-3 rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
-                :class="isActive(item.to)
-                  ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
-                  : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
-                @click="isMobileMenuOpen = false"
-              >
-                <UIcon :name="item.icon" class="size-5" :class="isActive(item.to) && 'text-gold-deep'" />
-                <span>{{ item.label }}</span>
-              </NuxtLink>
+              <template v-for="item in weddingNav" :key="item.label">
+                <!-- 單一連結 -->
+                <NuxtLink
+                  v-if="!item.children"
+                  :to="item.to"
+                  class="flex items-center gap-3 rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
+                  :class="isActive(item.to)
+                    ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
+                    : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+                  @click="isMobileMenuOpen = false"
+                >
+                  <UIcon :name="item.icon" class="size-5" :class="isActive(item.to) && 'text-gold-deep'" />
+                  <span>{{ item.label }}</span>
+                </NuxtLink>
+
+                <!-- 群組（可切換子選單） -->
+                <div v-else>
+                  <button
+                    type="button"
+                    :aria-expanded="isGroupOpen(item)"
+                    class="flex w-full items-center gap-3 rounded border-l-[3px] px-3 py-2.5 transition-colors duration-200"
+                    :class="isGroupActive(item)
+                      ? 'border-gold font-medium text-ink dark:text-paper'
+                      : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+                    @click="toggleGroup(item)"
+                  >
+                    <UIcon :name="item.icon" class="size-5" :class="isGroupActive(item) && 'text-gold-deep'" />
+                    <span class="flex-1 text-left">{{ item.label }}</span>
+                    <UIcon
+                      name="i-heroicons-chevron-down"
+                      class="size-4 transition-transform duration-200"
+                      :class="isGroupOpen(item) && 'rotate-180'"
+                    />
+                  </button>
+                  <div v-if="isGroupOpen(item)" class="mt-1 space-y-1">
+                    <NuxtLink
+                      v-for="child in item.children"
+                      :key="child.to"
+                      :to="child.to"
+                      class="flex items-center rounded border-l-[3px] py-2 pl-11 pr-3 text-sm transition-colors duration-200"
+                      :class="isActive(child.to)
+                        ? 'border-gold bg-primary-100 font-medium text-ink dark:bg-primary-950 dark:text-paper'
+                        : 'border-transparent text-ink-500 hover:bg-primary-100/50 hover:text-ink dark:text-neutral-400'"
+                      @click="isMobileMenuOpen = false"
+                    >
+                      <span>{{ child.label }}</span>
+                    </NuxtLink>
+                  </div>
+                </div>
+              </template>
               <div class="my-3 border-t border-line dark:border-neutral-800" />
             </template>
 
@@ -277,7 +420,7 @@ async function handleLogout() {
         </button>
         <span class="font-display text-xl font-semibold text-ink dark:text-paper">EverAfter</span>
       </div>
-      <main class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+      <main class="stable-scroll flex min-h-0 flex-1 flex-col overflow-auto p-6">
         <slot />
       </main>
     </div>
