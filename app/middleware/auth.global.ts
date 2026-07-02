@@ -10,12 +10,19 @@ const PUBLIC_PATTERNS = [
   /^\/checkin(\/|$)/, // 賓客自助報到
   /^\/blessing(\/|$)/, // 賓客提交祝福
   /^\/guest(\/|$)/, // 賓客綁定 LINE
+  /^\/flowers(\/|$)/, // 賓客花田 landing
+  /^\/thankyou(\/|$)/, // 賓客公開謝卡
+  /^\/projection(\/|$)/, // 投影即時牆
 ]
 
-// 接待員可進入的後台頁（其餘後台頁一律導回接待台）
+// 接待員可進入的後台頁（其餘後台頁一律導回接待台）：接待台 + 投影祝福審核
 const RECEPTIONIST_PATTERNS = [
   /^\/reception(\/|$)/,
+  /^\/weddings\/[^/]+\/blessings(\/|$)/,
 ]
+
+// 擷取路徑中的 weddingId（新人守衛用；提至 module scope 避免每次重編譯）
+const WEDDING_PATH_RE = /^\/weddings\/([^/]+)/
 
 export default defineNuxtRouteMiddleware((to) => {
   // 守衛只在 client 執行：登入狀態存在 localStorage（persist），SSR 讀不到，避免 SSR 誤判而誤導
@@ -30,10 +37,22 @@ export default defineNuxtRouteMiddleware((to) => {
   if (!auth.isAuthenticated)
     return navigateTo('/login')
 
-  // 接待員：只能進接待台（公開頁與根路由已於上方放行），其餘後台導回接待台
+  // 接待員：只能進接待台與投影祝福審核（公開頁與根路由已於上方放行），其餘後台導回接待台
   if (auth.isReceptionist && !RECEPTIONIST_PATTERNS.some(re => re.test(to.path))) {
     const target = `/reception?weddingId=${auth.weddingId ?? 'wedding-001'}`
     if (to.fullPath !== target)
       return navigateTo(target)
+  }
+
+  // 新人：只能進自己的婚禮；存取全部婚禮列表或他人婚禮時導回自己的婚禮
+  if (auth.isCouple && auth.weddingId) {
+    const matched = to.path.match(WEDDING_PATH_RE)
+    const isOtherWedding = matched && matched[1] !== auth.weddingId
+    const isWeddingsList = to.path === '/weddings'
+    if (isWeddingsList || isOtherWedding) {
+      const target = `/weddings/${auth.weddingId}`
+      if (to.fullPath !== target)
+        return navigateTo(target)
+    }
   }
 })

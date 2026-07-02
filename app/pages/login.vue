@@ -42,9 +42,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       description: '歡迎回來',
       color: 'success',
     })
-    // 依角色導向：接待員→接待台（帶 weddingId）；管理者→所有婚禮
+    // 依角色導向：接待員→接待台；新人→自己的婚禮；管理者→所有婚禮
     if (res.role === '接待員')
       router.push(`/reception?weddingId=${res.weddingId ?? 'wedding-001'}`)
+    else if (res.role === '新人')
+      router.push(`/weddings/${res.weddingId ?? 'wedding-001'}`)
     else
       router.push('/weddings')
   }
