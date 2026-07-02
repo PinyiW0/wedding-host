@@ -46,6 +46,18 @@ export interface ThankYouCustomizationListItem {
   customContent: string
 }
 
+// 賓客公開謝卡（依 guestId 讀回已解析內容：{{guestName}} 已替換、客製優先、信箋文字帶入婚禮資料）
+export interface PublicThankYouCard {
+  weddingId: string
+  guestId: string
+  guestName: string
+  greeting: string
+  content: string
+  signature: string
+  signatureDate: string
+  templateImageUrl: string | null
+}
+
 export interface ThankYouBatchSentEvent {
   weddingId: string
   recipientCount: number

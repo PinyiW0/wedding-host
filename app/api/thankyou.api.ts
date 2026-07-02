@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CustomizeThankYouCardBody,
+  PublicThankYouCard,
   SendThankYouFallbackBody,
   SetThankYouTemplateBody,
   ThankYouBatchSentEvent,
@@ -29,6 +30,17 @@ export function listThankYouCustomizations(
 ) {
   return useHttp().get<ThankYouCustomizationListItem[]>(
     () => `/api/v1/weddings/${toValue(weddingId)}/thank-you-card/customizations`,
+    options,
+  )
+}
+
+export function getPublicThankYouCard(
+  weddingId: MaybeRefOrGetter<string>,
+  guestId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<PublicThankYouCard | null>,
+) {
+  return useHttp().get<PublicThankYouCard | null>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/thank-you-card/public/${toValue(guestId)}`,
     options,
   )
 }

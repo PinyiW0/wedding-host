@@ -240,6 +240,23 @@ async function confirmBatch() {
   }
 }
 
+// === 複製賓客專屬謝卡連結（取代 email、可分享）===
+const linkGuestId = ref('')
+async function copyThankYouLink(guestId: string) {
+  if (!guestId) {
+    toast.add({ title: '請先選擇賓客', color: 'error' })
+    return
+  }
+  const url = `${window.location.origin}/thankyou/${weddingId.value}/${guestId}`
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: '已複製謝卡連結', description: url, color: 'success' })
+  }
+  catch {
+    toast.add({ title: '複製失敗', description: url, color: 'error' })
+  }
+}
+
 // === 發送替代感謝 ===
 const CHANNEL_OPTIONS = [
   { label: 'Email', value: 'email' as const },
@@ -301,7 +318,7 @@ async function submitFallback() {
 <template>
   <div data-testid="thank-you-page" class="flex h-full flex-col">
     <PageHeader
-      title="謝卡與感謝"
+      title="電子謝卡"
       eyebrow="With Gratitude"
       description="寫一封謝卡、為個別賓客客製，再群發或替代寄出感謝"
     />
@@ -584,7 +601,10 @@ async function submitFallback() {
               <p class="whitespace-pre-line text-body leading-relaxed text-ink-700 dark:text-neutral-300">
                 {{ c.content }}
               </p>
-              <div class="mt-3 flex justify-end">
+              <div class="mt-3 flex justify-end gap-3">
+                <UButton color="neutral" variant="link" icon="i-heroicons-link" @click="copyThankYouLink(c.guestId)">
+                  複製連結
+                </UButton>
                 <UButton color="primary" variant="link" @click="openFallbackFor(c.guestId)">
                   寄這張謝卡 →
                 </UButton>
@@ -599,7 +619,7 @@ async function submitFallback() {
             <span class="text-overline uppercase text-gold-deep">Step 03 · 寄出感謝</span>
             <span class="h-px flex-1 bg-line" />
           </div>
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <!-- A 群發 LINE -->
             <div class="flex flex-col rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
               <div class="flex items-center gap-2 text-gold-deep">
@@ -628,6 +648,37 @@ async function submitFallback() {
               </p>
               <UButton class="mt-4" color="neutral" variant="outline" block @click="openFallback">
                 替代感謝
+              </UButton>
+            </div>
+            <!-- C 複製專屬謝卡連結 -->
+            <div class="flex flex-col rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+              <div class="flex items-center gap-2 text-gold-deep">
+                <UIcon name="i-heroicons-link" class="size-5" />
+                <p class="font-display text-body-l font-medium text-ink dark:text-paper">
+                  賓客專屬連結
+                </p>
+              </div>
+              <p class="mt-2 flex-1 text-body text-ink-500 dark:text-neutral-400">
+                為任一賓客複製<span class="text-ink dark:text-paper">專屬謝卡連結</span>，可自行分享（賓客開啟即見信封與謝卡）。
+              </p>
+              <USelectMenu
+                v-model="linkGuestId"
+                data-testid="thankyou-link-guest-select"
+                :items="guestOptions"
+                value-key="value"
+                placeholder="選擇賓客"
+                class="mt-4 w-full"
+              />
+              <UButton
+                data-testid="thankyou-copy-link"
+                class="mt-3"
+                color="neutral"
+                variant="solid"
+                icon="i-heroicons-clipboard-document"
+                block
+                @click="copyThankYouLink(linkGuestId)"
+              >
+                複製謝卡連結
               </UButton>
             </div>
           </div>
