@@ -13,6 +13,10 @@ export interface MockWedding {
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
+  // 交通參考圖片（dataURL；未設定為 null）
+  transportImageUrl?: string | null
+  // 擁有此婚禮的帳號（新人角色用於資料隔離）；未設定＝僅管理者可見
+  ownerId?: string | null
   deletedAt: string | null
 }
 
@@ -28,6 +32,8 @@ export const mockWeddings: MockWedding[] = [
     mapLink: null,
     parkingInfo: null,
     transportInfo: null,
+    transportImageUrl: null,
+    ownerId: 'user-003',
     deletedAt: null,
   },
   { weddingId: 'wedding-002', title: '張志豪與陳怡君的婚禮', venue: '台中林酒店', address: '台中市西區公益路二段111號', date: '2026-09-20', mapLink: null, parkingInfo: null, transportInfo: null, deletedAt: null },

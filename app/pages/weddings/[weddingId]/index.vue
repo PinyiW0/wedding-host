@@ -29,6 +29,7 @@ const schema = z.object({
   mapLink: z.string().trim().optional(),
   parkingInfo: z.string().trim().optional(),
   transportInfo: z.string().trim().optional(),
+  transportImageUrl: z.string().optional(),
 })
 
 type Schema = z.output<typeof schema>
@@ -45,6 +46,7 @@ const state = reactive<Schema>({
   mapLink: '',
   parkingInfo: '',
   transportInfo: '',
+  transportImageUrl: '',
 })
 
 function openEdit() {
@@ -57,7 +59,23 @@ function openEdit() {
   state.mapLink = wedding.value?.mapLink ?? ''
   state.parkingInfo = wedding.value?.parkingInfo ?? ''
   state.transportInfo = wedding.value?.transportInfo ?? ''
+  state.transportImageUrl = wedding.value?.transportImageUrl ?? ''
   isEditOpen.value = true
+}
+
+// 交通參考圖片：以 dataURL 儲存（與花圖／banner 同模式）
+function onTransportImageChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file)
+    return
+  const reader = new FileReader()
+  reader.onload = () => {
+    state.transportImageUrl = String(reader.result ?? '')
+  }
+  reader.readAsDataURL(file)
+}
+function clearTransportImage() {
+  state.transportImageUrl = ''
 }
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
@@ -75,6 +93,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       mapLink: event.data.mapLink ?? '',
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
+      transportImageUrl: event.data.transportImageUrl ?? '',
     }
     await updateWedding(weddingId.value, body)
     toast.add({ title: '婚禮資訊已更新', color: 'success' })
@@ -216,6 +235,21 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
+
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
+              交通參考圖片
+            </dt>
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <img
+                v-if="wedding?.transportImageUrl"
+                :src="wedding.transportImageUrl"
+                alt="交通參考圖片"
+                class="max-h-48 rounded border border-line"
+              >
+              <span v-else class="text-ink-300">未設定</span>
+            </dd>
+          </div>
         </dl>
       </div>
     </div>
@@ -223,7 +257,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     <!-- 編輯婚禮資訊 Modal -->
     <UModal v-model:open="isEditOpen">
       <template #content>
-        <div data-testid="wedding-form-modal" class="p-6">
+        <div data-testid="wedding-form-modal" class="max-h-[85vh] overflow-y-auto p-6">
           <p class="text-overline uppercase text-gold-deep">
             Edit Details
           </p>
@@ -364,6 +398,39 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                 placeholder="請輸入交通指引"
                 class="w-full"
               />
+            </UFormField>
+
+            <UFormField
+              label="交通參考圖片"
+              name="transportImageUrl"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <div class="space-y-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  data-testid="wedding-transport-image"
+                  class="block w-full text-body-s text-ink-500 file:mr-3 file:rounded file:border-0 file:bg-primary-100 file:px-3 file:py-1.5 file:text-ink"
+                  @change="onTransportImageChange"
+                >
+                <div v-if="state.transportImageUrl" class="relative inline-block">
+                  <img
+                    :src="state.transportImageUrl"
+                    alt="交通參考圖片預覽"
+                    class="max-h-40 rounded border border-line"
+                  >
+                  <UButton
+                    icon="i-heroicons-x-mark"
+                    color="error"
+                    variant="solid"
+                    size="xs"
+                    class="absolute right-1 top-1"
+                    aria-label="移除交通參考圖片"
+                    @click="clearTransportImage"
+                  />
+                </div>
+              </div>
             </UFormField>
 
             <div class="flex justify-end gap-3 pt-2">

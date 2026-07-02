@@ -19,6 +19,6 @@ test.describe('vibe：婚禮資訊新人姓名區', () => {
     // 「新人姓名」標籤存在
     await expect(page.getByText('新人姓名')).toBeVisible()
     // 顯示區以單一節點呈現「{groom} & {bride}」（seed：振茗 & 品儀）
-    await expect(page.getByText(/振茗.*&.*品儀/).first()).toBeVisible()
+    await expect(page.getByText(/振茗[^\n\r&\u2028\u2029]*&.*品儀/).first()).toBeVisible()
   })
 })

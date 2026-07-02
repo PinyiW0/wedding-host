@@ -6,6 +6,8 @@ export interface WeddingListItem {
   venue: string
   address: string
   date: string // YYYY-MM-DD
+  // 擁有此婚禮的帳號（新人角色用於資料隔離）；未設定為 null
+  ownerId: string | null
   deletedAt: string | null
 }
 
@@ -22,6 +24,10 @@ export interface WeddingDetail {
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
+  // 交通參考圖片（dataURL；未設定為 null）
+  transportImageUrl: string | null
+  // 擁有此婚禮的帳號（新人角色用於資料隔離）；未設定為 null
+  ownerId: string | null
   deletedAt: string | null
 }
 
@@ -50,6 +56,7 @@ export interface UpdateWeddingBody {
   mapLink?: string
   parkingInfo?: string
   transportInfo?: string
+  transportImageUrl?: string
 }
 
 export interface WeddingUpdatedEvent {
@@ -63,6 +70,7 @@ export interface WeddingUpdatedEvent {
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
+  transportImageUrl: string | null
 }
 
 export interface WeddingRestoredEvent {

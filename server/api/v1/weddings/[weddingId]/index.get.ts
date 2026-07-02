@@ -9,6 +9,8 @@ export default defineEventHandler((event: H3Event): WeddingDetail => {
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
+  // 新人僅能存取自己擁有的婚禮
+  assertWeddingAccess(getRequestUser(event), wedding.ownerId)
   return {
     weddingId: wedding.weddingId,
     title: wedding.title,
@@ -20,6 +22,8 @@ export default defineEventHandler((event: H3Event): WeddingDetail => {
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,
+    transportImageUrl: wedding.transportImageUrl ?? null,
+    ownerId: wedding.ownerId ?? null,
     deletedAt: wedding.deletedAt,
   }
 })
