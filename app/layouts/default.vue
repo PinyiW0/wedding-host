@@ -18,15 +18,24 @@ const globalNav = computed(() => {
       { label: '投影祝福審核', icon: 'i-heroicons-sparkles', to: `/weddings/${id}/blessings` },
     ]
   }
+  // 人在接待台時，新人/管理者需要返回後台的入口（接待員無後台可回，不顯示）
+  const isOnReception = route.path.startsWith('/reception')
   // 新人：只管理自己的婚禮，不顯示「所有婚禮」
   if (authStore.isCouple) {
     const id = authStore.weddingId ?? 'wedding-001'
     return [
+      ...(isOnReception
+        ? [{ label: '返回後台', icon: 'i-heroicons-arrow-uturn-left', to: `/weddings/${id}` }]
+        : []),
       { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: `/reception?weddingId=${id}` },
     ]
   }
   // 管理者：可看所有婚禮
+  const backTarget = route.query.weddingId ? `/weddings/${route.query.weddingId}` : '/weddings'
   return [
+    ...(isOnReception
+      ? [{ label: '返回後台', icon: 'i-heroicons-arrow-uturn-left', to: backTarget }]
+      : []),
     { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
     { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
   ]
@@ -43,6 +52,7 @@ const weddingNav = computed<NavItem[]>(() => {
     return []
   const items: NavItem[] = [
     { label: '婚禮總覽', icon: 'i-heroicons-squares-2x2', to: `/weddings/${id}` },
+    { label: '當天流程', icon: 'i-heroicons-queue-list', to: `/weddings/${id}/rundown` },
     { label: '賓客名單', icon: 'i-heroicons-users', to: `/weddings/${id}/guests` },
     { label: '桌次規劃', icon: 'i-heroicons-table-cells', to: `/weddings/${id}/seating` },
     // RSVP 收成子選單（回覆 / 題目 / 外觀），避免側邊欄平鋪過多項目
@@ -56,6 +66,7 @@ const weddingNav = computed<NavItem[]>(() => {
       ],
     },
     { label: '喜餅', icon: 'i-heroicons-gift', to: `/weddings/${id}/cake-box` },
+    { label: '婚禮小物', icon: 'i-heroicons-gift-top', to: `/weddings/${id}/gifts` },
     { label: '投影祝福審核', icon: 'i-heroicons-sparkles', to: `/weddings/${id}/blessings` },
     { label: '電子謝卡', icon: 'i-heroicons-heart', to: `/weddings/${id}/thank-you` },
     { label: 'LINE 邀請', icon: 'i-heroicons-chat-bubble-left-right', to: `/weddings/${id}/line` },

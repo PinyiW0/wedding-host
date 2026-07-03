@@ -7,7 +7,7 @@ import type {
   InvitationPreference,
   OverrideRsvpBody,
 } from '~/types/api/rsvp'
-import { deleteGuest, getRsvpFormConfig, getWedding, listGuests, overrideRsvp, updateGuest } from '~/api'
+import { deleteGuest, getRsvpFormConfig, getWedding, listGuests, markInvitationSent, overrideRsvp, updateGuest } from '~/api'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
 import { createZip, dataUrlToBytes } from '~/utils/zip'
 
@@ -216,6 +216,60 @@ const stats = computed(() => {
     childChairs,
   }
 })
+
+// === 喜帖需求統計（以賓客筆數計，僅計未移除者） ===
+const invitationStats = computed(() => {
+  const list = activeGuests.value
+  return {
+    ecard: list.filter(g => g.invitationPreference === 'e-card').length,
+    physical: list.filter(g => g.invitationPreference === 'physical').length,
+    sent: list.filter(g => g.invitationSent).length,
+  }
+})
+
+// === 喜帖需求篩選（USelectMenu 禁空字串 value，一律用哨兵值） ===
+const INVITATION_FILTER_ALL = '__all__'
+const INVITATION_FILTER_UNFILLED = '__unfilled__'
+const invitationFilter = ref<string>(INVITATION_FILTER_ALL)
+const invitationFilterOptions = [
+  { label: '全部', value: INVITATION_FILTER_ALL },
+  { label: '電子喜帖', value: 'e-card' },
+  { label: '紙本喜帖', value: 'physical' },
+  { label: '不需要', value: 'none' },
+  { label: '未填', value: INVITATION_FILTER_UNFILLED },
+]
+const filteredGuests = computed(() => {
+  const filter = invitationFilter.value
+  if (filter === INVITATION_FILTER_ALL)
+    return activeGuests.value
+  if (filter === INVITATION_FILTER_UNFILLED)
+    return activeGuests.value.filter(g => !g.invitationPreference)
+  return activeGuests.value.filter(g => g.invitationPreference === filter)
+})
+
+// === 標記喜帖已寄送（逐列 checkbox；PUT 冪等設值） ===
+// checkbox 為 controlled（綁 guest.invitationSent、不就地 mutate）：
+// 成功後 refresh() 由 GET 讀模型帶回新值；失敗時 prop 不變即自動回滾勾選
+const markingGuestId = ref<string | null>(null)
+async function toggleInvitationSent(guest: GuestListItem, value: boolean | 'indeterminate') {
+  if (markingGuestId.value)
+    return
+  markingGuestId.value = guest.guestId
+  try {
+    await markInvitationSent(weddingId.value, guest.guestId, { sent: value === true })
+    await refresh()
+  }
+  catch (error: any) {
+    toast.add({
+      title: '標記喜帖寄送失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    markingGuestId.value = null
+  }
+}
 
 // 出席統計堆疊長條（出席 / 缺席+不出席 / 待回覆 三段百分比）
 const attendBar = computed(() => {
@@ -430,6 +484,28 @@ async function confirmRemove() {
           <StatCard eyebrow="待回覆" :value="stats.pending" caption="尚未提交回覆" />
         </div>
 
+        <!-- 喜帖需求統計（電子/紙本以賓客筆數計；已寄送為管理端記號） -->
+        <div class="grid grid-cols-3 gap-4">
+          <StatCard
+            data-testid="rsvp-stat-ecard"
+            eyebrow="電子喜帖"
+            :value="invitationStats.ecard"
+            caption="以賓客筆數計"
+          />
+          <StatCard
+            data-testid="rsvp-stat-physical"
+            eyebrow="紙本喜帖"
+            :value="invitationStats.physical"
+            caption="以賓客筆數計"
+          />
+          <StatCard
+            data-testid="rsvp-stat-sent"
+            eyebrow="已寄送"
+            :value="invitationStats.sent"
+            caption="喜帖已寄送記號"
+          />
+        </div>
+
         <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
           <div class="mb-5 flex items-baseline justify-between">
             <div class="flex items-center gap-3">
@@ -503,6 +579,15 @@ async function confirmRemove() {
         <div class="mb-3 flex items-center gap-3">
           <span class="text-overline uppercase text-gold-deep">賓客回覆</span>
           <span class="h-px flex-1 bg-line" />
+          <!-- 依喜帖需求篩選回覆清單 -->
+          <USelectMenu
+            v-model="invitationFilter"
+            data-testid="rsvp-invitation-filter"
+            :items="invitationFilterOptions"
+            value-key="value"
+            aria-label="依喜帖需求篩選"
+            class="w-40"
+          />
         </div>
         <div class="overflow-x-auto">
           <table
@@ -538,6 +623,9 @@ async function confirmRemove() {
                 <th class="border-b border-line px-3 py-3.5 font-medium">
                   喜帖
                 </th>
+                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                  已寄送
+                </th>
                 <th class="border-b border-line px-3 py-3.5 text-right font-medium">
                   操作
                 </th>
@@ -545,7 +633,7 @@ async function confirmRemove() {
             </thead>
             <tbody class="text-ink-700 dark:text-neutral-300">
               <tr
-                v-for="guest in activeGuests"
+                v-for="guest in filteredGuests"
                 :key="guest.guestId"
                 :data-testid="`rsvp-row-${guest.guestId}`"
                 class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
@@ -586,6 +674,17 @@ async function confirmRemove() {
                 <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
                   {{ invitationShort(guest) }}
                 </td>
+                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                  <!-- 喜帖已寄送記號（controlled：成功由 refresh 帶回、失敗自動回滾；請求中鎖定防連點） -->
+                  <UCheckbox
+                    :data-testid="`rsvp-invitation-sent-${guest.guestId}`"
+                    :model-value="guest.invitationSent ?? false"
+                    :disabled="markingGuestId === guest.guestId"
+                    :aria-label="`標記 ${guest.name} 喜帖已寄送`"
+                    class="inline-flex"
+                    @update:model-value="toggleInvitationSent(guest, $event)"
+                  />
+                </td>
                 <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
                   <div class="flex justify-end gap-1">
                     <UButton
@@ -625,10 +724,18 @@ async function confirmRemove() {
                 </td>
               </tr>
               <tr v-if="activeGuests.length === 0">
-                <td colspan="10">
+                <td colspan="11">
                   <EmptyState
                     title="目前沒有賓客"
                     description="請先於賓客名單新增賓客後再管理 RSVP"
+                  />
+                </td>
+              </tr>
+              <tr v-else-if="filteredGuests.length === 0">
+                <td colspan="11">
+                  <EmptyState
+                    title="沒有符合的賓客"
+                    description="目前沒有賓客符合此喜帖需求篩選"
                   />
                 </td>
               </tr>
