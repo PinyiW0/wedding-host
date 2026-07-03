@@ -73,7 +73,13 @@ api_contract:
     # --- guests.ts ---
     GuestListItem:
       file: guests.ts
-      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, childChairCount: number, notes: 'string | null', lineUserId: 'string | null', partySize: number, deletedAt: 'string | null' }
+      fields: { guestId: string, weddingId: string, name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, childChairCount: number, notes: 'string | null', lineUserId: 'string | null', partySize: number, deletedAt: 'string | null', 'invitationSent?': boolean }
+    MarkInvitationSentBody:
+      file: guests.ts
+      fields: { sent: boolean }
+    InvitationSentMarkedEvent:
+      file: guests.ts
+      fields: { guestId: string, invitationSent: boolean }
     CreateGuestBody:
       file: guests.ts
       fields: { name: string, side: GuestSide, diet: GuestDiet, category: string, contact: string, 'partySize?': number, 'childChairCount?': number, 'notes?': string }
@@ -199,6 +205,51 @@ api_contract:
     FlowerWallItem:
       file: flowers.ts
       fields: { guestId: string, name: string, flowerDrawing: string }
+    # --- gifts.ts（婚禮小物；金額為讀模型：小計=unitPrice×quantity、總計=小計+三費用） ---
+    GiftItemListItem:
+      file: gifts.ts
+      fields: { giftItemId: string, weddingId: string, category: GiftCategory, description: string, imageUrl: 'string | null', unitPrice: number, quantity: number, purchaseUrl: 'string | null', distributionTime: 'string | null', shippingFee1: number, shippingFee2: number, otherFee: number, note: 'string | null' }
+    CreateGiftItemBody:
+      file: gifts.ts
+      fields: { category: GiftCategory, description: string, unitPrice: number, quantity: number, 'imageUrl?': string, 'purchaseUrl?': string, 'distributionTime?': string, 'shippingFee1?': number, 'shippingFee2?': number, 'otherFee?': number, 'note?': string }
+    GiftItemCreatedEvent:
+      file: gifts.ts
+      fields: 'extends GiftItemListItem'
+    UpdateGiftItemBody:
+      file: gifts.ts
+      fields: 'CreateGiftItemBody 全欄位 optional'
+    GiftItemUpdatedEvent:
+      file: gifts.ts
+      fields: 'extends GiftItemListItem'
+    # --- rundown.ts（當天流程表：角色 + 項目 + 範本帶入） ---
+    RundownRoleListItem:
+      file: rundown.ts
+      fields: { roleId: string, weddingId: string, name: string }
+    CreateRundownRoleBody:
+      file: rundown.ts
+      fields: { name: string }
+    RundownRoleCreatedEvent:
+      file: rundown.ts
+      fields: { roleId: string, weddingId: string, name: string }
+    UpdateRundownRoleBody:
+      file: rundown.ts
+      fields: { name: string }
+    RundownRoleUpdatedEvent:
+      file: rundown.ts
+      fields: { roleId: string, name: string }
+    RundownRoleTask:
+      file: rundown.ts
+      fields: { roleId: string, task: 'string（矩陣格：該角色在此時段的個別事項；空字串＝參與但無個別事項）' }
+    RundownItemListItem:
+      file: rundown.ts
+      fields: { rundownItemId: string, weddingId: string, time: 'string (HH:MM) | null（null＝未定時段置頂）', durationMinutes: number, title: string, location: 'string | null', supplies: 'string | null', note: 'string | null', roleTasks: 'RundownRoleTask[]' }
+    SaveRundownTableBody:
+      file: rundown.ts
+      fields: { items: '整表取代：既有列帶 rundownItemId、新列省略（後端配發）、未帶回的既有列＝刪除' }
+    RundownTableSavedEvent:
+      file: rundown.ts
+      fields: { weddingId: string, itemCount: number, items: 'RundownItemListItem[]' }
+    # 範本 RUNDOWN_TEMPLATE 移至前端 app/utils/rundownTemplate.ts（buildTemplateRows/previewTemplateTimes），無後端端點
     # --- thankyou.ts（新增公開謝卡讀取） ---
     PublicThankYouCard:
       file: thankyou.ts
@@ -383,6 +434,20 @@ api_contract:
     - { method: POST, path: /api/v1/weddings/{weddingId}/thank-you/fallback-send, request: SendThankYouFallbackBody, response: ThankYouFallbackSentEvent }
     # --- line oa ---
     - { method: POST, path: /api/v1/weddings/{weddingId}/line-oa, request: ConnectLineOaBody, response: LineOaConnectedEvent }
+    # --- gifts（婚禮小物） ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/gift-items, request: '{}', response: 'GiftItemListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/gift-items, request: CreateGiftItemBody, response: GiftItemCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/gift-items/{giftItemId}, request: UpdateGiftItemBody, response: GiftItemUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/gift-items/{giftItemId}, request: '{}', response: void }
+    # --- rundown（當天流程表） ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-roles, request: '{}', response: 'RundownRoleListItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/rundown-roles, request: CreateRundownRoleBody, response: RundownRoleCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/rundown-roles/{roleId}, request: UpdateRundownRoleBody, response: RundownRoleUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/rundown-roles/{roleId}, request: '{}', response: void }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-items, request: '{}', response: 'RundownItemListItem[]（time null 置頂，其餘依 time 升冪）' }
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/rundown-items, request: SaveRundownTableBody, response: RundownTableSavedEvent }
+    # --- invitations（喜帖已寄送記號） ---
+    - { method: PUT, path: /api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent, request: MarkInvitationSentBody, response: InvitationSentMarkedEvent }
 
 # =============================================================================
 # 路由規劃
@@ -516,9 +581,11 @@ routes:
     features:
       - { file: SendRsvpInvitation.feature, content_hash: 9b922b344995 }
       - { file: OverrideRsvp.feature, content_hash: 75e6c594fdbd }
+      - { file: MarkInvitationSent.feature, content_hash: 0c781225d589 }
     api_endpoints:
       - POST /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-invitation
       - POST /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-override
+      - PUT /api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent
     components: [PageHeader]
     store: null
 
@@ -625,4 +692,52 @@ routes:
     api_endpoints:
       - POST /api/v1/weddings/{weddingId}/line-oa
     components: [PageHeader]
+    store: null
+
+  - path: /weddings/[weddingId]/gifts
+    page: app/pages/weddings/[weddingId]/gifts.vue
+    layout: default
+    features:
+      - { file: AddGiftItem.feature, content_hash: 8929a3e3a552 }
+      - { file: UpdateGiftItem.feature, content_hash: 2dd754995e6e }
+      - { file: RemoveGiftItem.feature, content_hash: 4774de439294 }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/gift-items
+      - POST /api/v1/weddings/{weddingId}/gift-items
+      - PATCH /api/v1/weddings/{weddingId}/gift-items/{giftItemId}
+      - DELETE /api/v1/weddings/{weddingId}/gift-items/{giftItemId}
+      - GET /api/v1/weddings/{weddingId}/guests
+      - GET /api/v1/weddings/{weddingId}/tables
+    components: [PageHeader, ConfirmModal, EmptyState]
+    store: null
+    features_used: [fileUpload]
+
+  - path: /weddings/[weddingId]/rundown
+    page: app/pages/weddings/[weddingId]/rundown.vue
+    layout: default
+    features:
+      - { file: AddRundownRole.feature, content_hash: 75eb2f3a47f1 }
+      - { file: UpdateRundownRole.feature, content_hash: 4791346a9714 }
+      - { file: RemoveRundownRole.feature, content_hash: f5d8e7e50968 }
+      - { file: SaveRundownTable.feature, content_hash: 54b084b4241e }
+      - { file: ApplyRundownTemplate.feature, content_hash: 664339842b1d }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/rundown-roles
+      - POST /api/v1/weddings/{weddingId}/rundown-roles
+      - PATCH /api/v1/weddings/{weddingId}/rundown-roles/{roleId}
+      - DELETE /api/v1/weddings/{weddingId}/rundown-roles/{roleId}
+      - GET /api/v1/weddings/{weddingId}/rundown-items
+      - PUT /api/v1/weddings/{weddingId}/rundown-items
+    components: [PageHeader, ConfirmModal, EmptyState]
+    store: null
+
+  - path: /rundown/[weddingId]
+    page: app/pages/rundown/[weddingId].vue
+    layout: guest
+    features:
+      - { file: ViewPublicRundown.feature, content_hash: 2a78fa2d0aee }
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}/rundown-items
+      - GET /api/v1/weddings/{weddingId}/rundown-roles
+    components: [EmptyState]
     store: null

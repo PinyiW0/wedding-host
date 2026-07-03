@@ -41,6 +41,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     customAnswers: body.customAnswers ?? null,
     status: 'pending_review',
     source: 'rsvp',
+    invitationSent: false,
   })
 
   setResponseStatus(event, 201)

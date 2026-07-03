@@ -33,6 +33,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
     partySize,
     tableName: null,
     deletedAt: null,
+    invitationSent: false,
   })
 
   setResponseStatus(event, 201)

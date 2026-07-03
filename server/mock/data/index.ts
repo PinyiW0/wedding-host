@@ -2,9 +2,11 @@
 import { mockReceptionAccounts } from './accounts'
 import { mockBlessings } from './blessings'
 import { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
+import { mockGiftItems } from './gifts'
 import { mockGuests } from './guests'
 import { mockLineOas } from './line'
 import { mockRsvpFormConfigs } from './rsvp-config'
+import { mockRundownItems, mockRundownRoles } from './rundown'
 import {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
@@ -19,9 +21,11 @@ import { mockWeddings } from './weddings'
 export { mockReceptionAccounts } from './accounts'
 export { mockBlessings } from './blessings'
 export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
+export { mockGiftItems } from './gifts'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'
 export { mockRsvpFormConfigs } from './rsvp-config'
+export { mockRundownItems, mockRundownRoles } from './rundown'
 export {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
@@ -42,6 +46,9 @@ const stores = [
   mockCakeBoxExclusions,
   mockCakeBoxExtraOrders,
   mockCakeBoxTypes,
+  mockGiftItems,
+  mockRundownItems,
+  mockRundownRoles,
   mockGuests,
   mockLineOas,
   mockRsvpFormConfigs,

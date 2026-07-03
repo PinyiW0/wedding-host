@@ -36,6 +36,8 @@ export interface GuestListItem {
   shuttleCount?: number | null
   // 自訂題答案（供後台 RSVP 頁檢視；未填為 null）
   customAnswers?: Record<string, string | string[]> | null
+  // 喜帖已寄送記號（管理端逐位勾選；省略視為 false）
+  invitationSent?: boolean
   // 名單狀態與來源（混合制：公開自助回覆進待確認區）；省略視為 confirmed / manual
   status?: GuestStatus
   source?: GuestSource
@@ -116,4 +118,13 @@ export interface BindGuestLineBody {
 export interface GuestLineBoundEvent {
   guestId: string
   lineUserId: string
+}
+
+export interface MarkInvitationSentBody {
+  sent: boolean
+}
+
+export interface InvitationSentMarkedEvent {
+  guestId: string
+  invitationSent: boolean
 }

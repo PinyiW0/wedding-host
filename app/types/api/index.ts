@@ -40,6 +40,8 @@ export type {
   GuestsImportedEvent,
   GuestUpdatedEvent,
   ImportGuestsBody,
+  InvitationSentMarkedEvent,
+  MarkInvitationSentBody,
   UpdateGuestBody,
 } from './guests'
 export type {

@@ -28,11 +28,18 @@ export {
 } from './cakebox.api'
 export { listFlowers } from './flowers.api'
 export {
+  createGiftItem,
+  deleteGiftItem,
+  listGiftItems,
+  updateGiftItem,
+} from './gifts.api'
+export {
   bindGuestLine,
   createGuest,
   deleteGuest,
   importGuests,
   listGuests,
+  markInvitationSent,
   restoreGuest,
   updateGuest,
 } from './guests.api'
@@ -58,6 +65,14 @@ export {
   sendRsvpInvitation,
   submitRsvp,
 } from './rsvp.api'
+export {
+  createRundownRole,
+  deleteRundownRole,
+  listRundownItems,
+  listRundownRoles,
+  saveRundownTable,
+  updateRundownRole,
+} from './rundown.api'
 export {
   configureVenueLayout,
   createTable,

@@ -24,6 +24,8 @@ export interface MockGuest {
   checkedInAt: string | null
   giftAmount: number | null
   cakeBoxDistributedTypeId: string | null
+  // 喜帖已寄送記號（管理端逐位勾選）
+  invitationSent: boolean
   // 這組總人數（本人＋同行＋兒童椅嬰兒）；正常席人頭 = partySize − childChairCount
   partySize: number
   tableName: string | null
@@ -54,6 +56,8 @@ function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 's
     checkedInAt: null,
     giftAmount: null,
     cakeBoxDistributedTypeId: null,
+    // 既有 seed 一律未寄送（由工廠預設補上，不動個別 seed 欄位值）
+    invitationSent: false,
     partySize: 1,
     tableName: null,
     deletedAt: null,

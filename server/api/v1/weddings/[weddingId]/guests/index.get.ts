@@ -29,6 +29,7 @@ export default defineEventHandler((event: H3Event): GuestListItem[] => {
       needsShuttle: g.needsShuttle ?? null,
       shuttleCount: g.shuttleCount ?? null,
       customAnswers: g.customAnswers ?? null,
+      invitationSent: g.invitationSent,
       status: g.status ?? 'confirmed',
       source: g.source ?? 'manual',
       deletedAt: g.deletedAt,

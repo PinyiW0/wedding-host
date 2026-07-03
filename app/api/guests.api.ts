@@ -10,6 +10,8 @@ import type {
   GuestsImportedEvent,
   GuestUpdatedEvent,
   ImportGuestsBody,
+  InvitationSentMarkedEvent,
+  MarkInvitationSentBody,
   UpdateGuestBody,
 } from '~/types/api/guests'
 import { useHttp } from '~/composables/useHttp'
@@ -62,6 +64,14 @@ export function importGuests(weddingId: string, body: ImportGuestsBody) {
 export function bindGuestLine(weddingId: string, guestId: string, body: BindGuestLineBody) {
   return useHttp().post<GuestLineBoundEvent>(
     '/api/v1/weddings/{weddingId}/guests/{guestId}/line-binding',
+    { pathParams: { weddingId, guestId }, body },
+  )
+}
+
+// 標記喜帖已寄送（PUT 冪等設值）
+export function markInvitationSent(weddingId: string, guestId: string, body: MarkInvitationSentBody) {
+  return useHttp().put<InvitationSentMarkedEvent>(
+    '/api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent',
     { pathParams: { weddingId, guestId }, body },
   )
 }
