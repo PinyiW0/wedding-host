@@ -1,7 +1,7 @@
 <!-- app/pages/weddings/[weddingId]/rsvp/appearance.vue — RSVP 外觀設定（模板 + banner + 即時預覽） -->
 <script setup lang="ts">
 import type { RsvpFormConfigDetail, RsvpTheme } from '~/types/api/rsvp-config'
-import { configureRsvpForm, getRsvpFormConfig, getWedding } from '~/api'
+import { configureRsvpForm, getRsvpFormConfig, getWedding, updateWedding } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -10,8 +10,13 @@ const weddingId = computed(() => String(route.params.weddingId))
 const toast = useToast()
 
 const { data: wedding } = await getWedding(weddingId)
-const groomName = computed(() => wedding.value?.groomName || '新郎')
-const brideName = computed(() => wedding.value?.brideName || '新娘')
+// 新人姓名可在此頁直接編輯（儲存時同步回婚禮資訊），預覽即時反映
+const nameDraft = ref({
+  groom: wedding.value?.groomName ?? '',
+  bride: wedding.value?.brideName ?? '',
+})
+const groomName = computed(() => nameDraft.value.groom.trim() || '新郎')
+const brideName = computed(() => nameDraft.value.bride.trim() || '新娘')
 
 const { data: config } = await getRsvpFormConfig(weddingId)
 const draft = ref<RsvpFormConfigDetail>(structuredClone(toRaw(config.value!)))
@@ -42,6 +47,16 @@ async function save() {
       banner: draft.value.banner,
       questions: draft.value.questions,
     })
+    // 新人姓名有異動才同步回婚禮資訊
+    const groom = nameDraft.value.groom.trim()
+    const bride = nameDraft.value.bride.trim()
+    if (groom !== (wedding.value?.groomName ?? '') || bride !== (wedding.value?.brideName ?? '')) {
+      await updateWedding(weddingId.value, { groomName: groom, brideName: bride })
+      if (wedding.value) {
+        wedding.value.groomName = groom
+        wedding.value.brideName = bride
+      }
+    }
     toast.add({ title: '已儲存', description: 'RSVP 外觀設定已更新', color: 'success' })
   }
   catch (error: any) {
@@ -91,6 +106,30 @@ async function save() {
     <div class="flex flex-col gap-8 lg:min-h-0 lg:flex-1 lg:flex-row lg:overflow-hidden">
       <!-- 左：外觀編輯 -->
       <section class="stable-scroll space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:pr-1">
+        <!-- 新人姓名（預覽 hero 即時反映，儲存時同步回婚禮資訊） -->
+        <div>
+          <p class="mb-3 text-overline uppercase text-gold-deep">
+            新人姓名
+          </p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <UInput
+              v-model="nameDraft.groom"
+              aria-label="新郎姓名"
+              placeholder="新郎姓名"
+              class="w-full"
+            />
+            <UInput
+              v-model="nameDraft.bride"
+              aria-label="新娘姓名"
+              placeholder="新娘姓名"
+              class="w-full"
+            />
+          </div>
+          <p class="mt-2 text-caption text-ink-300">
+            儲存後將同步更新婚禮資訊的新人姓名
+          </p>
+        </div>
+
         <!-- 模板 -->
         <div>
           <p class="mb-3 text-overline uppercase text-gold-deep">
