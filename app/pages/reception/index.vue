@@ -46,7 +46,7 @@ const { data: guests, refresh: refreshGuests } = await listGuests(weddingId, { d
 const { data: cakeBoxTypes } = await listCakeBoxTypes(weddingId, { default: () => [] })
 
 // 後台逐位指定的喜餅款式（接待端據此顯示「指定款式」並可打勾發放）
-const { data: cakeAssignments } = await listCakeBoxAssignments(weddingId, { default: () => [] })
+const { data: cakeAssignments, refresh: refreshCakeAssignments } = await listCakeBoxAssignments(weddingId, { default: () => [] })
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -103,7 +103,7 @@ const quickAmounts = [1200, 3600, 6000, 12000]
 type ReceptionStatus = Omit<ReceptionStatusItem, 'guestId'>
 const status = reactive<Record<string, ReceptionStatus>>({})
 
-const { data: receptionStatus } = await getReceptionStatus(weddingId, { default: () => [] })
+const { data: receptionStatus, refresh: refreshStatus } = await getReceptionStatus(weddingId, { default: () => [] })
 
 watchEffect(() => {
   for (const item of receptionStatus.value ?? []) {
@@ -266,6 +266,30 @@ async function refreshSeating() {
   await refreshTables()
   await loadSeats()
 }
+
+// 現場即時性：自助報到、其他接待機的操作、後台排座位的變動，
+// 都不會推播到本頁——以短輪詢靜默同步（背景分頁暫停；本地操作進行中跳過，避免舊資料蓋掉剛寫入的狀態）。
+// mock 階段無推播機制；正式 M0 改 SSE/WebSocket。
+const POLL_MS = 5000
+let pollTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  pollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible')
+      return
+    if (checkingInId.value || isGiftSubmitting.value || isCakeSubmitting.value || quickDistributingId.value)
+      return
+    Promise.all([
+      refreshGuests(),
+      refreshStatus(),
+      refreshCakeAssignments(),
+      refreshSeating(),
+    ]).catch(() => {})
+  }, POLL_MS)
+})
+onUnmounted(() => {
+  if (pollTimer)
+    clearInterval(pollTimer)
+})
 
 function tableSeats(tableId: string): SeatListItem[] {
   return seatsByTable.value[tableId] ?? []
