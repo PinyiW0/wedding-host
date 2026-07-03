@@ -531,6 +531,21 @@ const orderSummary = computed(() => {
 const extraTotal = computed(() => (extraOrders.value ?? []).reduce((s, o) => s + o.quantity, 0))
 const orderTotal = computed(() => includedPickup.value.length + extraTotal.value)
 
+// 訂購金額（vibe）：每款小計 = 單價 × 合計盒數；未定價（price null）排除加總並標示
+const orderAmountSummary = computed(() => {
+  const priceByType = new Map((cakeBoxTypes.value ?? []).map(t => [t.cakeBoxTypeId, t.price]))
+  return orderSummary.value.map((g) => {
+    const price = priceByType.get(g.cakeBoxTypeId) ?? null
+    return { ...g, amount: price == null ? null : price * g.total }
+  })
+})
+const orderGrandTotal = computed(() =>
+  orderAmountSummary.value.reduce((s, g) => s + (g.amount ?? 0), 0),
+)
+const hasUnpricedType = computed(() =>
+  orderAmountSummary.value.some(g => g.amount == null && g.total > 0),
+)
+
 // 表格篩選：搜尋姓名 + 分類選擇
 // 「全部分類」用哨兵值（不可用空字串：Reka Combobox/USelectMenu 禁止空字串 value，否則整個下拉 render 失敗）
 const ALL_CATEGORIES = '__all__'
@@ -922,7 +937,7 @@ async function removeExtraOrder(extraOrderId: string) {
               <div class="mb-4 rounded-lg bg-cream p-4 dark:bg-neutral-800/40">
                 <div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
                   <div
-                    v-for="grp in orderSummary"
+                    v-for="grp in orderAmountSummary"
                     :key="grp.cakeBoxTypeId || 'none'"
                     class="flex items-baseline gap-1.5"
                   >
@@ -933,14 +948,30 @@ async function removeExtraOrder(extraOrderId: string) {
                     <span v-if="grp.extraQty > 0" class="text-caption text-ink-400 dark:text-neutral-500">
                       （賓客 {{ grp.guestQty }}＋額外 {{ grp.extraQty }}）
                     </span>
+                    <span
+                      v-if="grp.amount != null"
+                      :data-testid="`vibe-cake-amount-${grp.cakeBoxTypeId}`"
+                      class="text-caption font-medium text-gold-deep"
+                    >
+                      ＝ {{ formatPrice(grp.amount) }}
+                    </span>
+                    <span v-else class="text-caption text-ink-400 dark:text-neutral-500">（未定價）</span>
                   </div>
                 </div>
-                <div class="mt-3 flex items-baseline justify-end gap-1.5 border-t border-line/70 pt-2 dark:border-neutral-700">
+                <div class="mt-3 flex flex-wrap items-baseline justify-end gap-x-1.5 gap-y-1 border-t border-line/70 pt-2 dark:border-neutral-700">
                   <span class="text-caption text-ink-500 dark:text-neutral-400">共計</span>
                   <span class="font-display text-xl font-semibold text-gold-deep">{{ orderTotal }}</span>
                   <span class="text-caption text-ink-400">盒</span>
                   <span v-if="extraTotal > 0" class="text-caption font-normal text-ink-400">
                     （賓客 {{ includedPickup.length }}＋額外 {{ extraTotal }}）
+                  </span>
+                  <span class="mx-1 text-ink-300 dark:text-neutral-600">·</span>
+                  <span class="text-caption text-ink-500 dark:text-neutral-400">總金額</span>
+                  <span data-testid="vibe-cake-grand-total" class="font-display text-xl font-semibold text-gold-deep">
+                    {{ formatPrice(orderGrandTotal) }}
+                  </span>
+                  <span v-if="hasUnpricedType" class="text-caption font-normal text-ink-400">
+                    （未定價款未計入）
                   </span>
                 </div>
               </div>

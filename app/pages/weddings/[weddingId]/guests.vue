@@ -47,6 +47,23 @@ const deletedGuests = computed(() =>
   (guests.value ?? []).filter(g => g.deletedAt),
 )
 
+// 出席統計總覽（純前端讀模型）：出席 = rsvpAttending 'attending'；
+// 大人 = partySize − childChairCount；素食以登記筆數計（diet 為每組一筆，無法拆到人頭）
+const attendingGuests = computed(() =>
+  activeGuests.value.filter(g => g.rsvpAttending === 'attending'),
+)
+const guestStats = computed(() => {
+  const adults = attendingGuests.value.reduce((sum, g) => sum + (g.partySize - g.childChairCount), 0)
+  const children = attendingGuests.value.reduce((sum, g) => sum + g.childChairCount, 0)
+  const vegetarian = attendingGuests.value.filter(g => g.diet === 'vegetarian').length
+  return [
+    { key: 'total', label: '出席總人數', value: adults + children },
+    { key: 'adults', label: '大人', value: adults },
+    { key: 'children', label: '小孩（兒童椅）', value: children },
+    { key: 'vegetarian', label: '素食（組）', value: vegetarian },
+  ]
+})
+
 // 待確認賓客（公開自助回覆，與正式名單隔離；獨立端點）
 const { data: pendingGuests, refresh: refreshPending } = await listPendingGuests(weddingId, {
   default: () => [],
@@ -453,6 +470,26 @@ async function confirmImport() {
         </div>
       </template>
     </PageHeader>
+
+    <!-- 出席統計總覽（vibe：依 RSVP 出席回覆即時計算，與下方名單同資料源） -->
+    <div
+      data-testid="vibe-guest-stats"
+      class="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4 dark:border-neutral-800 dark:bg-neutral-800"
+    >
+      <div
+        v-for="stat in guestStats"
+        :key="stat.key"
+        :data-testid="`vibe-guest-stats-${stat.key}`"
+        class="bg-white px-5 py-4 dark:bg-neutral-900"
+      >
+        <p class="text-caption text-ink-500 dark:text-neutral-400">
+          {{ stat.label }}
+        </p>
+        <p class="mt-1 font-display text-h3 font-semibold leading-none text-ink dark:text-paper">
+          {{ stat.value }}
+        </p>
+      </div>
+    </div>
 
     <!-- 搜尋 + 篩選膠囊（編輯式工具列；純前端篩選） -->
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
