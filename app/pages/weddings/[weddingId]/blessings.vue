@@ -7,7 +7,7 @@ import type {
   RejectBlessingBody,
 } from '~/types/api/blessings'
 import type { ProjectionMediaType, UpdateProjectionSettingsBody } from '~/types/api/projection'
-import { approveBlessing, getProjectionSettings, listBlessings, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
+import { approveBlessing, getProjectionSettings, getSignedLink, listBlessings, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
 import { blessingStatusMeta } from '~/utils/statusMeta'
 import { toYouTubeEmbed } from '~/utils/videoEmbed'
 
@@ -43,6 +43,20 @@ const MEDIA_OPTIONS: { label: string, value: ProjectionMediaType }[] = [
   { label: '照片', value: 'photo' },
   { label: '影片', value: 'video' },
 ]
+
+// 複製附簽名的投影牆連結：供未登入的現場投影設備開啟（enforced 模式憑簽名放行）
+async function copyProjectionLink() {
+  const base = `${window.location.origin}/projection/${weddingId.value}`
+  try {
+    const { sig } = await getSignedLink(weddingId.value)
+    const url = `${base}?sig=${sig}`
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: '已複製投影連結', description: url, color: 'success' })
+  }
+  catch {
+    toast.add({ title: '複製失敗', description: base, color: 'error' })
+  }
+}
 
 function openProjectionSettings() {
   const s = projectionSettings.value
@@ -236,6 +250,16 @@ async function submitReject() {
             @click="openProjectionSettings"
           >
             投影設定
+          </UButton>
+          <UButton
+            data-testid="vibe-copy-projection-link"
+            icon="i-heroicons-link"
+            color="neutral"
+            variant="outline"
+            aria-label="複製投影連結"
+            @click="copyProjectionLink"
+          >
+            複製投影連結
           </UButton>
           <UButton
             data-testid="open-projection"

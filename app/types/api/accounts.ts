@@ -8,6 +8,8 @@ export interface ReceptionAccountListItem {
 
 export interface CreateReceptionAccountBody {
   username: string
+  // 選填：設定後此帳號可登入接待端（僅名單管理可不填）
+  password?: string
 }
 
 export interface ReceptionAccountCreatedEvent {

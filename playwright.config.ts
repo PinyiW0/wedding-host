@@ -30,5 +30,8 @@ export default defineConfig({
     url: 'http://localhost:3001',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
+    // 顯式指定認證相容模式（dev 預設即 open，此處防環境變數污染）：
+    // 凍結 spec 以裸 URL／無 token 直打 API，需 open 模式的簽名不強制與預設管理員 fallback
+    env: { NUXT_AUTH_MODE: 'open' },
   },
 })

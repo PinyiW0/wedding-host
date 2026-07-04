@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import type { LoginBody, UserLoggedInEvent } from '../../../../app/types/api/auth'
 
+import { mockReceptionAccounts } from '../../../mock/data/accounts'
 import { mockUsers } from '../../../mock/data/users'
 
 export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEvent> => {
@@ -11,19 +12,35 @@ export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEv
   }
 
   const user = mockUsers.find(u => u.username === body.username && !u.deletedAt)
-  if (!user) {
+  if (user) {
+    if (!verifyPassword(body.password, user.passwordHash)) {
+      throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
+    }
+    setResponseStatus(event, 201)
+    return {
+      userId: user.userId,
+      username: user.username,
+      role: user.role,
+      weddingId: user.weddingId,
+      accessToken: await signAuthToken({ userId: user.userId, role: user.role, weddingId: user.weddingId }),
+    }
+  }
+
+  // 接待帳號（新人建立、已設密碼者）：登入後取得限定該婚禮的接待員身分
+  const account = mockReceptionAccounts.find(a => a.username === body.username && a.passwordHash)
+  if (!account) {
     throw createError({ statusCode: 404, statusMessage: '帳號不存在' })
   }
-  if (user.password !== body.password) {
+  if (!verifyPassword(body.password, account.passwordHash)) {
     throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
   }
 
   setResponseStatus(event, 201)
   return {
-    userId: user.userId,
-    username: user.username,
-    role: user.role,
-    weddingId: user.weddingId,
-    accessToken: `mock-token-${user.userId}-${Date.now()}`,
+    userId: account.accountId,
+    username: account.username,
+    role: '接待員',
+    weddingId: account.weddingId,
+    accessToken: await signAuthToken({ userId: account.accountId, role: '接待員', weddingId: account.weddingId }),
   }
 })
