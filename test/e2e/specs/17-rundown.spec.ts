@@ -153,8 +153,7 @@ test.describe('當天流程表（Admin 端）', () => {
       const request = await apiCall
 
       // Then：payload 含一筆無 rundownItemId 的新列（durationMinutes＝17:50−17:30＝20，後端配發 id）
-      const newRow = request.postDataJSON().items
-        .find((i: { rundownItemId?: string }) => !i.rundownItemId)
+      const newRow = request.postDataJSON().items.find((i: { rundownItemId?: string }) => !i.rundownItemId)
       expect(newRow).toMatchObject({ time: '17:30', durationMinutes: 20, title: '婚宴場地佈置確認' })
     })
   })
