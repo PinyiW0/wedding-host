@@ -1,8 +1,20 @@
+import process from 'node:process'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   runtimeConfig: {
+    // 認證模式（NUXT_AUTH_MODE 覆蓋）：
+    //   enforced＝無 token 401、賓客連結需 HMAC 簽名（production build 預設）
+    //   open    ＝無 token 退回預設管理員、簽名不強制（dev / e2e 相容模式；有 token 仍走完整驗證）
+    authMode: process.env.NODE_ENV === 'production' ? 'enforced' : 'open',
+    // 以下 secrets 上線前必須以環境變數覆蓋（NUXT_JWT_SECRET / NUXT_GUEST_LINK_SECRET）
+    jwtSecret: 'dev-only-jwt-secret-change-me',
+    jwtExpiresIn: '7d',
+    guestLinkSecret: 'dev-only-guest-link-secret-change-me',
+    // LINE Messaging API（M4 基礎建設：留空＝維持 mock 行為，填入後 batch-send 走真發送）
+    lineChannelAccessToken: '',
     public: {
       // 統一 API domain，可由 NUXT_PUBLIC_API_BASE 覆蓋
       // 預設空字串：path_prefix（/api/v1）已內嵌在各 *.api.ts 的路徑字串中

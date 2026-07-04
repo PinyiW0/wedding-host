@@ -18,7 +18,7 @@ export default defineEventHandler(async (event: H3Event): Promise<AdminRegistere
     userId,
     username: body.email,
     email: body.email,
-    password: '',
+    passwordHash: '',
     displayName: body.displayName,
     role: '管理者',
     weddingId: null,

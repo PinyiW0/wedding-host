@@ -28,6 +28,8 @@ const { data: accounts, refresh } = await listReceptionAccounts(weddingId, {
 // === 建立接待帳號 ===
 const schema = z.object({
   username: z.string().trim().min(1, '請輸入帳號名稱'),
+  // 選填：設定後此帳號可用帳密登入接待端；留空僅作名單管理
+  password: z.string().optional(),
 })
 
 type Schema = z.output<typeof schema>
@@ -35,10 +37,13 @@ type Schema = z.output<typeof schema>
 const isCreateOpen = ref(false)
 const isSubmitting = ref(false)
 const createError = ref('')
-const state = reactive<Schema>({ username: '' })
+const showPassword = ref(false)
+const state = reactive<Schema>({ username: '', password: '' })
 
 function openCreate() {
   state.username = ''
+  state.password = ''
+  showPassword.value = false
   createError.value = ''
   isCreateOpen.value = true
 }
@@ -51,6 +56,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   try {
     const body: CreateReceptionAccountBody = {
       username: event.data.username,
+      ...(event.data.password ? { password: event.data.password } : {}),
     }
     await createReceptionAccount(weddingId.value, body)
     toast.add({ title: '接待帳號建立成功', color: 'success' })
@@ -211,6 +217,34 @@ function avatarInitial(name: string) {
                 placeholder="請輸入帳號名稱"
                 class="w-full"
               />
+            </UFormField>
+
+            <UFormField
+              label="登入密碼（選填）"
+              name="password"
+              hint="設定後可用此帳號登入接待端"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <UInput
+                v-model="state.password"
+                data-testid="vibe-account-password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="留空僅作名單管理"
+                autocomplete="new-password"
+                class="w-full"
+              >
+                <template #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
+                    :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+                    @click="showPassword = !showPassword"
+                  />
+                </template>
+              </UInput>
             </UFormField>
 
             <div class="flex justify-end gap-3 pt-2">

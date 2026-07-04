@@ -15,7 +15,13 @@ export default defineEventHandler(async (event: H3Event): Promise<ReceptionAccou
   }
 
   const accountId = `account-${crypto.randomUUID().slice(0, 8)}`
-  mockReceptionAccounts.push({ accountId, weddingId, username: body.username })
+  // 密碼選填：有設定才能用此帳號登入接待端（相容既有「僅名單管理」的建立流程）
+  mockReceptionAccounts.push({
+    accountId,
+    weddingId,
+    username: body.username,
+    passwordHash: body.password ? hashPassword(body.password) : '',
+  })
 
   setResponseStatus(event, 201)
   return { accountId, weddingId, username: body.username }

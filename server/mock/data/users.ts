@@ -1,11 +1,13 @@
 // 使用者（管理員 / 接待員）mock 資料 + 當前登入者
 // 來源：ui-config.yaml > testAccounts、RegisterAdmin.feature
 
+import { hashPassword } from '../../utils/password'
+
 export interface MockUser {
   userId: string
   username: string
   email: string
-  password: string
+  passwordHash: string // scrypt 雜湊（空字串＝尚未設密碼、不可登入）
   displayName: string
   role: string // 管理者 | 新人 | 接待員
   weddingId: string | null // 新人／接待員綁定其婚禮；管理者跨場為 null
@@ -17,7 +19,7 @@ export const mockUsers: MockUser[] = [
     userId: 'user-001',
     username: 'Andrea',
     email: 'andrea@example.com',
-    password: 'Andrea1122',
+    passwordHash: hashPassword('Andrea1122'),
     displayName: 'Andrea',
     role: '管理者',
     weddingId: null,
@@ -27,7 +29,7 @@ export const mockUsers: MockUser[] = [
     userId: 'user-002',
     username: 'receptionist',
     email: 'receptionist@example.com',
-    password: 'star1122',
+    passwordHash: hashPassword('star1122'),
     displayName: '接待員',
     role: '接待員',
     weddingId: 'wedding-001',
@@ -38,7 +40,7 @@ export const mockUsers: MockUser[] = [
     userId: 'user-003',
     username: 'couple',
     email: 'couple@example.com',
-    password: 'couple1122',
+    passwordHash: hashPassword('couple1122'),
     displayName: '新人',
     role: '新人',
     weddingId: 'wedding-001',

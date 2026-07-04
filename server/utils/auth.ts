@@ -1,27 +1,25 @@
 import type { H3Event } from 'h3'
 import type { MockUser } from '../mock/data/users'
 
-import { getMockCurrentUser, mockUsers } from '../mock/data/users'
+import { getMockCurrentUser } from '../mock/data/users'
 
-// 解析 mock-token-<userId>-<ts>（提至 module scope 避免每次重編譯）
-const BEARER_TOKEN_RE = /^Bearer\s+mock-token-(.+)-\d+$/
-
-// 從 Authorization: Bearer mock-token-<userId>-<ts> 解析登入者。
-// 無 token 或解析不到時退回預設管理員——保持「模板無真 auth」的既有行為，
-// 讓不帶 token 的直接 API 呼叫（含現有 e2e）行為不變；有登入的前端請求才走真實身分。
-export function getRequestUser(event: H3Event): MockUser {
-  const header = getHeader(event, 'authorization') || ''
-  const match = header.match(BEARER_TOKEN_RE)
-  if (match) {
-    const userId = match[1]
-    const user = mockUsers.find(u => u.userId === userId && !u.deletedAt)
-    if (user)
-      return user
+declare module 'h3' {
+  interface H3EventContext {
+    // 由 server/middleware/auth.ts 驗證 JWT 後掛上
+    authUser?: MockUser
   }
-  return getMockCurrentUser()
 }
 
-// 新人僅能存取自己擁有的婚禮；非擁有者擲出 403。其餘角色（管理者／接待員／無 token）放行。
+// 取得當前請求的使用者。JWT 驗證與授權（RBAC／婚禮範圍）由統一中介層完成；
+// 無使用者時退回預設管理員——僅發生於分享/賓客簽名的匿名請求與 open 模式，
+// enforced 模式的管理端路由在中介層即被 401 擋下，不會走到 fallback。
+export function getRequestUser(event: H3Event): MockUser {
+  return event.context.authUser ?? getMockCurrentUser()
+}
+
+// 新人僅能存取自己擁有的婚禮；非擁有者擲出 403。
+// 中介層已對 /weddings/[weddingId]/** 做過相同檢查，此函式保留給
+// handler 內對「非路徑上的 weddingId」（如查詢結果的關聯資源）做二次確認。
 export function assertWeddingAccess(user: MockUser, ownerId: string | null | undefined): void {
   if (user.role === '新人' && ownerId !== user.userId) {
     throw createError({ statusCode: 403, statusMessage: '無權存取此婚禮' })

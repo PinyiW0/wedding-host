@@ -53,10 +53,28 @@ function withPathParams(url: string, params?: PathParams): string {
 export function useHttp() {
   const baseURL = useRuntimeConfig().public.apiBase
   const auth = useAuthStore()
+  // SSR 於 setup 階段取路由；client 在 event handler 也可能呼叫，改讀 window.location
+  const ssrRoute = import.meta.server ? useRoute() : null
 
-  // 已登入則帶上 Authorization（mock auth 層用於識別身分）；公開頁無 token 即不帶
+  // 已登入則帶上 Authorization；公開頁無 token 即不帶
   function authHeaders(): Record<string, string> {
     return auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}
+  }
+
+  // 公開頁賓客連結的 ?sig= 簽名：自動透傳給 API（enforced 模式由後端驗簽）
+  function sigHeaders(): Record<string, string> {
+    const sig = import.meta.client
+      ? new URLSearchParams(window.location.search).get('sig')
+      : ssrRoute?.query.sig
+    return typeof sig === 'string' && sig ? { 'X-Guest-Sig': sig } : {}
+  }
+
+  // 401＝token 失效（過期/帳號被刪）：清除登入態導回登入頁；公開頁無 token 不會觸發
+  function handleUnauthorized(status: number): void {
+    if (status === 401 && auth.accessToken) {
+      auth.clearAuth()
+      navigateTo('/login')
+    }
   }
 
   // reactive 讀取：useFetch；url 傳 getter 時 ref 變動會自動重抓
@@ -65,7 +83,8 @@ export function useHttp() {
     // useFetch 泛型包裝的已知型別限制：不帶 <T>、改以斷言收斂 options 與回傳（沿用參考專案做法）
     return useFetch(() => withPathParams(toValue(url), pathParams), {
       baseURL,
-      headers: { ...authHeaders(), ...(headers as Record<string, string> | undefined) },
+      headers: { ...authHeaders(), ...sigHeaders(), ...(headers as Record<string, string> | undefined) },
+      onResponseError: ({ response }: { response: { status: number } }) => handleUnauthorized(response.status),
       ...rest,
     } as unknown as UseFetchOptions<unknown>) as AsyncData<T | undefined, FetchError | undefined>
   }
@@ -76,7 +95,8 @@ export function useHttp() {
     return $fetch<T>(withPathParams(url, pathParams), {
       baseURL,
       method,
-      headers: { ...authHeaders(), ...(headers as Record<string, string> | undefined) },
+      headers: { ...authHeaders(), ...sigHeaders(), ...(headers as Record<string, string> | undefined) },
+      onResponseError: ({ response }) => handleUnauthorized(response.status),
       ...rest,
     })
   }
