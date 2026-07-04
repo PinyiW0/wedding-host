@@ -32,8 +32,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     wedding.parkingInfo = body.parkingInfo
   if (body.transportInfo !== undefined)
     wedding.transportInfo = body.transportInfo
-  if (body.transportImageUrl !== undefined)
-    wedding.transportImageUrl = body.transportImageUrl
+  if (body.transportImageUrls !== undefined)
+    wedding.transportImageUrls = body.transportImageUrls
 
   return {
     weddingId: wedding.weddingId,
@@ -46,6 +46,6 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,
-    transportImageUrl: wedding.transportImageUrl ?? null,
+    transportImageUrls: wedding.transportImageUrls ?? [],
   }
 })

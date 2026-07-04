@@ -38,9 +38,12 @@ export {
   createGuest,
   deleteGuest,
   importGuests,
+  listGuestCategories,
   listGuests,
   markInvitationSent,
+  renameGuestCategory,
   restoreGuest,
+  saveGuestCategories,
   updateGuest,
 } from './guests.api'
 export { connectLineOa, getLineOa } from './line.api'
@@ -51,6 +54,10 @@ export {
   rejectPendingGuest,
   submitPublicRsvp,
 } from './pending-guests.api'
+export {
+  getProjectionSettings,
+  updateProjectionSettings,
+} from './projection.api'
 export {
   checkInGuest,
   distributeCakeBox,
@@ -76,17 +83,21 @@ export {
 export {
   configureVenueLayout,
   createTable,
+  createVenueMarker,
   deleteTable,
+  deleteVenueMarker,
   dismissEtiquetteWarning,
   getEtiquetteSettings,
   getTableSeats,
   getVenueLayout,
   listEtiquetteWarnings,
   listTables,
+  listVenueMarkers,
   seatGuest,
   unseatGuest,
   updateEtiquetteSettings,
   updateTable,
+  updateVenueMarker,
 } from './seating.api'
 export {
   batchSendThankYou,

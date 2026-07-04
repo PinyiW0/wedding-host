@@ -49,6 +49,12 @@ export type {
   LineOaConnectedEvent,
 } from './line'
 export type {
+  ProjectionMediaType,
+  ProjectionSettings,
+  ProjectionSettingsUpdatedEvent,
+  UpdateProjectionSettingsBody,
+} from './projection'
+export type {
   CakeBoxDistributedEvent,
   DistributeCakeBoxBody,
   GiftMoneyRecordedEvent,

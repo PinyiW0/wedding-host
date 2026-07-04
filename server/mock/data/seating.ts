@@ -31,6 +31,16 @@ export interface MockVenueLayout {
   stagePositionY: number
 }
 
+export interface MockVenueMarker {
+  markerId: string
+  weddingId: string
+  label: string
+  positionX: number
+  positionY: number
+  width: number
+  height: number
+}
+
 export interface MockEtiquetteSettings extends EtiquetteSettings {
   weddingId: string
 }
@@ -73,6 +83,9 @@ export const mockSeats: MockSeat[] = []
 export const mockVenueLayouts: MockVenueLayout[] = [
   { weddingId: 'wedding-001', stageWidth: 300, stageHeight: 150, stagePositionX: 500, stagePositionY: 100 },
 ]
+
+// 場地標記（seed 空陣列：凍結測試期間畫布零差異）
+export const mockVenueMarkers: MockVenueMarker[] = []
 
 export const mockEtiquetteSettings: MockEtiquetteSettings[] = [
   {

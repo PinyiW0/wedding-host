@@ -47,6 +47,8 @@ export interface RundownItemListItem {
   note: string | null
   // 矩陣格：各角色在此時段的個別事項
   roleTasks: RundownRoleTask[]
+  // 使用者標記列（highlight 底色強調；隨整表 PUT 持久化）
+  highlight: boolean
 }
 
 export interface SaveRundownTableBody {
@@ -60,6 +62,8 @@ export interface SaveRundownTableBody {
     supplies?: string
     note?: string
     roleTasks?: RundownRoleTask[]
+    // 省略視為 false（相容不帶此欄的呼叫端）
+    highlight?: boolean
   }>
 }
 

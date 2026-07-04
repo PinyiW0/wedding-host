@@ -128,3 +128,30 @@ export interface InvitationSentMarkedEvent {
   guestId: string
   invitationSent: boolean
 }
+
+// === 婚禮層級賓客分類清單 ===
+// GET 回傳「儲存清單（維持順序）∪ 在用分類（補尾）」的字串陣列；
+// 賓客的 category 欄位維持自由字串，本清單只是可選項字典
+
+// PUT 整份取代儲存清單
+export interface SaveGuestCategoriesBody {
+  categories: string[]
+}
+
+export interface GuestCategoriesSavedEvent {
+  weddingId: string
+  categories: string[]
+}
+
+// 改名：儲存清單 from→to，並連動該婚禮所有 category === from 的賓客（含軟刪）
+export interface RenameGuestCategoryBody {
+  from: string
+  to: string
+}
+
+export interface GuestCategoryRenamedEvent {
+  weddingId: string
+  from: string
+  to: string
+  updatedGuests: number
+}

@@ -19,6 +19,8 @@ export interface MockRundownItem {
   note: string | null
   // 矩陣格：各角色在此時段的個別事項（task 可空字串＝參與但無個別事項）
   roleTasks: { roleId: string, task: string }[]
+  // 使用者標記列
+  highlight: boolean
 }
 
 // 預設角色 seed：接待、總場控、新秘、平面攝影師（新人可自行增刪改）
@@ -40,5 +42,6 @@ export const mockRundownItems: MockRundownItem[] = [
     supplies: '婚紗配件、備用鞋',
     note: null,
     roleTasks: [{ roleId: 'role-003', task: '婚紗配件、備用鞋檢查' }],
+    highlight: false,
   },
 ]

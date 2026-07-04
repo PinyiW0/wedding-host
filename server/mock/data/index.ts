@@ -3,8 +3,10 @@ import { mockReceptionAccounts } from './accounts'
 import { mockBlessings } from './blessings'
 import { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 import { mockGiftItems } from './gifts'
+import { mockGuestCategories } from './guest-categories'
 import { mockGuests } from './guests'
 import { mockLineOas } from './line'
+import { mockProjectionSettings } from './projection'
 import { mockRsvpFormConfigs } from './rsvp-config'
 import { mockRundownItems, mockRundownRoles } from './rundown'
 import {
@@ -13,6 +15,7 @@ import {
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
 } from './seating'
 import { mockThankYouCustomizations, mockThankYouTemplates } from './thankyou'
 import { mockUsers } from './users'
@@ -22,8 +25,10 @@ export { mockReceptionAccounts } from './accounts'
 export { mockBlessings } from './blessings'
 export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
 export { mockGiftItems } from './gifts'
+export { mockGuestCategories } from './guest-categories'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'
+export { mockProjectionSettings } from './projection'
 export { mockRsvpFormConfigs } from './rsvp-config'
 export { mockRundownItems, mockRundownRoles } from './rundown'
 export {
@@ -32,6 +37,7 @@ export {
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
 } from './seating'
 export { mockThankYouCustomizations, mockThankYouTemplates } from './thankyou'
 export { getMockCurrentUser, mockUsers } from './users'
@@ -49,14 +55,17 @@ const stores = [
   mockGiftItems,
   mockRundownItems,
   mockRundownRoles,
+  mockGuestCategories,
   mockGuests,
   mockLineOas,
+  mockProjectionSettings,
   mockRsvpFormConfigs,
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
   mockThankYouCustomizations,
   mockThankYouTemplates,
   mockUsers,

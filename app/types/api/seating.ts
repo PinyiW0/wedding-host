@@ -100,6 +100,37 @@ export interface EtiquetteSettingsUpdatedEvent {
 // GET 讀回的禮俗設定（重整後還原 modal 既有值）
 export type EtiquetteSettingsDetail = EtiquetteSettingsUpdatedEvent
 
+// === 場地標記（門口、送客區、進場入口等長方形文字標示；與桌次同畫布 px 座標系）===
+export interface VenueMarkerListItem {
+  markerId: string
+  weddingId: string
+  label: string
+  positionX: number
+  positionY: number
+  width: number
+  height: number
+}
+
+export interface CreateVenueMarkerBody {
+  label: string
+  positionX?: number
+  positionY?: number
+  width?: number
+  height?: number
+}
+
+export type VenueMarkerCreatedEvent = VenueMarkerListItem
+
+export interface UpdateVenueMarkerBody {
+  label?: string
+  positionX?: number
+  positionY?: number
+  width?: number
+  height?: number
+}
+
+export type VenueMarkerUpdatedEvent = VenueMarkerListItem
+
 export interface EtiquetteWarningListItem {
   warningId: string
   warningType: string

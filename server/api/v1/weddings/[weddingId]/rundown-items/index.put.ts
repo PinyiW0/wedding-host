@@ -35,6 +35,8 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
     supplies: row.supplies ?? null,
     note: row.note ?? null,
     roleTasks: (row.roleTasks ?? []).filter(rt => validRoleIds.has(rt.roleId)),
+    // 凍結測試以 raw PUT 不帶此欄呼叫，必須有預設值
+    highlight: row.highlight ?? false,
   }))
 
   // 就地取代該婚禮全部 items（splice 舊列、push 新列，保持陣列參照——reset 機制依賴參照不變）

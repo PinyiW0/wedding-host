@@ -3,6 +3,8 @@ import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   BindGuestLineBody,
   CreateGuestBody,
+  GuestCategoriesSavedEvent,
+  GuestCategoryRenamedEvent,
   GuestCreatedEvent,
   GuestLineBoundEvent,
   GuestListItem,
@@ -12,6 +14,8 @@ import type {
   ImportGuestsBody,
   InvitationSentMarkedEvent,
   MarkInvitationSentBody,
+  RenameGuestCategoryBody,
+  SaveGuestCategoriesBody,
   UpdateGuestBody,
 } from '~/types/api/guests'
 import { useHttp } from '~/composables/useHttp'
@@ -73,5 +77,30 @@ export function markInvitationSent(weddingId: string, guestId: string, body: Mar
   return useHttp().put<InvitationSentMarkedEvent>(
     '/api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent',
     { pathParams: { weddingId, guestId }, body },
+  )
+}
+
+// === 婚禮層級賓客分類清單 ===
+export function listGuestCategories(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<string[]>,
+) {
+  return useHttp().get<string[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/guest-categories`,
+    options,
+  )
+}
+
+export function saveGuestCategories(weddingId: string, body: SaveGuestCategoriesBody) {
+  return useHttp().put<GuestCategoriesSavedEvent>(
+    '/api/v1/weddings/{weddingId}/guest-categories',
+    { pathParams: { weddingId }, body },
+  )
+}
+
+export function renameGuestCategory(weddingId: string, body: RenameGuestCategoryBody) {
+  return useHttp().post<GuestCategoryRenamedEvent>(
+    '/api/v1/weddings/{weddingId}/guest-categories/rename',
+    { pathParams: { weddingId }, body },
   )
 }

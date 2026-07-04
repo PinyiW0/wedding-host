@@ -13,8 +13,8 @@ export interface MockWedding {
   mapLink: string | null
   parkingInfo: string | null
   transportInfo: string | null
-  // 交通參考圖片（dataURL；未設定為 null）
-  transportImageUrl?: string | null
+  // 交通參考圖片（dataURL 陣列，可多張；未設定為空陣列）
+  transportImageUrls?: string[]
   // 擁有此婚禮的帳號（新人角色用於資料隔離）；未設定＝僅管理者可見
   ownerId?: string | null
   deletedAt: string | null
@@ -32,7 +32,7 @@ export const mockWeddings: MockWedding[] = [
     mapLink: null,
     parkingInfo: null,
     transportInfo: null,
-    transportImageUrl: null,
+    transportImageUrls: [],
     ownerId: 'user-003',
     deletedAt: null,
   },

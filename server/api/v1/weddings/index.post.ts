@@ -20,7 +20,7 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingCreated
     mapLink: null,
     parkingInfo: null,
     transportInfo: null,
-    transportImageUrl: null,
+    transportImageUrls: [],
     // 建立者即擁有者（供新人角色資料隔離）
     ownerId: getRequestUser(event).userId,
     deletedAt: null,

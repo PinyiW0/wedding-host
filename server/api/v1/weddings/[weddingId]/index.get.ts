@@ -22,7 +22,7 @@ export default defineEventHandler((event: H3Event): WeddingDetail => {
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,
-    transportImageUrl: wedding.transportImageUrl ?? null,
+    transportImageUrls: wedding.transportImageUrls ?? [],
     ownerId: wedding.ownerId ?? null,
     deletedAt: wedding.deletedAt,
   }
