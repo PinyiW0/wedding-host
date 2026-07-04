@@ -1,4 +1,23 @@
 services:
+  # 本機開發／E2E 用 Postgres（正式環境為 Neon，見 issue #4）
+  # `npm run dev` 會透過 predev 自動拉起；手動：docker compose up -d --wait db
+  db:
+    image: postgres:17-alpine
+    container_name: wedding-host-db
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: wedding
+      POSTGRES_PASSWORD: wedding
+      POSTGRES_DB: wedding
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U wedding -d wedding]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
   frontend:
     build:
       context: .
@@ -13,3 +32,6 @@ services:
       NUXT_APP_BASE_API_URL: ${NUXT_APP_BASE_API_URL}
       NUXT_PRIVATE_GOOGLE_SHEET_KEY: ${NUXT_PRIVATE_GOOGLE_SHEET_KEY}
     restart: unless-stopped
+
+volumes:
+  db-data:

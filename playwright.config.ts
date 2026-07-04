@@ -26,7 +26,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx nuxt dev --port 3001',
+    // 走 npm run dev 讓 predev 自動拉起 docker postgres（-- 後的 args 附加到 dev script 尾端）
+    command: 'npm run dev -- --port 3001',
     url: 'http://localhost:3001',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
