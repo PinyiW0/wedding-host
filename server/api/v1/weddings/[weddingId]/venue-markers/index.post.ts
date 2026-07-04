@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
 import type { CreateVenueMarkerBody, VenueMarkerCreatedEvent } from '../../../../../../app/types/api/seating'
 
-import { mockVenueMarkers } from '../../../../../mock/data/seating'
+import { useDb } from '../../../../../db'
+import { venueMarkers } from '../../../../../db/schema'
 
 // 預設尺寸與落點（左上角附近，之後由拖曳調整位置）
 const DEFAULT_WIDTH = 140
@@ -24,7 +25,8 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueMarkerCre
     width: Math.max(40, Math.round(body.width ?? DEFAULT_WIDTH)),
     height: Math.max(24, Math.round(body.height ?? DEFAULT_HEIGHT)),
   }
-  mockVenueMarkers.push(marker)
+  const db = useDb()
+  await db.insert(venueMarkers).values(marker)
 
   setResponseStatus(event, 201)
   return { ...marker }

@@ -1,12 +1,16 @@
 import type { H3Event } from 'h3'
 import type { VenueLayoutDetail } from '../../../../../app/types/api/seating'
 
-import { mockVenueLayouts } from '../../../../mock/data/seating'
+import { eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../db'
+import { venueLayouts } from '../../../../db/schema'
 
 // 讀回該婚禮的場地佈局：尚未設定回 null（重整後仍能還原 modal 既有值）
-export default defineEventHandler((event: H3Event): VenueLayoutDetail | null => {
-  const weddingId = getRouterParam(event, 'weddingId')
-  const layout = mockVenueLayouts.find(l => l.weddingId === weddingId)
+export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutDetail | null> => {
+  const weddingId = getRouterParam(event, 'weddingId')!
+  const db = useDb()
+  const [layout] = await db.select().from(venueLayouts).where(eq(venueLayouts.weddingId, weddingId))
   if (!layout) {
     return null
   }

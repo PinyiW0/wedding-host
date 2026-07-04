@@ -1,21 +1,22 @@
 import type { H3Event } from 'h3'
 import type { GuestCategoriesSavedEvent, SaveGuestCategoriesBody } from '../../../../../../app/types/api/guests'
 
-import { mockGuestCategories } from '../../../../../mock/data/guest-categories'
+import { eq } from 'drizzle-orm'
 
-// 整份取代該婚禮的儲存清單（就地 splice+push，保持陣列參照供 mock reset）
+import { useDb } from '../../../../../db'
+import { guestCategories } from '../../../../../db/schema'
+
+// 整份取代該婚禮的儲存清單（先刪全部再依傳入順序 insert，seq 自增保序）
 export default defineEventHandler(async (event: H3Event): Promise<GuestCategoriesSavedEvent> => {
   const weddingId = String(getRouterParam(event, 'weddingId'))
   const body = await readBody<SaveGuestCategoriesBody>(event)
 
   const cleaned = [...new Set((body?.categories ?? []).map(c => c.trim()).filter(Boolean))]
 
-  for (let i = mockGuestCategories.length - 1; i >= 0; i--) {
-    if (mockGuestCategories[i]!.weddingId === weddingId)
-      mockGuestCategories.splice(i, 1)
-  }
-  for (const name of cleaned)
-    mockGuestCategories.push({ weddingId, name })
+  const db = useDb()
+  await db.delete(guestCategories).where(eq(guestCategories.weddingId, weddingId))
+  if (cleaned.length)
+    await db.insert(guestCategories).values(cleaned.map(name => ({ weddingId, name })))
 
   return { weddingId, categories: cleaned }
 })

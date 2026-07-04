@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
 import type { CreateGiftItemBody, GiftItemCreatedEvent } from '../../../../../../app/types/api/gifts'
 
-import { mockGiftItems } from '../../../../../mock/data/gifts'
+import { useDb } from '../../../../../db'
+import { giftItems } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -15,7 +16,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
   }
 
   const giftItemId = `giftitem-${crypto.randomUUID().slice(0, 8)}`
-  const item = {
+  const item: GiftItemCreatedEvent = {
     giftItemId,
     weddingId,
     category: body.category,
@@ -30,7 +31,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
     otherFee: body.otherFee ?? 0,
     note: body.note ?? null,
   }
-  mockGiftItems.push(item)
+  const db = useDb()
+  await db.insert(giftItems).values(item)
 
   setResponseStatus(event, 201)
   return item

@@ -1,8 +1,10 @@
 import type { H3Event } from 'h3'
-import type { RundownTableSavedEvent, SaveRundownTableBody } from '../../../../../../app/types/api/rundown'
-import type { MockRundownItem } from '../../../../../mock/data/rundown'
+import type { RundownItemListItem, RundownTableSavedEvent, SaveRundownTableBody } from '../../../../../../app/types/api/rundown'
 
-import { mockRundownItems, mockRundownRoles } from '../../../../../mock/data/rundown'
+import { eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { rundownItems, rundownRoles } from '../../../../../db/schema'
 
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
@@ -20,12 +22,13 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
       throw createError({ statusCode: 400, statusMessage: '時間格式錯誤' })
   }
 
-  // roleTasks 過濾掉該婚禮不存在的 roleId
-  const validRoleIds = new Set(
-    mockRundownRoles.filter(r => r.weddingId === weddingId).map(r => r.roleId),
-  )
+  const db = useDb()
 
-  const items: MockRundownItem[] = rows.map(row => ({
+  // roleTasks 過濾掉該婚禮不存在的 roleId
+  const roles = await db.select().from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId))
+  const validRoleIds = new Set(roles.map(r => r.roleId))
+
+  const items: RundownItemListItem[] = rows.map(row => ({
     rundownItemId: row.rundownItemId ?? `rundownitem-${crypto.randomUUID().slice(0, 8)}`,
     weddingId,
     time: row.time || null,
@@ -39,12 +42,10 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
     highlight: row.highlight ?? false,
   }))
 
-  // 就地取代該婚禮全部 items（splice 舊列、push 新列，保持陣列參照——reset 機制依賴參照不變）
-  for (let i = mockRundownItems.length - 1; i >= 0; i--) {
-    if (mockRundownItems[i]!.weddingId === weddingId)
-      mockRundownItems.splice(i, 1)
-  }
-  mockRundownItems.push(...items)
+  // 整批取代：刪除該婚禮全部 items 後依序 insert（seq 自然遞增＝傳入順序）
+  await db.delete(rundownItems).where(eq(rundownItems.weddingId, weddingId))
+  if (items.length)
+    await db.insert(rundownItems).values(items)
 
   return { weddingId, itemCount: items.length, items }
 })

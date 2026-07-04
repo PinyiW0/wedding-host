@@ -1,20 +1,24 @@
 import type { H3Event } from 'h3'
 import type { PublicRsvpSubmittedEvent, SubmitPublicRsvpBody } from '../../../../../../app/types/api/pending-guests'
 
-import { mockGuests } from '../../../../../mock/data/guests'
-import { mockWeddings } from '../../../../../mock/data/weddings'
+import { eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { guests, weddings } from '../../../../../db/schema'
 
 // 公開自助 RSVP：不需登入，建立 status='pending_review' 的待確認賓客（不進正式名單）
 export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubmittedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<SubmitPublicRsvpBody>(event)
 
-  if (!mockWeddings.some(w => w.weddingId === weddingId)) {
+  const db = useDb()
+  const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))
+  if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
 
   const guestId = `guest-${crypto.randomUUID().slice(0, 8)}`
-  mockGuests.unshift({
+  await db.insert(guests).values({
     guestId,
     weddingId,
     name: body.guestName || '未具名賓客',

@@ -1,48 +1,56 @@
 import type { H3Event } from 'h3'
 import type { RsvpSubmittedEvent, SubmitRsvpBody } from '../../../../../../../app/types/api/rsvp'
 
-import { mockGuests } from '../../../../../../mock/data/guests'
+import { and, eq, isNull } from 'drizzle-orm'
+
+import { useDb } from '../../../../../../db'
+import { guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedEvent> => {
-  const guestId = getRouterParam(event, 'guestId')
+  const guestId = getRouterParam(event, 'guestId')!
   const body = await readBody<SubmitRsvpBody>(event)
 
-  const guest = mockGuests.find(g => g.guestId === guestId && !g.deletedAt)
+  const db = useDb()
+  const [guest] = await db.select().from(guests).where(and(eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
   if (guest.rsvpAttending) {
     throw createError({ statusCode: 409, statusMessage: '已提交過 RSVP' })
   }
-  guest.rsvpAttending = body.attending
-  guest.diet = body.diet
-  guest.childChairCount = body.childChairCount
-  // 同步總人數：本人 + 同行（plusOneCount）+ 兒童椅嬰兒
-  guest.partySize = 1 + body.plusOneCount + body.childChairCount
+  const patch: Partial<typeof guests.$inferInsert> = {
+    rsvpAttending: body.attending,
+    diet: body.diet,
+    childChairCount: body.childChairCount,
+    // 同步總人數：本人 + 同行（plusOneCount）+ 兒童椅嬰兒
+    partySize: 1 + body.plusOneCount + body.childChairCount,
+  }
 
   // 補充欄位：能對應既有欄位的就更新，其餘存入專屬欄位（皆選填）
   if (body.guestName)
-    guest.name = body.guestName
+    patch.name = body.guestName
   if (body.relationship)
-    guest.side = body.relationship
+    patch.side = body.relationship
   if (body.relationCategory)
-    guest.category = body.relationCategory
+    patch.category = body.relationCategory
   if (body.phone)
-    guest.contact = body.phone
+    patch.contact = body.phone
   if (body.invitation !== undefined)
-    guest.invitationPreference = body.invitation
+    patch.invitationPreference = body.invitation
   if (body.mailingAddress !== undefined)
-    guest.mailingAddress = body.mailingAddress
+    patch.mailingAddress = body.mailingAddress
   if (body.blessing !== undefined)
-    guest.blessing = body.blessing
+    patch.blessing = body.blessing
   if (body.flowerDrawing !== undefined)
-    guest.flowerDrawing = body.flowerDrawing
+    patch.flowerDrawing = body.flowerDrawing
   if (body.needsShuttle !== undefined)
-    guest.needsShuttle = body.needsShuttle
+    patch.needsShuttle = body.needsShuttle
   if (body.shuttleCount !== undefined)
-    guest.shuttleCount = body.shuttleCount
+    patch.shuttleCount = body.shuttleCount
   if (body.customAnswers !== undefined)
-    guest.customAnswers = body.customAnswers
+    patch.customAnswers = body.customAnswers
+
+  await db.update(guests).set(patch).where(eq(guests.guestId, guest.guestId))
 
   setResponseStatus(event, 201)
   return {

@@ -1,7 +1,10 @@
 import type { H3Event } from 'h3'
 import type { CakeBoxTypeCreatedEvent, CreateCakeBoxTypeBody } from '../../../../../../app/types/api/cakebox'
 
-import { mockCakeBoxTypes } from '../../../../../mock/data/cakebox'
+import { eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { cakeBoxTypes } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -16,15 +19,13 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeCre
   const imageUrl = body.imageUrl ?? null
   const price = body.price ?? null
 
+  const db = useDb()
   // 單一預設不變式：設為預設時，先取消同婚禮其他款式的預設
   if (body.isDefault) {
-    for (const c of mockCakeBoxTypes) {
-      if (c.weddingId === weddingId)
-        c.isDefault = false
-    }
+    await db.update(cakeBoxTypes).set({ isDefault: false }).where(eq(cakeBoxTypes.weddingId, weddingId))
   }
 
-  mockCakeBoxTypes.push({ cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price })
+  await db.insert(cakeBoxTypes).values({ cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price })
 
   setResponseStatus(event, 201)
   return { cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price }

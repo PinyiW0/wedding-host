@@ -1,19 +1,25 @@
 import type { H3Event } from 'h3'
 import type { PendingGuestConfirmedEvent } from '../../../../../../../app/types/api/pending-guests'
 
-import { mockGuests } from '../../../../../../mock/data/guests'
+import { and, eq, isNull } from 'drizzle-orm'
+
+import { useDb } from '../../../../../../db'
+import { guests } from '../../../../../../db/schema'
 
 // 建為新賓客：將待確認賓客轉為正式名單
-export default defineEventHandler((event: H3Event): PendingGuestConfirmedEvent => {
-  const guestId = getRouterParam(event, 'guestId')
+export default defineEventHandler(async (event: H3Event): Promise<PendingGuestConfirmedEvent> => {
+  const guestId = getRouterParam(event, 'guestId')!
 
-  const pending = mockGuests.find(
-    g => g.guestId === guestId && g.status === 'pending_review' && !g.deletedAt,
-  )
+  const db = useDb()
+  const [pending] = await db.select().from(guests).where(and(
+    eq(guests.guestId, guestId),
+    eq(guests.status, 'pending_review'),
+    isNull(guests.deletedAt),
+  ))
   if (!pending) {
     throw createError({ statusCode: 404, statusMessage: '待確認賓客不存在' })
   }
 
-  pending.status = 'confirmed'
+  await db.update(guests).set({ status: 'confirmed' }).where(eq(guests.guestId, guestId))
   return { guestId: pending.guestId }
 })

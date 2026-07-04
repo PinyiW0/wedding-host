@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
 import type { CreateGuestBody, GuestCreatedEvent } from '../../../../../../app/types/api/guests'
 
-import { mockGuests } from '../../../../../mock/data/guests'
+import { useDb } from '../../../../../db'
+import { guests } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -15,7 +16,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
   const notes = body.notes ?? null
   const partySize = body.partySize ?? 1
   const childChairCount = body.childChairCount ?? 0
-  mockGuests.unshift({
+  const db = useDb()
+  await db.insert(guests).values({
     guestId,
     weddingId,
     name: body.name,

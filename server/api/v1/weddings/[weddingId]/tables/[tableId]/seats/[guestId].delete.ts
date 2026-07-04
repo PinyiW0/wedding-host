@@ -1,23 +1,24 @@
 import type { H3Event } from 'h3'
 
-import { mockSeats, mockTables } from '../../../../../../../mock/data/seating'
+import { and, eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event) => {
-  const tableId = getRouterParam(event, 'tableId')
-  const guestId = getRouterParam(event, 'guestId')
+import { useDb } from '../../../../../../../db'
+import { seatingTables, seats } from '../../../../../../../db/schema'
 
-  const table = mockTables.find(t => t.tableId === tableId)
+export default defineEventHandler(async (event: H3Event): Promise<void> => {
+  const tableId = getRouterParam(event, 'tableId')!
+  const guestId = getRouterParam(event, 'guestId')!
+
+  const db = useDb()
+  const [table] = await db.select().from(seatingTables).where(eq(seatingTables.tableId, tableId))
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
   // 一組賓客可能佔多筆座位（本人＋同行＋兒童椅），取消時一次清除該桌該賓客所有座位
-  const before = mockSeats.length
-  for (let i = mockSeats.length - 1; i >= 0; i--) {
-    const s = mockSeats[i]!
-    if (s.tableId === tableId && s.guestId === guestId)
-      mockSeats.splice(i, 1)
-  }
-  if (mockSeats.length === before) {
+  const removed = await db.delete(seats)
+    .where(and(eq(seats.tableId, tableId), eq(seats.guestId, guestId)))
+    .returning()
+  if (!removed.length) {
     throw createError({ statusCode: 404, statusMessage: '賓客不在此桌' })
   }
 

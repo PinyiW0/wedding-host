@@ -1,8 +1,10 @@
 import type { H3Event } from 'h3'
 import type { GuestCategoryRenamedEvent, RenameGuestCategoryBody } from '../../../../../../app/types/api/guests'
 
-import { mockGuestCategories } from '../../../../../mock/data/guest-categories'
-import { mockGuests } from '../../../../../mock/data/guests'
+import { and, eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { guestCategories, guests } from '../../../../../db/schema'
 
 // 分類改名：儲存清單 from→to，並連動該婚禮所有 category === from 的賓客（含軟刪）
 export default defineEventHandler(async (event: H3Event): Promise<GuestCategoryRenamedEvent> => {
@@ -14,27 +16,23 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCategoryR
   if (!to)
     throw createError({ statusCode: 400, statusMessage: '請輸入分類名稱' })
 
-  const storedEntry = mockGuestCategories.find(c => c.weddingId === weddingId && c.name === from)
-  const usedByGuest = mockGuests.some(g => g.weddingId === weddingId && g.category === from)
-  if (!storedEntry && !usedByGuest)
+  const db = useDb()
+  const [storedEntry] = await db.select().from(guestCategories).where(and(eq(guestCategories.weddingId, weddingId), eq(guestCategories.name, from)))
+  const [usedGuest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.category, from)))
+  if (!storedEntry && !usedGuest)
     throw createError({ statusCode: 404, statusMessage: '分類不存在' })
 
-  // 目標名稱已在清單 → 合併（移除 from 條目）；否則就地改名
-  const toExists = mockGuestCategories.some(c => c.weddingId === weddingId && c.name === to)
+  // 目標名稱已在清單 → 合併（移除 from 條目）；否則就地改名（seq 不變、位置維持）
   if (storedEntry) {
-    if (toExists)
-      mockGuestCategories.splice(mockGuestCategories.indexOf(storedEntry), 1)
+    const [toEntry] = await db.select().from(guestCategories).where(and(eq(guestCategories.weddingId, weddingId), eq(guestCategories.name, to)))
+    if (toEntry)
+      await db.delete(guestCategories).where(and(eq(guestCategories.weddingId, weddingId), eq(guestCategories.name, from)))
     else
-      storedEntry.name = to
+      await db.update(guestCategories).set({ name: to }).where(and(eq(guestCategories.weddingId, weddingId), eq(guestCategories.name, from)))
   }
 
-  let updatedGuests = 0
-  for (const g of mockGuests) {
-    if (g.weddingId === weddingId && g.category === from) {
-      g.category = to
-      updatedGuests++
-    }
-  }
+  const updated = await db.update(guests).set({ category: to }).where(and(eq(guests.weddingId, weddingId), eq(guests.category, from))).returning()
+  const updatedGuests = updated.length
 
   return { weddingId, from, to, updatedGuests }
 })
