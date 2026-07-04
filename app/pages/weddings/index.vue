@@ -217,7 +217,7 @@ async function confirmRestore() {
           class="overflow-hidden rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-900"
         >
           <div class="overflow-x-auto">
-            <table data-testid="wedding-list" class="w-full text-left text-body-s">
+            <table data-testid="wedding-list" class="w-full text-left text-body">
               <thead>
                 <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
                   <th scope="col" class="px-5 py-3 font-medium">
@@ -325,7 +325,7 @@ async function confirmRestore() {
         </div>
         <div class="overflow-hidden rounded-lg border border-dashed border-line bg-paper dark:border-neutral-800 dark:bg-neutral-900">
           <div class="overflow-x-auto">
-            <table data-testid="wedding-deleted-list" class="w-full text-left text-body-s">
+            <table data-testid="wedding-deleted-list" class="w-full text-left text-body">
               <thead>
                 <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
                   <th scope="col" class="px-5 py-3 font-medium">

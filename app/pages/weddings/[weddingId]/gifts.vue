@@ -305,41 +305,48 @@ async function confirmRemove() {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto pr-4">
-      <!-- 採買參考卡：出席大人 / 兒童椅 / 桌數 -->
-      <div class="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard
-          data-testid="gift-ref-adults"
-          eyebrow="出席大人"
-          :value="refAdults"
-          unit="位"
-          caption="出席賓客人數（已扣除兒童椅）"
-        />
-        <StatCard
-          data-testid="gift-ref-children"
-          eyebrow="兒童椅"
-          :value="refChildren"
-          unit="位"
-          caption="出席賓客的兒童椅數"
-        />
-        <StatCard
-          data-testid="gift-ref-tables"
-          eyebrow="桌數"
-          :value="refTables"
-          unit="桌"
-          caption="目前規劃桌次數"
-        />
+      <!-- 採買參考：單一凹陷條，三個 inline 數字（testid 容器需含數字，勿拆離） -->
+      <div class="mb-8 flex flex-wrap gap-y-3 divide-x divide-line rounded-lg bg-paper p-4 dark:divide-neutral-800 dark:bg-neutral-800/60">
+        <div data-testid="gift-ref-adults" class="min-w-32 flex-1 px-5 first:pl-1">
+          <p class="text-overline uppercase text-gold-deep">
+            出席大人
+          </p>
+          <p class="mt-1 flex items-baseline gap-1">
+            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refAdults }}</span>
+            <span class="text-caption text-ink-300">位（已扣兒童椅）</span>
+          </p>
+        </div>
+        <div data-testid="gift-ref-children" class="min-w-32 flex-1 px-5">
+          <p class="text-overline uppercase text-gold-deep">
+            兒童椅
+          </p>
+          <p class="mt-1 flex items-baseline gap-1">
+            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refChildren }}</span>
+            <span class="text-caption text-ink-300">位</span>
+          </p>
+        </div>
+        <div data-testid="gift-ref-tables" class="min-w-32 flex-1 px-5">
+          <p class="text-overline uppercase text-gold-deep">
+            桌數
+          </p>
+          <p class="mt-1 flex items-baseline gap-1">
+            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refTables }}</span>
+            <span class="text-caption text-ink-300">桌</span>
+          </p>
+        </div>
       </div>
 
-      <!-- 六類固定區塊 -->
-      <div class="space-y-6">
+      <!-- 六類固定區塊：類別為「章節」直接落在頁面底色上，品項才是卡片 -->
+      <div class="space-y-8">
         <section
           v-for="cat in GIFT_CATEGORIES"
           :key="cat.value"
           :data-testid="`gift-category-${cat.value}`"
-          class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
         >
-          <div class="mb-4 flex items-center gap-3">
-            <span class="text-overline uppercase text-gold-deep">{{ cat.label }}</span>
+          <div class="mb-4 flex items-baseline gap-3">
+            <h2 class="font-display text-h2 font-semibold text-ink dark:text-paper">
+              {{ cat.label }}
+            </h2>
             <span class="text-caption text-ink-400 dark:text-neutral-500">
               {{ itemsByCategory[cat.value].length }} 項
             </span>
@@ -359,7 +366,7 @@ async function confirmRemove() {
               v-for="item in itemsByCategory[cat.value]"
               :key="item.giftItemId"
               :aria-label="item.description"
-              class="flex flex-wrap gap-4 rounded-lg border border-line p-4 transition-colors hover:bg-cream dark:border-neutral-800 dark:hover:bg-neutral-800/40"
+              class="flex flex-wrap gap-4 rounded-lg border border-line bg-white p-4 shadow-sm transition-colors hover:bg-cream dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800/40"
             >
               <!-- 縮圖（無圖以禮物 icon 佔位） -->
               <div class="size-16 shrink-0 overflow-hidden rounded-md border border-line bg-white dark:border-neutral-700 dark:bg-neutral-800">
@@ -377,7 +384,7 @@ async function confirmRemove() {
               <!-- 主資訊：說明、金額明細、發放時間、備註 -->
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <h3 class="font-display text-body-l font-medium text-ink dark:text-paper">
+                  <h3 class="text-body font-medium text-ink dark:text-paper">
                     {{ item.description }}
                   </h3>
                   <a
@@ -391,7 +398,7 @@ async function confirmRemove() {
                     購買網址
                   </a>
                 </div>
-                <p class="mt-1 text-body-s text-ink-500 dark:text-neutral-400">
+                <p class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
                   {{ formatPrice(item.unitPrice) }} × {{ item.quantity }} ＝ 小計 {{ formatPrice(itemSubtotal(item)) }}
                 </p>
                 <p class="mt-0.5 text-caption text-ink-400 dark:text-neutral-500">
@@ -456,7 +463,7 @@ async function confirmRemove() {
       <div class="my-6 rounded-xl bg-ink p-6 text-cream">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <span class="text-overline uppercase text-gold">全部總額</span>
-          <span data-testid="gift-grand-total" class="font-display text-3xl font-semibold text-gold">
+          <span data-testid="gift-grand-total" class="font-display text-h1 font-semibold text-gold">
             {{ formatPrice(grandTotal) }}
           </span>
         </div>

@@ -77,6 +77,7 @@ function visibleTasks(item: RundownItemListItem): { name: string, task: string }
         role="article"
         :aria-label="item.title"
         class="flex gap-4 border-b border-line py-4 last:border-b-0"
+        :class="item.highlight && 'rounded-md bg-gold-light/20 px-3'"
       >
         <!-- 時間欄：起訖（訖＝起＋時長）；未定時段顯示「事前準備」 -->
         <div class="w-20 flex-none pt-0.5 text-right">
@@ -112,7 +113,9 @@ function visibleTasks(item: RundownItemListItem): { name: string, task: string }
               class="text-caption text-ink-500"
             >
               <span class="font-medium text-gold-deep">{{ entry.name }}</span>
-              <template v-if="entry.task">：{{ entry.task }}</template>
+              <template v-if="entry.task">
+                ：{{ entry.task }}
+              </template>
             </p>
           </div>
           <p v-if="item.supplies" class="mt-1.5 text-caption text-ink-500">

@@ -12,6 +12,7 @@ import type {
   TableListItem,
   UpdateTableBody,
   VenueLayoutBody,
+  VenueMarkerListItem,
 } from '~/types/api/seating'
 
 import { z } from 'zod'
@@ -19,17 +20,21 @@ import { z } from 'zod'
 import {
   configureVenueLayout,
   createTable,
+  createVenueMarker,
   deleteTable,
+  deleteVenueMarker,
   dismissEtiquetteWarning,
   getEtiquetteSettings,
   getTableSeats,
   getVenueLayout,
   listGuests,
   listTables,
+  listVenueMarkers,
   seatGuest,
   unseatGuest,
   updateEtiquetteSettings,
   updateTable,
+  updateVenueMarker,
 } from '~/api'
 
 definePageMeta({ layout: 'default' })
@@ -49,6 +54,10 @@ const { data: guests } = await listGuests(weddingId, { default: () => [] })
 // 場地佈局與禮俗設定：由 GET 讀回，重整後 modal 仍能還原既有值
 const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddingId, {
   default: () => null,
+})
+// 場地標記（門口、送客區、進場入口等；與桌次同畫布座標系）
+const { data: venueMarkers, refresh: refreshMarkers } = await listVenueMarkers(weddingId, {
+  default: () => [],
 })
 const { data: etiquetteSettings, refresh: refreshEtiquette } = await getEtiquetteSettings(weddingId)
 
@@ -117,7 +126,7 @@ function tablePos(table: TableListItem): { x: number, y: number } {
   return localPos.value[table.tableId] ?? { x: table.positionX, y: table.positionY }
 }
 
-// 畫布尺寸：依最遠的桌位推算，確保可容納並可捲動
+// 畫布尺寸：依最遠的桌位與標記推算，確保可容納並可捲動
 const canvasSize = computed(() => {
   const BLOCK = 290
   const PAD = 48
@@ -125,10 +134,15 @@ const canvasSize = computed(() => {
   let maxY = 0
   for (const t of tables.value ?? []) {
     const p = tablePos(t)
-    maxX = Math.max(maxX, p.x)
-    maxY = Math.max(maxY, p.y)
+    maxX = Math.max(maxX, p.x + BLOCK)
+    maxY = Math.max(maxY, p.y + BLOCK)
   }
-  return { width: Math.max(640, maxX + BLOCK + PAD), height: Math.max(420, maxY + BLOCK + PAD) }
+  for (const m of venueMarkers.value ?? []) {
+    const p = markerPos(m)
+    maxX = Math.max(maxX, p.x + m.width)
+    maxY = Math.max(maxY, p.y + m.height)
+  }
+  return { width: Math.max(640, maxX + PAD), height: Math.max(420, maxY + PAD) }
 })
 
 // 拖曳期間把 pointermove / pointerup 綁在 window，而非小圓心元素上：
@@ -182,10 +196,154 @@ async function onTablePointerUp() {
   }
 }
 
+// === 場地標記：拖曳移動（比照桌位 pointer-drag 模式）與加入/編輯 modal ===
+const localMarkerPos = ref<Record<string, { x: number, y: number }>>({})
+const movingMarkerId = ref<string | null>(null)
+let markerDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
+
+function markerPos(marker: VenueMarkerListItem): { x: number, y: number } {
+  return localMarkerPos.value[marker.markerId] ?? { x: marker.positionX, y: marker.positionY }
+}
+
+function onMarkerPointerDown(event: PointerEvent, marker: VenueMarkerListItem) {
+  if (event.button !== 0)
+    return
+  movingMarkerId.value = marker.markerId
+  const p = markerPos(marker)
+  markerDragStart = { px: event.clientX, py: event.clientY, ox: p.x, oy: p.y }
+  window.addEventListener('pointermove', onMarkerPointerMove)
+  window.addEventListener('pointerup', onMarkerPointerUp, { once: true })
+  event.preventDefault()
+}
+function onMarkerPointerMove(event: PointerEvent) {
+  const id = movingMarkerId.value
+  if (!id)
+    return
+  localMarkerPos.value[id] = {
+    x: Math.max(0, Math.round(markerDragStart.ox + (event.clientX - markerDragStart.px))),
+    y: Math.max(0, Math.round(markerDragStart.oy + (event.clientY - markerDragStart.py))),
+  }
+}
+async function onMarkerPointerUp() {
+  window.removeEventListener('pointermove', onMarkerPointerMove)
+  const id = movingMarkerId.value
+  movingMarkerId.value = null
+  if (!id)
+    return
+  const pos = localMarkerPos.value[id]
+  const marker = (venueMarkers.value ?? []).find(m => m.markerId === id)
+  if (!pos || !marker)
+    return
+  if (pos.x === marker.positionX && pos.y === marker.positionY)
+    return
+  try {
+    await updateVenueMarker(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
+    await refreshMarkers()
+    delete localMarkerPos.value[id]
+    toast.add({ title: '標記已更新', color: 'success', duration: 1200 })
+  }
+  catch (error: any) {
+    delete localMarkerPos.value[id]
+    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
+    toast.add({ title: '移動失敗', description: message, color: 'error' })
+  }
+}
+
+// 加入 / 編輯標記 modal（尺寸與座標用數字欄調整，比照舞台設定的欄位模式）
+const isMarkerFormOpen = ref(false)
+const isMarkerSubmitting = ref(false)
+const markerFormError = ref('')
+const editingMarkerId = ref<string | null>(null)
+const markerDraft = reactive({ label: '', width: 140, height: 48, positionX: 24, positionY: 24 })
+
+function openCreateMarker() {
+  editingMarkerId.value = null
+  markerFormError.value = ''
+  markerDraft.label = ''
+  markerDraft.width = 140
+  markerDraft.height = 48
+  markerDraft.positionX = 24
+  markerDraft.positionY = 24
+  isMarkerFormOpen.value = true
+}
+
+function openEditMarker(marker: VenueMarkerListItem) {
+  editingMarkerId.value = marker.markerId
+  markerFormError.value = ''
+  markerDraft.label = marker.label
+  markerDraft.width = marker.width
+  markerDraft.height = marker.height
+  const p = markerPos(marker)
+  markerDraft.positionX = p.x
+  markerDraft.positionY = p.y
+  isMarkerFormOpen.value = true
+}
+
+async function submitMarker() {
+  if (isMarkerSubmitting.value)
+    return
+  const label = markerDraft.label.trim()
+  if (!label) {
+    markerFormError.value = '請輸入標記文字'
+    return
+  }
+  isMarkerSubmitting.value = true
+  markerFormError.value = ''
+  try {
+    if (editingMarkerId.value) {
+      await updateVenueMarker(weddingId.value, editingMarkerId.value, {
+        label,
+        width: Number(markerDraft.width) || 140,
+        height: Number(markerDraft.height) || 48,
+        positionX: Number(markerDraft.positionX) || 0,
+        positionY: Number(markerDraft.positionY) || 0,
+      })
+      toast.add({ title: '標記已更新', color: 'success' })
+    }
+    else {
+      await createVenueMarker(weddingId.value, {
+        label,
+        width: Number(markerDraft.width) || 140,
+        height: Number(markerDraft.height) || 48,
+      })
+      toast.add({ title: '標記已加入', color: 'success' })
+    }
+    isMarkerFormOpen.value = false
+    await refreshMarkers()
+  }
+  catch (error: any) {
+    markerFormError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isMarkerSubmitting.value = false
+  }
+}
+
+async function removeMarker() {
+  if (!editingMarkerId.value || isMarkerSubmitting.value)
+    return
+  isMarkerSubmitting.value = true
+  try {
+    await deleteVenueMarker(weddingId.value, editingMarkerId.value)
+    toast.add({ title: '標記已刪除', color: 'success' })
+    isMarkerFormOpen.value = false
+    await refreshMarkers()
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '刪除失敗，請稍後再試'
+    toast.add({ title: '刪除失敗', description: message, color: 'error' })
+  }
+  finally {
+    isMarkerSubmitting.value = false
+  }
+}
+
 // 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onTablePointerMove)
   window.removeEventListener('pointerup', onTablePointerUp)
+  window.removeEventListener('pointermove', onMarkerPointerMove)
+  window.removeEventListener('pointerup', onMarkerPointerUp)
 })
 
 // 環繞圓桌的座位座標（百分比，從正上方順時針排列）。
@@ -516,6 +674,43 @@ function buildChartCanvas(): HTMLCanvasElement {
       ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
     }
   }
+
+  // 場地標記：下載圖是緊湊重排、無法 1:1 對位 → 以「螢幕座標正規化 0..1 → chart 內容框映射」
+  // 保留相對方位（右側送客區仍在右側），以虛線矩形＋label 呈現（比照舞台樣式）
+  const markers = venueMarkers.value ?? []
+  if (markers.length > 0) {
+    const SCREEN_BLOCK = 290
+    let sMinX = Infinity
+    let sMinY = Infinity
+    let sMaxX = -Infinity
+    let sMaxY = -Infinity
+    for (const t of list) {
+      const p = tablePos(t)
+      sMinX = Math.min(sMinX, p.x)
+      sMinY = Math.min(sMinY, p.y)
+      sMaxX = Math.max(sMaxX, p.x + SCREEN_BLOCK)
+      sMaxY = Math.max(sMaxY, p.y + SCREEN_BLOCK)
+    }
+    const sW = Math.max(1, sMaxX - sMinX)
+    const sH = Math.max(1, sMaxY - sMinY)
+    ctx.setLineDash([4, 3])
+    ctx.strokeStyle = CHART.line
+    ctx.font = `9px ${FONT}`
+    for (const m of markers) {
+      const p = markerPos(m)
+      const nx = Math.min(1, Math.max(0, (p.x + m.width / 2 - sMinX) / sW))
+      const ny = Math.min(1, Math.max(0, (p.y + m.height / 2 - sMinY) / sH))
+      const mcx = baseX + (minX + nx * contentW) * scale
+      const mcy = baseY + (minY + ny * contentH) * scale
+      const mw = Math.min(80, Math.max(32, m.width * 0.4))
+      const mh = Math.min(28, Math.max(14, m.height * 0.4))
+      ctx.strokeRect(mcx - mw / 2, mcy - mh / 2, mw, mh)
+      ctx.fillStyle = CHART.inkFaint
+      ctx.fillText(m.label, mcx, mcy + 3, mw - 4)
+    }
+    ctx.setLineDash([])
+  }
+
   ctx.textAlign = 'start'
   return canvas
 }
@@ -1400,6 +1595,16 @@ function guestMeta(g: GuestListItem): string {
           >
             設定場地佈局
           </UButton>
+          <!-- 命名避開凍結 strict regex（不可含「新增」「舞台」「佈局」「禮俗」） -->
+          <UButton
+            data-testid="venue-marker-create"
+            icon="i-heroicons-map-pin"
+            color="neutral"
+            variant="outline"
+            @click="openCreateMarker"
+          >
+            加入標記
+          </UButton>
           <!-- 下載桌次圖：餐廳備餐用地圖（含餐點分類）；點開下拉選 JPEG / PDF -->
           <UDropdownMenu :items="downloadItems" :content="{ align: 'end' }">
             <UButton
@@ -1485,6 +1690,34 @@ function guestMeta(g: GuestListItem): string {
             <span class="absolute left-1/2 top-0 z-0 -translate-x-1/2 rounded border border-dashed border-line px-10 py-2 text-overline tracking-wider text-ink-300">
               舞台
             </span>
+
+            <!-- 場地標記：可拖曳長方形（純 div、無 landmark role，避開 findEntity 掃描） -->
+            <div
+              v-for="marker in venueMarkers"
+              :key="marker.markerId"
+              :data-testid="`venue-marker-${marker.markerId}`"
+              class="group absolute flex cursor-move touch-none select-none items-center justify-center rounded border border-dashed border-ink-300 bg-paper/90 px-2 text-center text-caption text-ink-500 shadow-sm dark:border-neutral-600 dark:bg-neutral-900/90 dark:text-neutral-300"
+              :class="movingMarkerId === marker.markerId ? 'z-40 ring-2 ring-gold' : 'z-20'"
+              :style="{
+                left: `${markerPos(marker).x}px`,
+                top: `${markerPos(marker).y}px`,
+                width: `${marker.width}px`,
+                height: `${marker.height}px`,
+              }"
+              @pointerdown="onMarkerPointerDown($event, marker)"
+            >
+              <span class="truncate">{{ marker.label }}</span>
+              <UButton
+                icon="i-heroicons-pencil"
+                color="neutral"
+                variant="soft"
+                size="xs"
+                class="absolute -right-2 -top-2 opacity-0 transition-opacity group-hover:opacity-100"
+                :aria-label="`編輯標記 ${marker.label}`"
+                @pointerdown.stop
+                @click="openEditMarker(marker)"
+              />
+            </div>
 
             <article
               v-for="table in tables"
@@ -2081,5 +2314,116 @@ function guestMeta(g: GuestListItem): string {
       :loading="isClearing"
       @confirm="confirmClearAll"
     />
+
+    <!-- 加入 / 編輯場地標記 Modal -->
+    <UModal v-model:open="isMarkerFormOpen">
+      <template #content>
+        <div data-testid="venue-marker-modal" class="max-h-[85vh] overflow-y-auto p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Marker
+          </p>
+          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+            {{ editingMarkerId ? '編輯標記' : '加入標記' }}
+          </h3>
+          <p class="mb-5 mt-1 text-caption text-ink-300">
+            在平面圖上標示門口、送客區、進場入口等位置；加入後可直接拖曳調整
+          </p>
+
+          <UAlert
+            v-if="markerFormError"
+            data-testid="venue-marker-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="markerFormError"
+            class="mb-4"
+          />
+
+          <div class="space-y-4">
+            <UFormField label="標記文字" name="markerLabel">
+              <UInput
+                v-model="markerDraft.label"
+                data-testid="venue-marker-label"
+                placeholder="如：門口、送客區、進場入口"
+                class="w-full"
+                @keyup.enter="submitMarker"
+              />
+            </UFormField>
+
+            <div class="grid grid-cols-2 gap-3">
+              <UFormField label="寬（px）" name="markerWidth">
+                <UInput
+                  v-model.number="markerDraft.width"
+                  type="number"
+                  min="40"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="高（px）" name="markerHeight">
+                <UInput
+                  v-model.number="markerDraft.height"
+                  type="number"
+                  min="24"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+
+            <div v-if="editingMarkerId" class="grid grid-cols-2 gap-3">
+              <UFormField label="X 位置" name="markerX">
+                <UInput
+                  v-model.number="markerDraft.positionX"
+                  type="number"
+                  min="0"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Y 位置" name="markerY">
+                <UInput
+                  v-model.number="markerDraft.positionY"
+                  type="number"
+                  min="0"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+          </div>
+
+          <div class="mt-6 flex items-center justify-between gap-3">
+            <UButton
+              v-if="editingMarkerId"
+              data-testid="venue-marker-delete"
+              icon="i-heroicons-trash"
+              color="error"
+              variant="outline"
+              :loading="isMarkerSubmitting"
+              @click="removeMarker"
+            >
+              刪除標記
+            </UButton>
+            <span v-else />
+            <div class="flex gap-3">
+              <UButton
+                color="neutral"
+                variant="outline"
+                :disabled="isMarkerSubmitting"
+                @click="isMarkerFormOpen = false"
+              >
+                取消
+              </UButton>
+              <UButton
+                data-testid="venue-marker-submit"
+                color="neutral"
+                variant="solid"
+                :loading="isMarkerSubmitting"
+                @click="submitMarker"
+              >
+                儲存標記
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

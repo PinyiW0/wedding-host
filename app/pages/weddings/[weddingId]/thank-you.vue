@@ -464,45 +464,17 @@ async function submitFallback() {
                 <span class="text-overline uppercase text-gold-deep">Live Preview</span>
                 <span class="h-px w-8 bg-gold" />
               </div>
-              <article class="relative overflow-hidden rounded-lg bg-paper shadow-lg dark:bg-neutral-900">
-                <!-- 內金線框 -->
-                <span class="pointer-events-none absolute inset-2.5 z-10 rounded border border-gold/30" />
-                <!-- 頂部主視覺帶（有上傳圖才顯示） -->
-                <div v-if="previewImageUrl" class="relative">
-                  <img :src="previewImageUrl" alt="" class="h-36 w-full object-cover">
-                  <span class="block h-px w-full bg-gold/50" />
-                </div>
-                <div class="relative flex flex-col items-center px-8 py-10 text-center">
-                  <p class="text-overline uppercase text-gold-deep">
-                    {{ previewGreeting }}
-                  </p>
-                  <!-- 金箔圓印（新人名縮寫） -->
-                  <div class="mt-6 flex size-14 items-center justify-center rounded-full bg-gold-light font-display text-body-l font-semibold text-gold-deep">
-                    {{ coupleInitials }}
-                  </div>
-                  <span class="my-6 h-px w-10 bg-gold" />
-                  <!-- 即時範本文字 -->
-                  <p
-                    v-if="previewContent"
-                    data-testid="template-preview"
-                    class="max-w-xs whitespace-pre-line text-body-l leading-relaxed text-ink-700 dark:text-neutral-300"
-                  >
-                    {{ previewContent }}
-                  </p>
-                  <p v-else class="max-w-xs text-body leading-loose text-ink-300">
-                    尚未設定謝卡範本
-                  </p>
-                  <p
-                    v-if="previewSignature"
-                    class="mt-8 text-balance font-display text-h2 font-semibold leading-tight text-ink dark:text-paper"
-                  >
-                    {{ previewSignature }}
-                  </p>
-                  <p v-if="previewDate" class="mt-2 text-caption tracking-widest text-ink-500">
-                    {{ previewDate }}
-                  </p>
-                </div>
-              </article>
+              <!-- 與公開謝卡共用同一信箋元件，兩處永遠同步；template-preview testid 由 prop 傳入（凍結 toHaveText） -->
+              <ThankYouCardPreview
+                :greeting="previewGreeting"
+                :content="previewContent"
+                placeholder="尚未設定謝卡範本"
+                :signature="previewSignature"
+                :signature-date="previewDate"
+                :image-url="previewImageUrl"
+                :seal="coupleInitials"
+                content-testid="template-preview"
+              />
             </aside>
           </div>
         </section>

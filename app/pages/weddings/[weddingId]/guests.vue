@@ -19,11 +19,14 @@ import {
   createGuest,
   deleteGuest,
   importGuests,
+  listGuestCategories,
   listGuests,
   listPendingGuests,
   mergePendingGuest,
   rejectPendingGuest,
+  renameGuestCategory,
   restoreGuest,
+  saveGuestCategories,
   updateGuest,
 } from '~/api'
 import { matchConfidenceLabel, suggestMatches } from '~/utils/guestMatch'
@@ -63,6 +66,115 @@ const guestStats = computed(() => {
     { key: 'vegetarian', label: '素食（組）', value: vegetarian },
   ]
 })
+
+// 婚禮層級分類清單（新增賓客快選 + 管理 modal；GET = 儲存清單 ∪ 在用分類）
+const { data: categories, refresh: refreshCategories } = await listGuestCategories(weddingId, {
+  default: () => [],
+})
+const categoryList = computed(() => categories.value ?? [])
+
+// 各分類使用數（僅計未刪除賓客；刪除分類的守門依據）
+const categoryUsage = computed(() => {
+  const map = new Map<string, number>()
+  for (const g of activeGuests.value) {
+    const name = g.category.trim()
+    if (!name)
+      continue
+    map.set(name, (map.get(name) ?? 0) + 1)
+  }
+  return map
+})
+
+// === 管理分類 modal ===
+const isCategoryOpen = ref(false)
+const isCategorySubmitting = ref(false)
+const categoryActionError = ref('')
+const newCategoryName = ref('')
+// 單列 inline 改名狀態
+const renamingFrom = ref<string | null>(null)
+const renameTo = ref('')
+
+function openCategoryManager() {
+  categoryActionError.value = ''
+  newCategoryName.value = ''
+  renamingFrom.value = null
+  isCategoryOpen.value = true
+}
+
+async function addCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name || isCategorySubmitting.value)
+    return
+  if (categoryList.value.includes(name)) {
+    categoryActionError.value = '分類已存在'
+    return
+  }
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    await saveGuestCategories(weddingId.value, { categories: [...categoryList.value, name] })
+    newCategoryName.value = ''
+    await refreshCategories()
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+async function removeCategory(name: string) {
+  if (isCategorySubmitting.value || (categoryUsage.value.get(name) ?? 0) > 0)
+    return
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    await saveGuestCategories(weddingId.value, { categories: categoryList.value.filter(c => c !== name) })
+    await refreshCategories()
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+function startRename(name: string) {
+  renamingFrom.value = name
+  renameTo.value = name
+  categoryActionError.value = ''
+}
+
+async function confirmRename() {
+  const from = renamingFrom.value
+  const to = renameTo.value.trim()
+  if (!from || isCategorySubmitting.value)
+    return
+  if (!to || from === to) {
+    renamingFrom.value = null
+    return
+  }
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    const result = await renameGuestCategory(weddingId.value, { from, to })
+    toast.add({
+      title: '分類已改名',
+      description: `「${from}」→「${to}」，已同步 ${result.updatedGuests} 位賓客`,
+      color: 'success',
+    })
+    renamingFrom.value = null
+    await Promise.all([refresh(), refreshCategories()])
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
 
 // 待確認賓客（公開自助回覆，與正式名單隔離；獨立端點）
 const { data: pendingGuests, refresh: refreshPending } = await listPendingGuests(weddingId, {
@@ -306,7 +418,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       toast.add({ title: '賓客新增成功', color: 'success' })
     }
     isFormOpen.value = false
-    await refresh()
+    // 自由輸入的新分類會進入在用分類 union，一併刷新快選清單
+    await Promise.all([refresh(), refreshCategories()])
   }
   catch (error: any) {
     // 失敗訊息僅 inline 顯示（避免與 toast 重複造成測試 strict mode violation）
@@ -449,6 +562,16 @@ async function confirmImport() {
           >
             公開回覆連結
           </UButton>
+          <!-- 命名避開凍結 strict regex（不可含「新增」「匯入」） -->
+          <UButton
+            data-testid="vibe-guest-categories"
+            icon="i-heroicons-tag"
+            color="neutral"
+            variant="ghost"
+            @click="openCategoryManager"
+          >
+            管理分類
+          </UButton>
           <UButton
             data-testid="guest-import"
             icon="i-heroicons-arrow-up-tray"
@@ -485,7 +608,7 @@ async function confirmImport() {
         <p class="text-caption text-ink-500 dark:text-neutral-400">
           {{ stat.label }}
         </p>
-        <p class="mt-1 font-display text-h3 font-semibold leading-none text-ink dark:text-paper">
+        <p class="mt-1 font-display text-h2 font-semibold leading-none text-ink dark:text-paper">
           {{ stat.value }}
         </p>
       </div>
@@ -536,7 +659,7 @@ async function confirmImport() {
             <!-- 回覆摘要 -->
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="font-display text-h3 font-semibold text-ink dark:text-paper">
+                <p class="font-display text-body-l font-semibold text-ink dark:text-paper">
                   {{ pending.name }}
                 </p>
                 <p class="mt-0.5 text-caption text-ink-300">
@@ -816,12 +939,27 @@ async function confirmImport() {
                   class="relative mb-6"
                   :ui="{ error: 'absolute top-full left-0 mt-1' }"
                 >
+                  <!-- 保持可 fill 的 UInput（凍結 getByLabel(/分類/).fill 依賴）；下方 badge 快選帶入值 -->
                   <UInput
                     v-model="state.category"
                     data-testid="guest-category"
                     placeholder="如：同事、家人、朋友"
                     class="w-full"
                   />
+                  <div v-if="categoryList.length" class="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      v-for="c in categoryList"
+                      :key="c"
+                      type="button"
+                      class="rounded-full border px-2.5 py-0.5 text-caption transition-colors"
+                      :class="state.category === c
+                        ? 'border-gold bg-gold-light/40 text-gold-deep'
+                        : 'border-line text-ink-500 hover:border-gold-deep hover:text-gold-deep'"
+                      @click="state.category = c"
+                    >
+                      {{ c }}
+                    </button>
+                  </div>
                 </UFormField>
               </div>
 
@@ -1014,5 +1152,124 @@ async function confirmImport() {
       :loading="isRestoring"
       @confirm="confirmRestore"
     />
+
+    <!-- 管理分類 Modal -->
+    <UModal v-model:open="isCategoryOpen">
+      <template #content>
+        <div data-testid="vibe-guest-category-modal" class="max-h-[85vh] overflow-y-auto p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Categories
+          </p>
+          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+            管理分類
+          </h3>
+          <p class="mb-5 mt-1 text-caption text-ink-300">
+            改名會同步所有使用中的賓客；使用中的分類不可刪除
+          </p>
+
+          <UAlert
+            v-if="categoryActionError"
+            data-testid="vibe-guest-category-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="categoryActionError"
+            class="mb-4"
+          />
+
+          <!-- 新增分類 -->
+          <div class="mb-4 flex gap-2">
+            <UInput
+              v-model="newCategoryName"
+              data-testid="vibe-guest-category-input"
+              placeholder="輸入新分類名稱"
+              aria-label="新分類名稱"
+              class="flex-1"
+              @keyup.enter="addCategory"
+            />
+            <UButton
+              data-testid="vibe-guest-category-add"
+              color="neutral"
+              variant="solid"
+              :loading="isCategorySubmitting"
+              @click="addCategory"
+            >
+              加入
+            </UButton>
+          </div>
+
+          <!-- 分類清單（含使用數；inline 改名） -->
+          <EmptyState
+            v-if="categoryList.length === 0"
+            title="尚無分類"
+            description="輸入名稱後點「加入」建立第一個分類"
+          />
+          <ul v-else class="divide-y divide-line rounded-lg border border-line dark:divide-neutral-800 dark:border-neutral-800">
+            <li
+              v-for="c in categoryList"
+              :key="c"
+              class="flex items-center gap-2 px-4 py-2.5"
+            >
+              <template v-if="renamingFrom === c">
+                <UInput
+                  v-model="renameTo"
+                  :aria-label="`改名 ${c}`"
+                  class="flex-1"
+                  @keyup.enter="confirmRename"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="solid"
+                  :loading="isCategorySubmitting"
+                  @click="confirmRename"
+                >
+                  確認改名
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="renamingFrom = null"
+                >
+                  取消改名
+                </UButton>
+              </template>
+              <template v-else>
+                <span class="flex-1 text-body text-ink dark:text-paper">{{ c }}</span>
+                <span class="text-caption text-ink-300">{{ categoryUsage.get(c) ?? 0 }} 位使用</span>
+                <UButton
+                  size="xs"
+                  icon="i-heroicons-pencil"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`改名分類 ${c}`"
+                  @click="startRename(c)"
+                />
+                <UButton
+                  size="xs"
+                  icon="i-heroicons-trash"
+                  color="error"
+                  variant="ghost"
+                  :disabled="(categoryUsage.get(c) ?? 0) > 0"
+                  :aria-label="`刪除分類 ${c}`"
+                  @click="removeCategory(c)"
+                />
+              </template>
+            </li>
+          </ul>
+
+          <div class="mt-5 flex justify-end">
+            <UButton
+              color="neutral"
+              variant="outline"
+              @click="isCategoryOpen = false"
+            >
+              關閉
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

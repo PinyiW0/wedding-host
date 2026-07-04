@@ -21,6 +21,7 @@ import {
   listCakeBoxExclusions,
   listCakeBoxExtraOrders,
   listCakeBoxTypes,
+  listGuestCategories,
   listGuests,
   removeCakeBoxExclusion,
   updateCakeBoxType,
@@ -46,6 +47,12 @@ const { data: guests } = await listGuests(
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
+)
+
+// 婚禮層級分類清單（與賓客頁同一來源；「依分類帶入」的分類選項）
+const { data: weddingCategories } = await listGuestCategories(
+  weddingId,
+  { default: () => [] },
 )
 
 // 已設定指派規則清單（由 GET 讀回，重整仍能還原顯示）
@@ -315,9 +322,9 @@ function guestCategory(category: string | null | undefined): string {
   return category || '未分類'
 }
 
-// 各分類人數
+// 各分類（婚禮層級清單 ∪ 在用分類兜底；保留「未分類」fallback）
 const distinctCategories = computed(() => {
-  const set = new Set<string>()
+  const set = new Set<string>((weddingCategories.value ?? []).filter(Boolean))
   for (const g of activeGuests.value)
     set.add(guestCategory(g.category))
   return [...set]
@@ -825,7 +832,7 @@ async function removeExtraOrder(extraOrderId: string) {
               >
                 <span class="font-medium text-ink dark:text-paper">{{ o.cakeBoxTypeName }}</span>
                 <span class="font-display text-body-l font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
-                <span v-if="o.recipientName" class="text-body-s font-medium text-ink dark:text-paper">{{ o.recipientName }}</span>
+                <span v-if="o.recipientName" class="text-body font-medium text-ink dark:text-paper">{{ o.recipientName }}</span>
                 <span v-if="o.recipientContact" class="text-caption text-ink-400 dark:text-neutral-500">{{ o.recipientContact }}</span>
                 <span v-if="o.note" class="text-caption text-ink-500 dark:text-neutral-400">{{ o.note }}</span>
                 <UButton
@@ -1037,7 +1044,7 @@ async function removeExtraOrder(extraOrderId: string) {
 
               <!-- 全賓客表（姓名 / 分類 / 禮盒款式：款式欄就地下拉改款）；固定高度、表頭 sticky，只有列在表格內捲 -->
               <div class="max-h-[58vh] overflow-auto rounded-lg border border-line lg:max-h-none lg:min-h-0 lg:flex-1 dark:border-neutral-800">
-                <table class="w-full text-left text-body-s">
+                <table class="w-full text-left text-body">
                   <thead class="sticky top-0 z-10 bg-white dark:bg-neutral-900">
                     <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
                       <th scope="col" class="px-4 py-2.5 font-medium">

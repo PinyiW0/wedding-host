@@ -29,7 +29,7 @@ const schema = z.object({
   mapLink: z.string().trim().optional(),
   parkingInfo: z.string().trim().optional(),
   transportInfo: z.string().trim().optional(),
-  transportImageUrl: z.string().optional(),
+  transportImageUrls: z.array(z.string()).optional(),
 })
 
 type Schema = z.output<typeof schema>
@@ -46,7 +46,7 @@ const state = reactive<Schema>({
   mapLink: '',
   parkingInfo: '',
   transportInfo: '',
-  transportImageUrl: '',
+  transportImageUrls: [],
 })
 
 function openEdit() {
@@ -59,23 +59,37 @@ function openEdit() {
   state.mapLink = wedding.value?.mapLink ?? ''
   state.parkingInfo = wedding.value?.parkingInfo ?? ''
   state.transportInfo = wedding.value?.transportInfo ?? ''
-  state.transportImageUrl = wedding.value?.transportImageUrl ?? ''
+  state.transportImageUrls = [...(wedding.value?.transportImageUrls ?? [])]
   isEditOpen.value = true
 }
 
-// 交通參考圖片：以 dataURL 儲存（與花圖／banner 同模式）
-function onTransportImageChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file)
-    return
-  const reader = new FileReader()
-  reader.onload = () => {
-    state.transportImageUrl = String(reader.result ?? '')
-  }
-  reader.readAsDataURL(file)
+// 交通參考圖片：以 dataURL 儲存（與花圖／banner 同模式），可一次選多張
+const MAX_TRANSPORT_IMAGE_SIZE = 5 * 1024 * 1024
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
-function clearTransportImage() {
-  state.transportImageUrl = ''
+
+async function onTransportImageChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = '' // 允許重選同一批檔案
+  for (const file of files) {
+    if (file.size > MAX_TRANSPORT_IMAGE_SIZE) {
+      toast.add({ title: '圖片過大', description: `「${file.name}」超過 5MB，已略過`, color: 'error' })
+      continue
+    }
+    // 逐檔依序讀取，保持選取順序
+    state.transportImageUrls = [...(state.transportImageUrls ?? []), await readAsDataUrl(file)]
+  }
+}
+function removeTransportImage(index: number) {
+  state.transportImageUrls = (state.transportImageUrls ?? []).filter((_, i) => i !== index)
 }
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
@@ -93,7 +107,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       mapLink: event.data.mapLink ?? '',
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
-      transportImageUrl: event.data.transportImageUrl ?? '',
+      transportImageUrls: event.data.transportImageUrls ?? [],
     }
     await updateWedding(weddingId.value, body)
     toast.add({ title: '婚禮資訊已更新', color: 'success' })
@@ -241,12 +255,18 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               交通參考圖片
             </dt>
             <dd class="text-ink sm:col-span-2 dark:text-paper">
-              <img
-                v-if="wedding?.transportImageUrl"
-                :src="wedding.transportImageUrl"
-                alt="交通參考圖片"
-                class="max-h-48 rounded border border-line"
+              <div
+                v-if="wedding?.transportImageUrls?.length"
+                class="flex flex-wrap gap-3"
               >
+                <img
+                  v-for="(url, i) in wedding.transportImageUrls"
+                  :key="i"
+                  :src="url"
+                  :alt="`交通參考圖片 ${i + 1}`"
+                  class="max-h-40 rounded border border-line"
+                >
+              </div>
               <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
@@ -402,33 +422,44 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
             <UFormField
               label="交通參考圖片"
-              name="transportImageUrl"
+              name="transportImageUrls"
               class="relative mb-6"
               :ui="{ error: 'absolute top-full left-0 mt-1' }"
             >
               <div class="space-y-3">
+                <!-- 維持原生 input（不被 label 關聯）：getByLabel(/交通/) 凍結 strict 匹配只能命中「交通指引」 -->
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   data-testid="wedding-transport-image"
-                  class="block w-full text-body-s text-ink-500 file:mr-3 file:rounded file:border-0 file:bg-primary-100 file:px-3 file:py-1.5 file:text-ink"
+                  class="block w-full text-caption text-ink-500 file:mr-3 file:rounded file:border-0 file:bg-primary-100 file:px-3 file:py-1.5 file:text-ink"
                   @change="onTransportImageChange"
                 >
-                <div v-if="state.transportImageUrl" class="relative inline-block">
-                  <img
-                    :src="state.transportImageUrl"
-                    alt="交通參考圖片預覽"
-                    class="max-h-40 rounded border border-line"
+                <p class="text-caption text-ink-300">
+                  可一次選擇多張圖片（單張上限 5MB）
+                </p>
+                <div v-if="state.transportImageUrls?.length" class="flex flex-wrap gap-3">
+                  <div
+                    v-for="(url, i) in state.transportImageUrls"
+                    :key="i"
+                    class="relative inline-block"
                   >
-                  <UButton
-                    icon="i-heroicons-x-mark"
-                    color="error"
-                    variant="solid"
-                    size="xs"
-                    class="absolute right-1 top-1"
-                    aria-label="移除交通參考圖片"
-                    @click="clearTransportImage"
-                  />
+                    <img
+                      :src="url"
+                      :alt="`交通參考圖片預覽 ${i + 1}`"
+                      class="max-h-32 rounded border border-line"
+                    >
+                    <UButton
+                      icon="i-heroicons-x-mark"
+                      color="error"
+                      variant="solid"
+                      size="xs"
+                      class="absolute right-1 top-1"
+                      :aria-label="`移除交通參考圖片 ${i + 1}`"
+                      @click="removeTransportImage(i)"
+                    />
+                  </div>
                 </div>
               </div>
             </UFormField>

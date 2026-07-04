@@ -42,8 +42,12 @@ const seal = computed(() => (card.value?.signature || '囍').slice(0, 2))
             style="border-left: 160px solid transparent; border-right: 160px solid transparent; border-top: 104px solid var(--color-paper-soft, #f3ede3)"
           />
           <span class="pointer-events-none absolute inset-2 rounded border border-gold/20" />
+          <!-- 郵票（囍） -->
+          <span class="pointer-events-none absolute right-3 top-3 z-10 flex size-9 items-center justify-center border border-gold/40 bg-paper font-display text-body text-gold-deep">
+            囍
+          </span>
           <!-- 蠟印 -->
-          <span class="absolute left-1/2 top-1/2 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gold-light font-display text-h3 font-semibold text-gold-deep shadow">
+          <span class="absolute left-1/2 top-1/2 z-10 flex size-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gold-light font-display text-body-l font-semibold text-gold-deep shadow">
             {{ seal }}
           </span>
         </button>
@@ -55,66 +59,41 @@ const seal = computed(() => (card.value?.signature || '囍').slice(0, 2))
         </p>
       </div>
 
-      <!-- 謝卡（開封後滑出） -->
-      <div v-else key="card" class="w-full max-w-xl">
-        <!-- 花田裝飾 -->
-        <FlowerField
-          v-if="flowerList.length > 0"
-          :flowers="flowerList"
-          :max="6"
-          class="mb-4 opacity-90"
-        />
+      <!-- 謝卡（開封後滑出；內文元素兩拍錯落淡入） -->
+      <div v-else key="card" class="card-wrap relative w-full max-w-xl">
+        <div data-testid="thankyou-card">
+          <ThankYouCardPreview
+            :greeting="card?.greeting"
+            :guest-name="card?.guestName"
+            :content="card?.content"
+            placeholder="謝謝您與我們一同見證這份幸福，您的祝福我們銘記在心。"
+            :signature="card?.signature"
+            :signature-date="card?.signatureDate"
+            :image-url="card?.templateImageUrl"
+            :seal="seal"
+          />
+        </div>
 
-        <article
-          data-testid="thankyou-card"
-          class="relative overflow-hidden rounded-lg bg-paper shadow-xl"
+        <!-- 花田裝飾：右下一叢，與 RSVP 花田統一套系 -->
+        <div
+          v-if="flowerList.length > 0"
+          class="pointer-events-none absolute -bottom-6 -right-2 z-20 w-44 opacity-60"
         >
-          <span class="pointer-events-none absolute inset-2.5 z-10 rounded border border-gold/30" />
-          <div v-if="card?.templateImageUrl" class="relative">
-            <img :src="card.templateImageUrl" alt="" class="h-40 w-full object-cover">
-            <span class="block h-px w-full bg-gold/50" />
-          </div>
-          <div class="relative flex flex-col items-center px-8 py-10 text-center">
-            <p class="text-overline uppercase text-gold-deep">
-              {{ card?.greeting }}
-            </p>
-            <div class="mt-6 flex size-14 items-center justify-center rounded-full bg-gold-light font-display text-body-l font-semibold text-gold-deep">
-              {{ seal }}
-            </div>
-            <span class="my-6 h-px w-10 bg-gold" />
-            <!-- 賓客稱呼（永遠帶入賓客名） -->
-            <p class="font-display text-h3 font-semibold text-ink">
-              親愛的 {{ card?.guestName }}
-            </p>
-            <p
-              v-if="card?.content"
-              class="mt-4 max-w-sm whitespace-pre-line text-body-l leading-relaxed text-ink-700"
-            >
-              {{ card.content }}
-            </p>
-            <p v-else class="mt-4 max-w-sm text-body-l leading-relaxed text-ink-500">
-              謝謝您與我們一同見證這份幸福，您的祝福我們銘記在心。
-            </p>
-            <p class="mt-8 text-balance font-display text-h2 font-semibold leading-tight text-ink">
-              {{ card?.signature }}
-            </p>
-            <p class="mt-2 text-caption tracking-widest text-ink-500">
-              {{ card?.signatureDate }}
-            </p>
-          </div>
-        </article>
+          <FlowerField :flowers="flowerList" :max="4" />
+        </div>
       </div>
     </Transition>
   </div>
 </template>
 
 <style scoped>
-/* 開封過渡：信封淡出縮小、謝卡淡入上滑 */
+/* 開封過渡：信封封蓋向後翻起淡出、謝卡上滑淡入 */
 .envelope-enter-active {
   transition: opacity 0.5s ease, transform 0.5s ease;
 }
 .envelope-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  transform-origin: top;
 }
 .envelope-enter-from {
   opacity: 0;
@@ -122,6 +101,33 @@ const seal = computed(() => (card.value?.signature || '囍').slice(0, 2))
 }
 .envelope-leave-to {
   opacity: 0;
-  transform: scale(0.92);
+  transform: rotateX(18deg) scale(0.94);
+}
+
+/* 第二拍：信箋內文元素錯落淡入 */
+.card-wrap :deep(.ty-card-body > *) {
+  animation: card-item-in 0.5s ease both;
+}
+.card-wrap :deep(.ty-card-body > *:nth-child(2)) {
+  animation-delay: 0.1s;
+}
+.card-wrap :deep(.ty-card-body > *:nth-child(3)) {
+  animation-delay: 0.18s;
+}
+.card-wrap :deep(.ty-card-body > *:nth-child(4)) {
+  animation-delay: 0.26s;
+}
+.card-wrap :deep(.ty-card-body > *:nth-child(5)) {
+  animation-delay: 0.34s;
+}
+@keyframes card-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 </style>

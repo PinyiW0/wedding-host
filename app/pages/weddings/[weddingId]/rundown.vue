@@ -35,7 +35,7 @@ const { data: items, refresh: refreshItems } = await listRundownItems(weddingId,
 // roleId → 角色名對照（匯出抬頭用）
 const roleNameMap = computed(() => new Map((roles.value ?? []).map(r => [r.roleId, r.name])))
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
 // === 矩陣草稿（items 是 useFetch 的 shallowRef：clone 成可深編輯的草稿，儲存/重抓後重建）===
 // 草稿列：純 UI 狀態（API 合約型別一律 import ~/types/api/rundown，送出時轉 SaveRundownTableBody）
@@ -52,6 +52,8 @@ interface DraftRow {
   supplies: string
   note: string
   roleTaskById: Record<string, string>
+  // 使用者標記列（底色強調，隨整表 PUT 持久化）
+  highlight: boolean
 }
 
 let draftSeq = 0
@@ -70,6 +72,7 @@ function toDraftRows(list: RundownItemListItem[]): DraftRow[] {
     roleTaskById: Object.fromEntries(
       item.roleTasks.filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
     ),
+    highlight: item.highlight ?? false,
   }))
 }
 
@@ -121,11 +124,79 @@ function addRow() {
     supplies: '',
     note: '',
     roleTaskById: {},
+    highlight: false,
   })
 }
 
 function removeRow(row: DraftRow) {
   draft.value = draft.value.filter(r => r.id !== row.id)
+}
+
+// === 拖曳重排（時間格不動、只換內容）===
+// 內容欄位（事項/場地/物品/備註/角色事項/時長/標記）隨拖曳搬家；
+// id / rundownItemId / time 是「時間格」不變量 → 列陣列順序與 PUT 的 id 集合恆定，
+// 不會破壞 .nth() 凍結定位，也絕不誤觸「未帶回＝刪除」合約
+type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'highlight'>
+
+function pickContent(row: DraftRow): RowContent {
+  return {
+    durationMinutes: row.durationMinutes,
+    title: row.title,
+    location: row.location,
+    supplies: row.supplies,
+    note: row.note,
+    roleTaskById: row.roleTaskById,
+    highlight: row.highlight,
+  }
+}
+
+const draggingRowIndex = ref<number | null>(null)
+const dragOverRowIndex = ref<number | null>(null)
+
+function onRowDragPointerDown(event: PointerEvent, index: number) {
+  if (event.button !== 0)
+    return
+  draggingRowIndex.value = index
+  dragOverRowIndex.value = index
+  window.addEventListener('pointermove', onRowDragPointerMove)
+  window.addEventListener('pointerup', onRowDragPointerUp, { once: true })
+  event.preventDefault()
+}
+function onRowDragPointerMove(event: PointerEvent) {
+  if (draggingRowIndex.value === null)
+    return
+  const el = document.elementFromPoint(event.clientX, event.clientY)?.closest('tr[data-row-index]')
+  if (!(el instanceof HTMLElement))
+    return
+  const idx = Number(el.dataset.rowIndex)
+  if (Number.isInteger(idx))
+    dragOverRowIndex.value = idx
+}
+function onRowDragPointerUp() {
+  window.removeEventListener('pointermove', onRowDragPointerMove)
+  const from = draggingRowIndex.value
+  const to = dragOverRowIndex.value
+  draggingRowIndex.value = null
+  dragOverRowIndex.value = null
+  if (from === null || to === null || from === to)
+    return
+  // 內容陣列搬家（shift 語意），回填固定時間槽位；訖時間由 endTimeOf 自動重算
+  const contents = draft.value.map(pickContent)
+  const [moved] = contents.splice(from, 1)
+  contents.splice(to, 0, moved!)
+  draft.value.forEach((row, i) => Object.assign(row, contents[i]))
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onRowDragPointerMove)
+  window.removeEventListener('pointerup', onRowDragPointerUp)
+})
+
+// === 重置：捨棄草稿、還原到上次儲存（最後 GET 快照）===
+const isResetOpen = ref(false)
+function confirmReset() {
+  rebuildDraft()
+  isResetOpen.value = false
 }
 
 // === 角色篩選（「全部角色」用哨兵值：USelectMenu 禁止空字串 value，否則下拉打不開）===
@@ -167,6 +238,7 @@ function buildPayload(): SaveRundownTableBody {
         roleTasks: Object.entries(row.roleTaskById)
           .filter(([, task]) => task.trim() !== '')
           .map(([roleId, task]) => ({ roleId, task })),
+        highlight: row.highlight,
       }
       // 新列（draft- 臨時 id）不帶 rundownItemId，由後端配發
       if (row.rundownItemId)
@@ -317,6 +389,7 @@ function applyTemplateToDraft() {
     roleTaskById: Object.fromEntries(
       (row.roleTasks ?? []).filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
     ),
+    highlight: false,
   })))
   isTemplateOpen.value = false
 }
@@ -485,9 +558,10 @@ function downloadRundownJpeg() {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 overflow-auto">
+    <!-- 按鈕列與角色區固定，只有矩陣表格自帶捲軸（捲軸不再蓋到上方按鈕） -->
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!-- 角色管理：膠囊卡片（名稱 + 改名/移除） -->
-      <section class="mb-10">
+      <section class="mb-8 shrink-0">
         <div class="mb-4 flex items-center justify-between">
           <p class="text-overline uppercase text-gold-deep">
             工作人員角色
@@ -537,8 +611,8 @@ function downloadRundownJpeg() {
       </section>
 
       <!-- 流程矩陣表：列＝時間段、固定欄＋每角色一欄，表格內直接編輯草稿 -->
-      <section>
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <section class="flex min-h-0 flex-1 flex-col">
+        <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
           <p class="text-overline uppercase text-gold-deep">
             流程矩陣表
           </p>
@@ -551,6 +625,17 @@ function downloadRundownJpeg() {
               class="w-44"
             />
             <span v-if="isDirty" class="text-caption text-gold-deep">尚未儲存</span>
+            <!-- 重置：捨棄未儲存草稿、還原到上次儲存（命名避開凍結 regex：新增/帶入/範本/儲存/送出/確定） -->
+            <UButton
+              data-testid="rundown-reset"
+              icon="i-heroicons-arrow-uturn-left"
+              color="neutral"
+              variant="outline"
+              :disabled="!isDirty || isSaving"
+              @click="isResetOpen = true"
+            >
+              重置
+            </UButton>
             <UButton
               data-testid="rundown-save"
               icon="i-heroicons-check"
@@ -576,55 +661,78 @@ function downloadRundownJpeg() {
 
         <div
           v-if="visibleRows.length > 0"
-          class="overflow-x-auto rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-900"
+          class="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-900"
         >
           <table class="w-full border-collapse text-body">
             <thead>
               <tr class="border-b border-line bg-cream/60 dark:border-neutral-800 dark:bg-neutral-800/40">
-                <th class="w-28 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <!-- 拖曳把手欄（僅全部角色視圖；篩選中 index 對不上完整草稿） -->
+                <th v-if="roleFilter === ALL_ROLES" class="sticky top-0 z-10 w-8 bg-cream px-1 py-2 dark:bg-neutral-800">
+                  <span class="sr-only">拖曳排序</span>
+                </th>
+                <th class="w-28 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   開始
                 </th>
-                <th class="w-28 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th class="w-28 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   結束
                 </th>
-                <th class="min-w-40 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th class="min-w-40 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   主要事項
                 </th>
-                <th class="min-w-28 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th class="min-w-28 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   場地
                 </th>
-                <th class="min-w-32 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th class="min-w-32 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   物品
                 </th>
-                <th class="min-w-32 border-r border-line px-2 py-2 text-left text-caption font-medium text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                <th class="min-w-32 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   備註
                 </th>
                 <th
                   v-for="role in visibleRoles"
                   :key="role.roleId"
-                  class="min-w-36 border-r border-line px-2 py-2 text-left text-caption font-medium text-gold-deep dark:border-neutral-800"
+                  class="min-w-36 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-gold-deep dark:border-neutral-800"
                 >
                   {{ role.name }}
                 </th>
-                <th class="w-10 px-2 py-2">
-                  <span class="sr-only">刪除列</span>
+                <th class="sticky top-0 z-10 w-20 bg-cream px-2 py-2 dark:bg-neutral-800">
+                  <span class="sr-only">列操作</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="row in visibleRows"
+                v-for="(row, idx) in visibleRows"
                 :key="row.id"
-                class="border-b border-line last:border-b-0 hover:bg-cream/40 dark:border-neutral-800 dark:hover:bg-neutral-800/30"
+                :data-row-index="idx"
+                class="border-b border-line last:border-b-0 dark:border-neutral-800"
+                :class="[
+                  row.highlight ? 'bg-gold-light/20 hover:bg-gold-light/30 dark:bg-gold-deep/15' : 'hover:bg-cream/40 dark:hover:bg-neutral-800/30',
+                  dragOverRowIndex === idx && draggingRowIndex !== null && draggingRowIndex !== idx && 'border-t-2 border-t-gold',
+                ]"
               >
+                <!-- 拖曳把手：時間格不動、只搬內容 -->
+                <td v-if="roleFilter === ALL_ROLES" class="p-1 text-center">
+                  <button
+                    type="button"
+                    data-testid="rundown-row-drag"
+                    class="cursor-grab touch-none rounded p-1 text-ink-300 hover:text-ink active:cursor-grabbing dark:hover:text-paper"
+                    :class="draggingRowIndex === idx && 'text-gold-deep'"
+                    :aria-label="`拖曳調整 ${row.title || '此列'} 順序`"
+                    @pointerdown="onRowDragPointerDown($event, idx)"
+                  >
+                    <UIcon name="i-heroicons-bars-2" class="size-4" />
+                  </button>
+                </td>
                 <td class="border-r border-line p-1 dark:border-neutral-800">
+                  <!-- [&_input::...] 隱藏原生 time picker icon；保持 type=time（凍結 fill('17:30') 依賴值格式） -->
                   <UInput
                     v-model="row.time"
                     data-testid="rundown-cell-time"
                     type="time"
                     variant="ghost"
                     size="sm"
-                    class="w-full"
+                    class="w-full [&_input::-webkit-calendar-picker-indicator]:hidden"
                   />
                 </td>
                 <td class="border-r border-line p-1 dark:border-neutral-800">
@@ -635,7 +743,7 @@ function downloadRundownJpeg() {
                     variant="ghost"
                     size="sm"
                     :disabled="!row.time"
-                    class="w-full"
+                    class="w-full [&_input::-webkit-calendar-picker-indicator]:hidden"
                     @update:model-value="onEndChange(row, String($event))"
                   />
                 </td>
@@ -695,15 +803,27 @@ function downloadRundownJpeg() {
                   />
                 </td>
                 <td class="p-1 text-center">
-                  <UButton
-                    data-testid="rundown-row-delete"
-                    icon="i-heroicons-trash"
-                    color="error"
-                    variant="ghost"
-                    size="xs"
-                    :aria-label="`刪除 ${row.title || '此列'}`"
-                    @click="removeRow(row)"
-                  />
+                  <div class="flex items-center justify-center gap-0.5">
+                    <!-- 標記此列（highlight 底色，隨儲存持久化） -->
+                    <UButton
+                      data-testid="rundown-row-highlight"
+                      :icon="row.highlight ? 'i-heroicons-star-20-solid' : 'i-heroicons-star'"
+                      :color="row.highlight ? 'primary' : 'neutral'"
+                      variant="ghost"
+                      size="xs"
+                      :aria-label="`標記 ${row.title || '此列'}`"
+                      @click="row.highlight = !row.highlight"
+                    />
+                    <UButton
+                      data-testid="rundown-row-delete"
+                      icon="i-heroicons-trash"
+                      color="error"
+                      variant="ghost"
+                      size="xs"
+                      :aria-label="`刪除 ${row.title || '此列'}`"
+                      @click="removeRow(row)"
+                    />
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -718,7 +838,7 @@ function downloadRundownJpeg() {
             : '此角色目前沒有參與的時段'"
         />
 
-        <div class="mt-3 flex items-center justify-between">
+        <div class="mt-3 flex shrink-0 items-center justify-between">
           <UButton
             icon="i-heroicons-plus"
             color="neutral"
@@ -732,6 +852,16 @@ function downloadRundownJpeg() {
         </div>
       </section>
     </div>
+
+    <!-- 重置確認：捨棄未儲存草稿 -->
+    <ConfirmModal
+      v-model:open="isResetOpen"
+      title="重置流程表"
+      description="將捨棄尚未儲存的變更，還原到上次儲存的內容。"
+      confirm-label="還原"
+      confirm-color="error"
+      @confirm="confirmReset"
+    />
 
     <!-- 角色表單 Modal（新增 / 改名） -->
     <UModal v-model:open="isRoleFormOpen">

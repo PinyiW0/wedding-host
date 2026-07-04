@@ -151,11 +151,17 @@ async function save() {
         <div
           v-for="(q, index) in draft.questions"
           :key="isBuiltin(q) ? `b-${q.key}` : `c-${(q as { id: string }).id}`"
-          class="rounded-lg border border-line bg-paper p-4"
+          class="group rounded-lg border border-line bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900"
+          :class="isBuiltin(q) && !(q as { enabled: boolean }).enabled ? 'border-dashed opacity-60' : ''"
         >
           <div class="flex items-start gap-3">
-            <!-- 排序 -->
-            <div class="flex flex-col">
+            <!-- 序號錨點（serif 大數字，type-led） -->
+            <span class="w-9 shrink-0 select-none font-display text-h2 font-semibold leading-none text-ink-300/50">
+              {{ String(index + 1).padStart(2, '0') }}
+            </span>
+
+            <!-- 排序（hover 卡片才現身，降噪） -->
+            <div class="flex flex-col opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
               <UButton
                 icon="i-heroicons-chevron-up"
                 color="neutral"
@@ -177,10 +183,14 @@ async function save() {
             </div>
 
             <div class="min-w-0 flex-1 space-y-3">
-              <div class="flex items-center gap-2">
-                <UBadge :color="isBuiltin(q) ? 'neutral' : 'primary'" variant="soft" size="sm">
+              <div class="flex items-baseline gap-2">
+                <!-- 題型 eyebrow：金色只留給自訂題（強調），系統題用中性 -->
+                <span
+                  class="text-overline uppercase"
+                  :class="isBuiltin(q) ? 'text-ink-300' : 'text-gold-deep'"
+                >
                   {{ isBuiltin(q) ? '系統題' : CUSTOM_TYPE_LABELS[(q as { type: RsvpCustomType }).type] }}
-                </UBadge>
+                </span>
                 <span v-if="!isBuiltin(q)" class="text-caption text-ink-300">{{ (q as { id: string }).id }}</span>
               </div>
 
@@ -245,28 +255,36 @@ async function save() {
           </div>
         </div>
 
+        <!-- 虛線邀請框：新增自訂題 -->
         <UButton
           icon="i-heroicons-plus"
           color="neutral"
-          variant="outline"
+          variant="ghost"
           block
+          class="border border-dashed border-line text-ink-500 hover:border-gold hover:text-gold-deep"
           @click="addCustom"
         >
           新增題目
         </UButton>
       </section>
 
-      <!-- 右：即時預覽 -->
+      <!-- 右：即時預覽（紙感框，統一套系） -->
       <section class="stable-scroll rounded-lg border border-line bg-paper-soft p-4 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:p-6">
-        <p class="mb-4 text-overline uppercase text-gold-deep">
-          賓客表單預覽
-        </p>
-        <RsvpForm
-          :config="draft"
-          :groom-name="groomName"
-          :bride-name="brideName"
-          preview
-        />
+        <div class="mb-5 flex items-center justify-center gap-3">
+          <span class="h-px w-10 bg-gold" />
+          <p class="text-overline uppercase text-gold-deep">
+            賓客表單預覽
+          </p>
+          <span class="h-px w-10 bg-gold" />
+        </div>
+        <div class="mx-auto max-w-md rounded-lg bg-white p-6 shadow dark:bg-neutral-900">
+          <RsvpForm
+            :config="draft"
+            :groom-name="groomName"
+            :bride-name="brideName"
+            preview
+          />
+        </div>
       </section>
     </div>
   </div>

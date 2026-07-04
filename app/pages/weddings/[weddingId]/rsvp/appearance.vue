@@ -108,9 +108,12 @@ async function save() {
       <section class="stable-scroll space-y-6 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:pr-1">
         <!-- 新人姓名（預覽 hero 即時反映，儲存時同步回婚禮資訊） -->
         <div>
-          <p class="mb-3 text-overline uppercase text-gold-deep">
-            新人姓名
-          </p>
+          <div class="mb-3 flex items-center gap-3">
+            <p class="text-overline uppercase text-gold-deep">
+              新人姓名
+            </p>
+            <span class="h-px flex-1 bg-line" />
+          </div>
           <div class="grid gap-3 sm:grid-cols-2">
             <UInput
               v-model="nameDraft.groom"
@@ -132,32 +135,57 @@ async function save() {
 
         <!-- 模板 -->
         <div>
-          <p class="mb-3 text-overline uppercase text-gold-deep">
-            表單模板
-          </p>
+          <div class="mb-3 flex items-center gap-3">
+            <p class="text-overline uppercase text-gold-deep">
+              表單模板
+            </p>
+            <span class="h-px flex-1 bg-line" />
+          </div>
           <div class="grid gap-3 sm:grid-cols-3">
             <button
               v-for="t in THEMES"
               :key="t.value"
               type="button"
-              class="rounded-lg border-2 p-4 text-left transition"
+              class="relative overflow-hidden rounded-lg border text-left transition"
               :class="draft.theme === t.value
-                ? 'border-gold bg-primary-100'
+                ? 'border-gold bg-white ring-1 ring-gold/30'
                 : 'border-line bg-paper hover:border-gold-deep'"
               :aria-pressed="draft.theme === t.value"
               @click="draft.theme = t.value"
             >
-              <span class="block text-body-l font-medium text-ink">{{ t.label }}</span>
-              <span class="mt-1 block text-caption text-ink-300">{{ t.hint }}</span>
+              <!-- 風格縮影（純 CSS，不載外部資源） -->
+              <span class="block h-16 w-full border-b border-line" aria-hidden="true">
+                <span v-if="t.value === 'minimal'" class="flex h-full items-center justify-center bg-white">
+                  <span class="h-px w-10 bg-gold" />
+                </span>
+                <span v-else-if="t.value === 'floral'" class="block h-full bg-gradient-to-br from-primary-100 via-paper to-primary-200" />
+                <span v-else class="flex h-full items-center justify-center bg-ink">
+                  <UIcon name="i-heroicons-photo" class="size-5 text-cream" />
+                </span>
+              </span>
+              <!-- 選中：右上金勾，整卡不染色（quiet luxury） -->
+              <span
+                v-if="draft.theme === t.value"
+                class="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-white shadow"
+              >
+                <UIcon name="i-heroicons-check" class="size-3.5 text-gold" />
+              </span>
+              <span class="block p-4 pt-3">
+                <span class="block text-body-l font-medium text-ink">{{ t.label }}</span>
+                <span class="mt-1 block text-caption text-ink-300">{{ t.hint }}</span>
+              </span>
             </button>
           </div>
         </div>
 
         <!-- Banner -->
         <div>
-          <p class="mb-3 text-overline uppercase text-gold-deep">
-            主視覺 banner（選填）
-          </p>
+          <div class="mb-3 flex items-center gap-3">
+            <p class="text-overline uppercase text-gold-deep">
+              主視覺 banner（選填）
+            </p>
+            <span class="h-px flex-1 bg-line" />
+          </div>
           <div v-if="draft.banner" class="space-y-3">
             <div class="aspect-[5/2] w-full overflow-hidden rounded-lg border border-line">
               <img :src="draft.banner" alt="banner 預覽" class="size-full object-cover">
@@ -183,17 +211,23 @@ async function save() {
         </div>
       </section>
 
-      <!-- 右：即時預覽 -->
+      <!-- 右：即時預覽（紙感框，與題目設定頁一致） -->
       <section class="stable-scroll rounded-lg border border-line bg-paper-soft p-4 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:p-6">
-        <p class="mb-4 text-overline uppercase text-gold-deep">
-          賓客表單預覽
-        </p>
-        <RsvpForm
-          :config="draft"
-          :groom-name="groomName"
-          :bride-name="brideName"
-          preview
-        />
+        <div class="mb-5 flex items-center justify-center gap-3">
+          <span class="h-px w-10 bg-gold" />
+          <p class="text-overline uppercase text-gold-deep">
+            賓客表單預覽
+          </p>
+          <span class="h-px w-10 bg-gold" />
+        </div>
+        <div class="mx-auto max-w-md rounded-lg bg-white p-6 shadow dark:bg-neutral-900">
+          <RsvpForm
+            :config="draft"
+            :groom-name="groomName"
+            :bride-name="brideName"
+            preview
+          />
+        </div>
       </section>
     </div>
   </div>

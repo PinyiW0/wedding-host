@@ -468,115 +468,113 @@ async function confirmRemove() {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 出席統計（StatCard grid + 堆疊長條 + 葷素分項，僅彙總既有名單資料） -->
-      <section class="space-y-6">
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            eyebrow="確認出席"
-            :value="stats.attending"
-            feature
-            :progress="attendBar.attending"
-            :caption="`共 ${stats.total} 位賓客`"
-          />
-          <StatCard eyebrow="不出席" :value="stats.declined" caption="婉謝出席" />
-          <StatCard eyebrow="缺席" :value="stats.absent" caption="當日未到" />
-          <StatCard eyebrow="待回覆" :value="stats.pending" caption="尚未提交回覆" />
-        </div>
-
-        <!-- 喜帖需求統計（電子/紙本以賓客筆數計；已寄送為管理端記號） -->
-        <div class="grid grid-cols-3 gap-4">
-          <StatCard
-            data-testid="rsvp-stat-ecard"
-            eyebrow="電子喜帖"
-            :value="invitationStats.ecard"
-            caption="以賓客筆數計"
-          />
-          <StatCard
-            data-testid="rsvp-stat-physical"
-            eyebrow="紙本喜帖"
-            :value="invitationStats.physical"
-            caption="以賓客筆數計"
-          />
-          <StatCard
-            data-testid="rsvp-stat-sent"
-            eyebrow="已寄送"
-            :value="invitationStats.sent"
-            caption="喜帖已寄送記號"
-          />
-        </div>
-
-        <div class="rounded-lg border border-line bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="mb-5 flex items-baseline justify-between">
-            <div class="flex items-center gap-3">
-              <span class="h-px w-8 bg-gold" />
-              <span class="text-overline uppercase text-gold-deep">出席統計</span>
-            </div>
-            <span class="text-caption text-ink-300">RSVP {{ stats.total }} 份</span>
+    <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
+      <!-- 統計帶：左為確認出席錨點卡（含出席組成長條），右卡集中其餘統計，一屏收完讓表格當主角 -->
+      <section class="grid shrink-0 gap-4 lg:grid-cols-[280px_1fr]">
+        <StatCard
+          eyebrow="確認出席"
+          :value="stats.attending"
+          feature
+          :caption="`共 ${stats.total} 位賓客`"
+        >
+          <!-- 出席組成：出席（金）/ 不出席+缺席（暗紅）/ 待回覆（底色餘量） -->
+          <div class="mt-3 flex h-2 overflow-hidden rounded-full bg-ink-500/40">
+            <div class="bg-gold" :style="{ width: `${attendBar.attending}%` }" />
+            <div class="bg-error-400/80" :style="{ width: `${attendBar.notAttending}%` }" />
           </div>
+        </StatCard>
 
-          <!-- 堆疊長條：出席 / 不出席+缺席 / 待回覆 -->
-          <div class="mb-5 flex h-3.5 overflow-hidden rounded-full bg-line">
-            <div class="bg-success-600" :style="{ width: `${attendBar.attending}%` }" />
-            <div class="bg-error-700" :style="{ width: `${attendBar.notAttending}%` }" />
-            <div class="bg-line" :style="{ width: `${attendBar.pending}%` }" />
-          </div>
-
-          <div class="flex flex-col gap-3.5">
-            <div class="flex items-center justify-between text-body">
-              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
-                <span class="size-2.5 rounded-sm bg-success-600" /> 出席
-              </span>
-              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.attending }}</span>
+        <div class="rounded-lg border border-line bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+          <div class="flex flex-wrap gap-y-3 divide-x divide-line dark:divide-neutral-800">
+            <div class="min-w-24 flex-1 px-4 first:pl-1">
+              <p class="text-overline uppercase text-gold-deep">
+                不出席
+              </p>
+              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.declined }}
+              </p>
             </div>
-            <div class="flex items-center justify-between text-body">
-              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
-                <span class="size-2.5 rounded-sm bg-error-700" /> 不出席 / 缺席
-              </span>
-              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.declined + stats.absent }}</span>
+            <div class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
+                缺席
+              </p>
+              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.absent }}
+              </p>
             </div>
-            <div class="flex items-center justify-between text-body">
-              <span class="flex items-center gap-2.5 text-ink-700 dark:text-neutral-300">
-                <span class="size-2.5 rounded-sm bg-line" /> 待回覆
-              </span>
-              <span class="font-display text-2xl text-ink dark:text-paper">{{ stats.pending }}</span>
+            <div class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
+                待回覆
+              </p>
+              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.pending }}
+              </p>
             </div>
-          </div>
-
-          <!-- 葷素 / 兒童椅分項（僅計確認出席者） -->
-          <div class="my-6 h-px bg-line" />
-          <div class="flex gap-10">
-            <div>
-              <p class="text-caption text-gold-deep">
+            <div class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
                 葷食
               </p>
-              <p class="font-display text-3xl text-ink dark:text-paper">
+              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
                 {{ stats.meat }}
               </p>
             </div>
-            <div>
-              <p class="text-caption text-gold-deep">
+            <div class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
                 素食
               </p>
-              <p class="font-display text-3xl text-ink dark:text-paper">
+              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
                 {{ stats.vegetarian }}
               </p>
             </div>
-            <div>
-              <p class="text-caption text-gold-deep">
+            <div class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
                 兒童椅
               </p>
-              <p class="font-display text-3xl text-ink dark:text-paper">
-                {{ stats.childChairs }} <span class="text-base text-ink-300">張</span>
+              <p class="mt-1 flex items-baseline gap-1">
+                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ stats.childChairs }}</span>
+                <span class="text-caption text-ink-300">張</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="my-4 h-px bg-line dark:bg-neutral-800" />
+
+          <!-- 喜帖需求（電子/紙本以賓客筆數計；已寄送為管理端記號；testid 容器需含數字） -->
+          <div class="flex flex-wrap gap-y-3 divide-x divide-line dark:divide-neutral-800">
+            <div data-testid="rsvp-stat-ecard" class="min-w-24 flex-1 px-4 first:pl-1">
+              <p class="text-overline uppercase text-gold-deep">
+                電子喜帖
+              </p>
+              <p class="mt-1 flex items-baseline gap-1">
+                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ invitationStats.ecard }}</span>
+                <span class="text-caption text-ink-300">筆</span>
+              </p>
+            </div>
+            <div data-testid="rsvp-stat-physical" class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
+                紙本喜帖
+              </p>
+              <p class="mt-1 flex items-baseline gap-1">
+                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ invitationStats.physical }}</span>
+                <span class="text-caption text-ink-300">筆</span>
+              </p>
+            </div>
+            <div data-testid="rsvp-stat-sent" class="min-w-24 flex-1 px-4">
+              <p class="text-overline uppercase text-gold-deep">
+                已寄送
+              </p>
+              <p class="mt-1 flex items-baseline gap-1">
+                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ invitationStats.sent }}</span>
+                <span class="text-caption text-ink-300">筆</span>
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 賓客回覆清單 — 編輯式表格 -->
-      <section>
-        <div class="mb-3 flex items-center gap-3">
+      <!-- 賓客回覆清單 — 編輯式表格（表格為主捲動區，表頭 sticky） -->
+      <section class="flex min-h-0 flex-1 flex-col">
+        <div class="mb-3 flex shrink-0 items-center gap-3">
           <span class="text-overline uppercase text-gold-deep">賓客回覆</span>
           <span class="h-px flex-1 bg-line" />
           <!-- 依喜帖需求篩選回覆清單 -->
@@ -589,44 +587,44 @@ async function confirmRemove() {
             class="w-40"
           />
         </div>
-        <div class="overflow-x-auto">
+        <div class="min-h-0 flex-1 overflow-auto">
           <table
             data-testid="rsvp-list"
             class="w-full border-collapse whitespace-nowrap text-body"
           >
             <thead>
               <tr class="text-left text-overline uppercase text-gold-deep">
-                <th class="border-b border-line px-3 py-3.5 font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 font-medium">
                   姓名
                 </th>
-                <th class="border-b border-line px-3 py-3.5 font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 font-medium">
                   男女方
                 </th>
-                <th class="border-b border-line px-3 py-3.5 font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 font-medium">
                   分類
                 </th>
-                <th class="border-b border-line px-3 py-3.5 font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 font-medium">
                   出席
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   人數
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   葷素
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   兒童椅
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   接駁
                 </th>
-                <th class="border-b border-line px-3 py-3.5 font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 font-medium">
                   喜帖
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-center font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   已寄送
                 </th>
-                <th class="border-b border-line px-3 py-3.5 text-right font-medium">
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-right font-medium">
                   操作
                 </th>
               </tr>
@@ -638,18 +636,18 @@ async function confirmRemove() {
                 :data-testid="`rsvp-row-${guest.guestId}`"
                 class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
               >
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 dark:border-neutral-800">
                   <span class="font-medium text-ink dark:text-paper">
                     {{ guest.name }}
                   </span>
                 </td>
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 dark:border-neutral-800">
                   {{ sideLabel(guest.side) }}
                 </td>
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 dark:border-neutral-800">
                   {{ guest.category || '-' }}
                 </td>
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 dark:border-neutral-800">
                   <UBadge
                     :data-testid="`rsvp-status-${guest.guestId}`"
                     :color="rsvpBadge(guest.rsvpAttending).color"
@@ -659,22 +657,22 @@ async function confirmRemove() {
                     {{ rsvpBadge(guest.rsvpAttending).label }}
                   </UBadge>
                 </td>
-                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ isAttending(guest) ? guest.partySize : '-' }}
                 </td>
-                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ dietLabel(guest) }}
                 </td>
-                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ isAttending(guest) ? guest.childChairCount : '-' }}
                 </td>
-                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ shuttleLabel(guest) }}
                 </td>
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 dark:border-neutral-800">
                   {{ invitationShort(guest) }}
                 </td>
-                <td class="border-b border-line px-3 py-4 text-center dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   <!-- 喜帖已寄送記號（controlled：成功由 refresh 帶回、失敗自動回滾；請求中鎖定防連點） -->
                   <UCheckbox
                     :data-testid="`rsvp-invitation-sent-${guest.guestId}`"
@@ -685,7 +683,7 @@ async function confirmRemove() {
                     @update:model-value="toggleInvitationSent(guest, $event)"
                   />
                 </td>
-                <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
+                <td class="border-b border-line px-3 py-3 text-right dark:border-neutral-800">
                   <div class="flex justify-end gap-1">
                     <UButton
                       data-testid="rsvp-detail"

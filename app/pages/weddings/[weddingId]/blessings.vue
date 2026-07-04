@@ -6,8 +6,10 @@ import type {
   BlessingWallStatus,
   RejectBlessingBody,
 } from '~/types/api/blessings'
-import { approveBlessing, listBlessings, projectBlessing, rejectBlessing } from '~/api'
+import type { ProjectionMediaType, UpdateProjectionSettingsBody } from '~/types/api/projection'
+import { approveBlessing, getProjectionSettings, listBlessings, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
 import { blessingStatusMeta } from '~/utils/statusMeta'
+import { toYouTubeEmbed } from '~/utils/videoEmbed'
 
 definePageMeta({ layout: 'default' })
 
@@ -19,8 +21,87 @@ const { data: blessings } = await listBlessings(weddingId, { default: () => [] }
 
 const items = computed(() => blessings.value ?? [])
 
-// 投影即時推送：approve / 推到投影幕 → 通知開著的投影牆即時更新
+// 投影即時推送：approve / 推到投影幕 / 更新投影設定 → 通知開著的投影牆即時更新
 const { broadcast } = useProjectionChannel(weddingId)
+
+// === 投影設定（中央媒體 + 自訂花朵）===
+const { data: projectionSettings, refresh: refreshProjectionSettings } = await getProjectionSettings(weddingId, {
+  default: () => null,
+})
+
+const isProjectionSettingsOpen = ref(false)
+const isSettingsSaving = ref(false)
+const settingsDraft = reactive({
+  mediaType: 'none' as ProjectionMediaType,
+  photoDataUrl: '',
+  videoUrl: '',
+  customFlowers: [] as string[],
+})
+
+const MEDIA_OPTIONS: { label: string, value: ProjectionMediaType }[] = [
+  { label: '無', value: 'none' },
+  { label: '照片', value: 'photo' },
+  { label: '影片', value: 'video' },
+]
+
+function openProjectionSettings() {
+  const s = projectionSettings.value
+  settingsDraft.mediaType = s?.mediaType ?? 'none'
+  settingsDraft.photoDataUrl = s?.photoDataUrl ?? ''
+  settingsDraft.videoUrl = s?.videoUrl ?? ''
+  settingsDraft.customFlowers = [...(s?.customFlowers ?? [])]
+  isProjectionSettingsOpen.value = true
+}
+
+// 依連結即時提示播放方式
+const videoHint = computed(() => {
+  const url = settingsDraft.videoUrl.trim()
+  if (!url)
+    return ''
+  return toYouTubeEmbed(url) ? '將以 YouTube 內嵌播放' : '將以影片檔播放'
+})
+
+function onProjectionPhotoSelected(payload: { dataUrl: string }) {
+  settingsDraft.photoDataUrl = payload.dataUrl
+}
+function onCustomFlowerSelected(payload: { dataUrl: string }) {
+  settingsDraft.customFlowers = [...settingsDraft.customFlowers, payload.dataUrl]
+}
+function removeCustomFlower(index: number) {
+  settingsDraft.customFlowers = settingsDraft.customFlowers.filter((_, i) => i !== index)
+}
+function onUploadError(message: string) {
+  toast.add({ title: '上傳失敗', description: message, color: 'error' })
+}
+
+async function saveProjectionSettings() {
+  if (isSettingsSaving.value)
+    return
+  isSettingsSaving.value = true
+  try {
+    const body: UpdateProjectionSettingsBody = {
+      mediaType: settingsDraft.mediaType,
+      photoDataUrl: settingsDraft.photoDataUrl || null,
+      videoUrl: settingsDraft.videoUrl.trim() || null,
+      customFlowers: settingsDraft.customFlowers,
+    }
+    await updateProjectionSettings(weddingId.value, body)
+    broadcast()
+    toast.add({ title: '投影設定已儲存', color: 'success' })
+    isProjectionSettingsOpen.value = false
+    await refreshProjectionSettings()
+  }
+  catch (error: any) {
+    toast.add({
+      title: '儲存失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    isSettingsSaving.value = false
+  }
+}
 
 // 頭像金圓首字：取留言內容首字作為編輯式裝飾（無姓名欄位時的視覺替代）
 function initialOf(blessing: BlessingListItem) {
@@ -146,17 +227,28 @@ async function submitReject() {
       description="審核賓客提交的祝福留言（通過 / 拒絕），並推到投影即時牆"
     >
       <template #actions>
-        <UButton
-          data-testid="open-projection"
-          icon="i-heroicons-tv"
-          color="primary"
-          variant="solid"
-          :to="`/projection/${weddingId}`"
-          target="_blank"
-          external
-        >
-          開啟投影牆
-        </UButton>
+        <div class="flex items-center gap-3">
+          <UButton
+            data-testid="projection-settings"
+            icon="i-heroicons-cog-6-tooth"
+            color="neutral"
+            variant="outline"
+            @click="openProjectionSettings"
+          >
+            投影設定
+          </UButton>
+          <UButton
+            data-testid="open-projection"
+            icon="i-heroicons-tv"
+            color="primary"
+            variant="solid"
+            :to="`/projection/${weddingId}`"
+            target="_blank"
+            external
+          >
+            開啟投影牆
+          </UButton>
+        </div>
       </template>
     </PageHeader>
 
@@ -330,5 +422,150 @@ async function submitReject() {
         </div>
       </template>
     </UModal>
+
+    <!-- 投影設定 Slideover（中央媒體 + 自訂花朵；儲存鈕命名避開凍結 regex：拒絕/送出/確定/退回/通過） -->
+    <USlideover v-model:open="isProjectionSettingsOpen">
+      <template #content>
+        <div data-testid="projection-settings-panel" class="flex h-full flex-col overflow-y-auto p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Projection
+          </p>
+          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+            投影設定
+          </h3>
+          <p class="mb-6 mt-1 text-caption text-ink-300">
+            設定投影牆中央的照片／影片與花朵裝飾；儲存後投影牆即時更新
+          </p>
+
+          <div class="space-y-6">
+            <!-- 中央媒體型態 -->
+            <div>
+              <div class="mb-3 flex items-center gap-3">
+                <p class="text-overline uppercase text-gold-deep">
+                  中央媒體
+                </p>
+                <span class="h-px flex-1 bg-line" />
+              </div>
+              <div class="flex gap-2">
+                <UButton
+                  v-for="opt in MEDIA_OPTIONS"
+                  :key="opt.value"
+                  :color="settingsDraft.mediaType === opt.value ? 'primary' : 'neutral'"
+                  :variant="settingsDraft.mediaType === opt.value ? 'solid' : 'outline'"
+                  size="sm"
+                  @click="settingsDraft.mediaType = opt.value"
+                >
+                  {{ opt.label }}
+                </UButton>
+              </div>
+            </div>
+
+            <!-- 照片上傳 -->
+            <div v-if="settingsDraft.mediaType === 'photo'">
+              <div v-if="settingsDraft.photoDataUrl" class="space-y-3">
+                <img
+                  :src="settingsDraft.photoDataUrl"
+                  alt="投影照片預覽"
+                  class="max-h-48 w-full rounded-lg border border-line object-cover"
+                >
+                <UButton
+                  icon="i-heroicons-trash"
+                  color="error"
+                  variant="outline"
+                  size="sm"
+                  @click="settingsDraft.photoDataUrl = ''"
+                >
+                  移除照片
+                </UButton>
+              </div>
+              <FileUpload
+                v-else
+                accept="image/*"
+                label="點擊或拖放照片"
+                hint="將顯示於投影牆中央"
+                @selected="onProjectionPhotoSelected"
+                @error="onUploadError"
+              />
+            </div>
+
+            <!-- 影片連結 -->
+            <div v-else-if="settingsDraft.mediaType === 'video'">
+              <UFormField label="影片連結" name="projectionVideoUrl">
+                <UInput
+                  v-model="settingsDraft.videoUrl"
+                  data-testid="projection-video-url"
+                  placeholder="貼上 YouTube 連結或影片檔網址"
+                  class="w-full"
+                />
+              </UFormField>
+              <p v-if="videoHint" class="mt-2 text-caption text-gold-deep">
+                {{ videoHint }}
+              </p>
+            </div>
+
+            <!-- 自訂花朵 -->
+            <div>
+              <div class="mb-3 flex items-center gap-3">
+                <p class="text-overline uppercase text-gold-deep">
+                  自訂花朵
+                </p>
+                <span class="h-px flex-1 bg-line" />
+              </div>
+              <p class="mb-3 text-caption text-ink-500">
+                與賓客手繪小花一起做投影裝飾動畫（建議透明背景 PNG）
+              </p>
+              <div v-if="settingsDraft.customFlowers.length" class="mb-3 flex flex-wrap gap-3">
+                <div
+                  v-for="(src, i) in settingsDraft.customFlowers"
+                  :key="i"
+                  class="relative"
+                >
+                  <img
+                    :src="src"
+                    :alt="`自訂花朵 ${i + 1}`"
+                    class="size-16 rounded border border-line object-contain"
+                  >
+                  <UButton
+                    icon="i-heroicons-x-mark"
+                    color="error"
+                    variant="solid"
+                    size="xs"
+                    class="absolute -right-2 -top-2"
+                    :aria-label="`移除自訂花朵 ${i + 1}`"
+                    @click="removeCustomFlower(i)"
+                  />
+                </div>
+              </div>
+              <FileUpload
+                accept="image/*"
+                label="點擊或拖放花朵圖片（可多次加入）"
+                @selected="onCustomFlowerSelected"
+                @error="onUploadError"
+              />
+            </div>
+          </div>
+
+          <div class="mt-auto flex justify-end gap-3 pt-6">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :disabled="isSettingsSaving"
+              @click="isProjectionSettingsOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              data-testid="projection-settings-save"
+              color="neutral"
+              variant="solid"
+              :loading="isSettingsSaving"
+              @click="saveProjectionSettings"
+            >
+              儲存投影設定
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </USlideover>
   </div>
 </template>
