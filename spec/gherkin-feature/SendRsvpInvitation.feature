@@ -20,7 +20,7 @@ Feature: 發送 RSVP 邀請
           "contact": "0912345678",
           "category": "同事",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Admin sends SendRsvpInvitation on stream "guest-001":

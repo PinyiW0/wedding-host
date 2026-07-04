@@ -20,7 +20,7 @@ Feature: 更正禮金
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       And the GiftMoneyRecorded event has occurred on stream "guest-001":
@@ -79,7 +79,7 @@ Feature: 更正禮金
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Receptionist sends UpdateGiftMoney on stream "guest-001":

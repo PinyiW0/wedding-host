@@ -15,11 +15,12 @@ import {
 // （桌次 CRUD + 場地佈局 + 座位安排 + 禮俗設定 / 警告）
 // Feature Background：已登入為管理員（Admin）；已選定 wedding-001
 // mock seed：
-//   tables：table-001(主桌/10座/100,200)、table-002(男方家屬桌)、table-003(女方家屬桌)
+//   tables：table-001(主桌/12座/100,200，由後台設定)、table-002(男方家屬桌)、table-003(女方家屬桌)
 //   seats：預設無人入座
 //   venueLayout：wedding-001 已有舞台設定
-//   etiquetteSettings：wedding-001 五開關（部分開部分關）
-//   etiquetteWarnings：warning-001(gender-separation/未忽略)、warning-002(elder-near-main/未忽略)
+//   etiquetteSettings：wedding-001 三開關（elderNearMain/mainTableFull 開、sameCategoryTogether 關）
+//   etiquetteWarnings：改由前端依「設定 + 當前座位」即時計算（違反才跳），無靜態 seed；
+//     進站主桌未坐滿 → 出現「主桌尚未坐滿」警告（warning-main-table-full / main-table-not-full）
 
 const SEATING_URL = '/weddings/wedding-001/seating'
 
@@ -178,8 +179,9 @@ test.describe('座位安排（Admin 端）', () => {
       })
 
       // Then：guest-001 顯示為已入座於 table-001
+      // （partySize=2 會展開為「陳大明1」「陳大明2」兩席，取首席避免 strict mode 撞多個）
       const tableEntity = findEntity(page, /主桌/)
-      await expect(tableEntity.getByText(/陳大明/)).toBeVisible()
+      await expect(tableEntity.getByText(/陳大明/).first()).toBeVisible()
     })
   })
 
@@ -197,22 +199,22 @@ test.describe('座位安排（Admin 端）', () => {
 
   test.describe('規則：桌次已滿', () => {
     test('桌次已滿時拒絕安排', async ({ page }) => {
-      // Given：table-001（capacity 10）已坐滿 10 位賓客（guest-001 ~ guest-010）
-      for (let i = 1; i <= 10; i++) {
-        const guestId = `guest-${String(i).padStart(3, '0')}`
+      // Given：table-001（capacity 12）正常席已坐滿 12 人頭
+      // 容量改算人頭：guest-003(4)+guest-006(3)+guest-011(3)+guest-007(2)=12 正常席（皆無兒童椅）
+      for (const guestId of ['guest-003', 'guest-006', 'guest-011', 'guest-007']) {
         const res = await page.request.post(
           '/api/v1/weddings/wedding-001/tables/table-001/seats',
-          { data: { guestId, seatNumber: i } },
+          { data: { guestId, seatNumber: 1 } },
         )
         expect(res.ok()).toBeTruthy()
       }
       await page.goto(SEATING_URL, { waitUntil: 'networkidle' })
 
-      // When：嘗試將 guest-011（謝明哲）安排至已滿的 table-001
+      // When：嘗試將 guest-013（趙建國）安排至已滿的 table-001
       await page.getByRole('button', { name: /安排座位|安排/ }).first().click()
-      await selectOption(page, 'seat-guest-select', /謝明哲/)
+      await selectOption(page, 'seat-guest-select', /趙建國/)
       await selectOption(page, 'seat-table-select', /主桌/)
-      await page.getByLabel(/座位號/).fill('11')
+      await page.getByLabel(/座位號/).fill('13')
       await page.getByRole('button', { name: /安排|送出|確定/ }).click()
 
       // Then：使用者看到錯誤訊息
@@ -352,16 +354,14 @@ test.describe('禮俗設定（Admin 端）', () => {
       // When：進入禮俗設定入口並切換開關
       await page.getByRole('button', { name: /禮俗設定|禮俗建議|設定禮俗/ }).click()
 
-      // 主要 outcome：API spy 驗證 PUT .../etiquette-settings，payload 含五個布林開關
+      // 主要 outcome：API spy 驗證 PUT .../etiquette-settings，payload 含三個布林開關
       const apiCall = waitForApiCall(page, /\/etiquette-settings(\?|$)/, 'PUT')
       await page.getByRole('button', { name: /儲存|送出|確定|更新/ }).click()
       const request = await apiCall
       const payload = request.postDataJSON()
       expect(payload).toMatchObject({
         elderNearMain: expect.any(Boolean),
-        conflictWarning: expect.any(Boolean),
-        genderSeparation: expect.any(Boolean),
-        mainTableNearStage: expect.any(Boolean),
+        mainTableFull: expect.any(Boolean),
         sameCategoryTogether: expect.any(Boolean),
       })
 
@@ -378,9 +378,7 @@ test.describe('禮俗設定（Admin 端）', () => {
         {
           data: {
             elderNearMain: true,
-            conflictWarning: true,
-            genderSeparation: true,
-            mainTableNearStage: true,
+            mainTableFull: true,
             sameCategoryTogether: false,
           },
         },
@@ -397,25 +395,25 @@ test.describe('禮俗設定（Admin 端）', () => {
 test.describe('禮俗警告（Admin 端）', () => {
   test.describe('規則：成功覆寫禮俗警告', () => {
     test('成功覆寫禮俗警告', async ({ page }) => {
-      // Given：wedding-001 已建立，存在未處理的禮俗警告 warning-001
+      // Given：wedding-001 已建立；進站時主桌尚未坐滿，故出現「主桌坐滿」禮俗警告（違反才跳）
       await page.goto(SEATING_URL, { waitUntil: 'networkidle' })
 
-      // When：在 warning-001 範圍觸發忽略 / 覆寫此警告
-      const warningEntity = page.getByRole('alert', { name: /男女分桌/ })
+      // When：在「主桌尚未坐滿」警告範圍觸發忽略 / 覆寫此警告
+      const warningEntity = page.getByRole('alert', { name: /主桌尚未坐滿/ })
       await expect(warningEntity).toBeVisible()
       const apiCall = waitForApiCall(
         page,
-        /\/etiquette-warnings\/warning-001\/dismiss(\?|$)/,
+        /\/etiquette-warnings\/warning-main-table-full\/dismiss(\?|$)/,
         'POST',
       )
       await warningEntity.getByRole('button', { name: /忽略|覆寫/ }).click()
       await maybeConfirm(page)
       const request = await apiCall
       expect(request.postDataJSON()).toMatchObject({
-        warningType: 'gender-separation',
+        warningType: 'main-table-not-full',
       })
 
-      // Then：warning-001 不再以未處理狀態顯示
+      // Then：該警告不再以未處理狀態顯示
       await apiCall
       await expect(getFeedbackElement(page)).toBeVisible()
     })
@@ -425,8 +423,8 @@ test.describe('禮俗警告（Admin 端）', () => {
     test('婚禮不存在', async ({ page }) => {
       // 性質：API 邊界保護
       const res = await page.request.post(
-        '/api/v1/weddings/wedding-999/etiquette-warnings/warning-001/dismiss',
-        { data: { warningType: 'gender-separation' } },
+        '/api/v1/weddings/wedding-999/etiquette-warnings/warning-main-table-full/dismiss',
+        { data: { warningType: 'main-table-not-full' } },
       )
       expect(res.status()).toBe(404)
       expect(JSON.stringify(await res.json())).toContain('婚禮不存在')

@@ -40,12 +40,20 @@ export type {
   GuestsImportedEvent,
   GuestUpdatedEvent,
   ImportGuestsBody,
+  InvitationSentMarkedEvent,
+  MarkInvitationSentBody,
   UpdateGuestBody,
 } from './guests'
 export type {
   ConnectLineOaBody,
   LineOaConnectedEvent,
 } from './line'
+export type {
+  ProjectionMediaType,
+  ProjectionSettings,
+  ProjectionSettingsUpdatedEvent,
+  UpdateProjectionSettingsBody,
+} from './projection'
 export type {
   CakeBoxDistributedEvent,
   DistributeCakeBoxBody,

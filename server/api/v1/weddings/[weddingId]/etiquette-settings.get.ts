@@ -3,7 +3,7 @@ import type { EtiquetteSettingsDetail } from '../../../../../app/types/api/seati
 
 import { mockEtiquetteSettings } from '../../../../mock/data/seating'
 
-// 讀回該婚禮的禮俗設定五開關：尚未設定回合理預設（重整後仍能還原 modal 既有值）
+// 讀回該婚禮的禮俗設定三開關：尚未設定回合理預設（重整後仍能還原 modal 既有值）
 export default defineEventHandler((event: H3Event): EtiquetteSettingsDetail => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const settings = mockEtiquetteSettings.find(s => s.weddingId === weddingId)
@@ -11,18 +11,14 @@ export default defineEventHandler((event: H3Event): EtiquetteSettingsDetail => {
     return {
       weddingId,
       elderNearMain: true,
-      conflictWarning: true,
-      genderSeparation: true,
-      mainTableNearStage: true,
+      mainTableFull: true,
       sameCategoryTogether: false,
     }
   }
   return {
     weddingId: settings.weddingId,
     elderNearMain: settings.elderNearMain,
-    conflictWarning: settings.conflictWarning,
-    genderSeparation: settings.genderSeparation,
-    mainTableNearStage: settings.mainTableNearStage,
+    mainTableFull: settings.mainTableFull,
     sameCategoryTogether: settings.sameCategoryTogether,
   }
 })

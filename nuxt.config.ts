@@ -54,4 +54,13 @@ export default defineNuxtConfig({
       colors: ['primary', 'secondary', 'info', 'success', 'warning', 'error', 'neutral'],
     },
   },
+  // 字體（Editorial Luxe）：build 期由 @nuxt/fonts 下載自我托管，離線穩定
+  // 名稱須與 main.css @theme 的 --font-* 完全一致
+  fonts: {
+    families: [
+      { name: 'Cormorant', provider: 'google', weights: [500, 600, 700] },
+      { name: 'Inter', provider: 'google', weights: [400, 500, 600, 700] },
+      { name: 'Noto Sans TC', provider: 'google', weights: [400, 500, 700] },
+    ],
+  },
 })

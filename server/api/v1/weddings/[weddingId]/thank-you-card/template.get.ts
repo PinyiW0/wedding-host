@@ -14,5 +14,8 @@ export default defineEventHandler((event: H3Event): ThankYouTemplateDetail | nul
     weddingId: template.weddingId,
     templateContent: template.templateContent,
     templateImageUrl: template.templateImageUrl,
+    greeting: template.greeting,
+    signature: template.signature,
+    signatureDate: template.signatureDate,
   }
 })

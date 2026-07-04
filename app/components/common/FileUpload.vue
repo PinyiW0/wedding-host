@@ -75,23 +75,23 @@ function onDrop(e: DragEvent) {
 <template>
   <div
     data-testid="file-upload"
-    class="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors"
+    class="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-paper p-8 transition-colors"
     :class="isDragging
-      ? 'border-primary-500 bg-primary-50 dark:bg-primary-950'
-      : 'border-neutral-300 hover:border-neutral-400 dark:border-neutral-700'"
+      ? 'border-gold bg-gold-light/20 dark:bg-primary-950'
+      : 'border-line hover:border-gold-deep dark:border-neutral-700'"
     @dragover.prevent="isDragging = true"
     @dragleave="isDragging = false"
     @drop.prevent="onDrop"
     @click="inputRef?.click()"
   >
-    <UIcon name="i-heroicons-cloud-arrow-up" class="size-8 text-neutral-400" />
-    <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+    <UIcon name="i-heroicons-cloud-arrow-up" class="size-8 text-gold" />
+    <p class="mt-3 text-body text-ink-500 dark:text-neutral-400">
       {{ label }}
     </p>
-    <p class="text-xs text-neutral-400">
+    <p class="text-caption text-ink-300">
       {{ hint || `最大 ${maxSizeMb}MB` }}
     </p>
-    <p v-if="selectedName" data-testid="file-upload-name" class="mt-2 text-sm text-primary-600 dark:text-primary-400">
+    <p v-if="selectedName" data-testid="file-upload-name" class="mt-2 text-body text-gold-deep dark:text-primary-400">
       {{ selectedName }}
     </p>
     <input

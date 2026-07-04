@@ -3,12 +3,19 @@
 export interface SetThankYouTemplateBody {
   templateContent: string
   templateImageUrl?: string
+  // 信箋文字覆寫（留空＝前端自動帶入婚禮基本資料）
+  greeting?: string
+  signature?: string
+  signatureDate?: string
 }
 
 export interface ThankYouTemplateSetEvent {
   weddingId: string
   templateContent: string
   templateImageUrl: string | null
+  greeting: string | null
+  signature: string | null
+  signatureDate: string | null
 }
 
 export interface CustomizeThankYouCardBody {
@@ -27,6 +34,9 @@ export interface ThankYouTemplateDetail {
   weddingId: string
   templateContent: string
   templateImageUrl: string | null
+  greeting: string | null
+  signature: string | null
+  signatureDate: string | null
 }
 
 // 讀回該婚禮的個別客製謝卡清單
@@ -34,6 +44,18 @@ export interface ThankYouCustomizationListItem {
   weddingId: string
   guestId: string
   customContent: string
+}
+
+// 賓客公開謝卡（依 guestId 讀回已解析內容：{{guestName}} 已替換、客製優先、信箋文字帶入婚禮資料）
+export interface PublicThankYouCard {
+  weddingId: string
+  guestId: string
+  guestName: string
+  greeting: string
+  content: string
+  signature: string
+  signatureDate: string
+  templateImageUrl: string | null
 }
 
 export interface ThankYouBatchSentEvent {

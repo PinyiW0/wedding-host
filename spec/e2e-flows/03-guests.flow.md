@@ -12,7 +12,7 @@
 
 ## Business Invariants（合約核心）
 
-1. 管理員能手動新增賓客（姓名、男女方、飲食、是否需兒童座椅、聯絡方式、分類、備註）
+1. 管理員能手動新增賓客（姓名、男女方、飲食、同行人數、兒童椅嬰兒數、聯絡方式、分類、備註）
 2. 管理員能更新既有賓客資料
 3. 管理員能軟刪除賓客並能恢復已軟刪除的賓客
 4. 管理員能透過 Excel 檔批次匯入賓客，並感知匯入結果（筆數）
@@ -38,12 +38,12 @@
    - 飲食 → 葷食（meat）
    - 分類 → 同事
    - 聯絡方式 → 0912345678
-   - 是否需兒童座椅 → 否
+   - 同行人數 → 0、兒童椅嬰兒數 → 0
    - 備註 → 需要靠近舞台
 4. 提交
 
 ### Verification 策略
-- API spy：`POST /api/v1/weddings/wedding-001/guests`，payload 含 name / side / diet / category / contact / needChildSeat / notes
+- API spy：`POST /api/v1/weddings/wedding-001/guests`，payload 含 name / side / diet / category / contact / partySize / childChairCount / notes
 - UI：列表新增可識別的「陳大明」實體（`getByText(/陳大明/)`），且能讀到 side（男方）與 category（同事）
 
 ### Business Invariant 必涵蓋
@@ -51,7 +51,7 @@
 - 主要狀態欄（side / diet / category）可達
 
 ### 不再凍結
-- side / diet / needChildSeat 的輸入元件（select / radio / segment / checkbox）
+- side / diet / 人數（同行 / 兒童椅）的輸入元件（select / radio / segment / stepper）
 - 表單呈現（modal / 獨立頁）
 
 ---
@@ -71,7 +71,7 @@
    - 男女方 → 女方（bride）
    - 分類 → 朋友
    - 聯絡方式 → 0987654321
-   - 是否需兒童座椅 → 是
+   - 兒童椅嬰兒數 → 1
    - 備註 → 改為素食
 4. 提交
 

@@ -20,5 +20,6 @@ export interface UserLoggedInEvent {
   userId: string
   username: string
   role: string
+  weddingId: string | null // 接待員綁定的婚禮；管理者為 null
   accessToken: string
 }

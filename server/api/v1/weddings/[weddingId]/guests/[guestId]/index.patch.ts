@@ -22,10 +22,21 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     guest.category = body.category
   if (body.contact !== undefined)
     guest.contact = body.contact
-  if (body.needChildSeat !== undefined)
-    guest.needChildSeat = body.needChildSeat
+  if (body.partySize !== undefined)
+    guest.partySize = body.partySize
+  if (body.childChairCount !== undefined)
+    guest.childChairCount = body.childChairCount
   if (body.notes !== undefined)
     guest.notes = body.notes
+  // 管理員修正的 RSVP 回覆欄位（接駁／喜帖）
+  if (body.needsShuttle !== undefined)
+    guest.needsShuttle = body.needsShuttle
+  if (body.shuttleCount !== undefined)
+    guest.shuttleCount = body.shuttleCount
+  if (body.invitationPreference !== undefined)
+    guest.invitationPreference = body.invitationPreference
+  if (body.mailingAddress !== undefined)
+    guest.mailingAddress = body.mailingAddress
 
   return {
     guestId: guest.guestId,
@@ -35,7 +46,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     diet: guest.diet,
     category: guest.category,
     contact: guest.contact,
-    needChildSeat: guest.needChildSeat,
+    partySize: guest.partySize,
+    childChairCount: guest.childChairCount,
     notes: guest.notes,
   }
 })

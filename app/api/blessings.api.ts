@@ -3,6 +3,7 @@ import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   BlessingApprovedEvent,
   BlessingListItem,
+  BlessingProjectedEvent,
   BlessingRejectedEvent,
   BlessingSubmittedEvent,
   RejectBlessingBody,
@@ -38,5 +39,12 @@ export function rejectBlessing(weddingId: string, blessingId: string, body: Reje
   return useHttp().post<BlessingRejectedEvent>(
     '/api/v1/weddings/{weddingId}/blessings/{blessingId}/reject',
     { pathParams: { weddingId, blessingId }, body },
+  )
+}
+
+export function projectBlessing(weddingId: string, blessingId: string) {
+  return useHttp().post<BlessingProjectedEvent>(
+    '/api/v1/weddings/{weddingId}/blessings/{blessingId}/project',
+    { pathParams: { weddingId, blessingId } },
   )
 }

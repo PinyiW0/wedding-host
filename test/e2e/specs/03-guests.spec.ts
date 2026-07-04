@@ -53,7 +53,8 @@ test.describe('賓客名單（Admin 端）', () => {
         diet: 'meat',
         category: '同事',
         contact: '0912345678',
-        needChildSeat: false,
+        partySize: 1,
+        childChairCount: 0,
         notes: '需要靠近舞台',
       })
 

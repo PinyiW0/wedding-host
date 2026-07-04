@@ -20,7 +20,7 @@ Feature: 提交 RSVP
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Guest sends SubmitRsvp on stream "guest-001":
@@ -30,7 +30,7 @@ Feature: 提交 RSVP
           "attending": "attending",
           "weddingId": "wedding-001",
           "plusOneCount": 1,
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       Then the RsvpSubmitted event is emitted with:
@@ -40,7 +40,7 @@ Feature: 提交 RSVP
           "attending": "attending",
           "weddingId": "wedding-001",
           "plusOneCount": 1,
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
 
@@ -58,7 +58,7 @@ Feature: 提交 RSVP
           "attending": "attending",
           "weddingId": "wedding-001",
           "plusOneCount": 0,
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       Then the operation fails with: 賓客不存在
@@ -79,7 +79,7 @@ Feature: 提交 RSVP
           "contact": "0912345678",
           "category": "朋友",
           "weddingId": "wedding-001",
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       And the RsvpSubmitted event has occurred on stream "guest-001":
@@ -89,7 +89,7 @@ Feature: 提交 RSVP
           "attending": "attending",
           "weddingId": "wedding-001",
           "plusOneCount": 0,
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       When Guest sends SubmitRsvp on stream "guest-001":
@@ -99,7 +99,7 @@ Feature: 提交 RSVP
           "attending": "declined",
           "weddingId": "wedding-001",
           "plusOneCount": 0,
-          "needChildSeat": false
+          "childChairCount": 0
         }
         """
       Then the operation fails with: 已提交過 RSVP

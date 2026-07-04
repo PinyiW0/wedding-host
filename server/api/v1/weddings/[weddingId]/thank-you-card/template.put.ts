@@ -13,14 +13,27 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouTempla
   }
 
   const templateImageUrl = body.templateImageUrl ?? null
+  const greeting = body.greeting ?? null
+  const signature = body.signature ?? null
+  const signatureDate = body.signatureDate ?? null
   const existing = mockThankYouTemplates.find(t => t.weddingId === weddingId)
   if (existing) {
     existing.templateContent = body.templateContent
     existing.templateImageUrl = templateImageUrl
+    existing.greeting = greeting
+    existing.signature = signature
+    existing.signatureDate = signatureDate
   }
   else {
-    mockThankYouTemplates.push({ weddingId, templateContent: body.templateContent, templateImageUrl })
+    mockThankYouTemplates.push({
+      weddingId,
+      templateContent: body.templateContent,
+      templateImageUrl,
+      greeting,
+      signature,
+      signatureDate,
+    })
   }
 
-  return { weddingId, templateContent: body.templateContent, templateImageUrl }
+  return { weddingId, templateContent: body.templateContent, templateImageUrl, greeting, signature, signatureDate }
 })

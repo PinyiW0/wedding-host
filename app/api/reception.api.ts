@@ -1,3 +1,5 @@
+import type { MaybeRefOrGetter } from 'vue'
+import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CakeBoxDistributedEvent,
   DistributeCakeBoxBody,
@@ -5,11 +7,22 @@ import type {
   GiftMoneyUpdatedEvent,
   GuestCheckedInEvent,
   GuestSelfCheckedInEvent,
+  ReceptionStatusItem,
   RecordGiftMoneyBody,
   SelfCheckInBody,
   UpdateGiftMoneyBody,
 } from '~/types/api/reception'
 import { useHttp } from '~/composables/useHttp'
+
+export function getReceptionStatus(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<ReceptionStatusItem[]>,
+) {
+  return useHttp().get<ReceptionStatusItem[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/reception-status`,
+    options,
+  )
+}
 
 export function checkInGuest(weddingId: string, guestId: string) {
   return useHttp().post<GuestCheckedInEvent>(

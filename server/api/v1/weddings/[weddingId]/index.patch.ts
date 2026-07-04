@@ -11,6 +11,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
+  // 新人僅能編輯自己擁有的婚禮
+  assertWeddingAccess(getRequestUser(event), wedding.ownerId)
 
   if (body.title !== undefined)
     wedding.title = body.title
@@ -20,12 +22,18 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     wedding.address = body.address
   if (body.date !== undefined)
     wedding.date = body.date
+  if (body.groomName !== undefined)
+    wedding.groomName = body.groomName
+  if (body.brideName !== undefined)
+    wedding.brideName = body.brideName
   if (body.mapLink !== undefined)
     wedding.mapLink = body.mapLink
   if (body.parkingInfo !== undefined)
     wedding.parkingInfo = body.parkingInfo
   if (body.transportInfo !== undefined)
     wedding.transportInfo = body.transportInfo
+  if (body.transportImageUrls !== undefined)
+    wedding.transportImageUrls = body.transportImageUrls
 
   return {
     weddingId: wedding.weddingId,
@@ -33,8 +41,11 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingUpdated
     venue: wedding.venue,
     address: wedding.address,
     date: wedding.date,
+    groomName: wedding.groomName ?? null,
+    brideName: wedding.brideName ?? null,
     mapLink: wedding.mapLink,
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,
+    transportImageUrls: wedding.transportImageUrls ?? [],
   }
 })

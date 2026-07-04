@@ -24,6 +24,11 @@ export async function login(page: Page, account: string, password: string) {
 export async function selectOption(page: Page, testId: string, optionName: string) {
   await page.getByTestId(testId).click()
   await page.getByRole('option', { name: optionName }).click()
+  // 長清單 USelectMenu 偶爾選取後不會自動關閉，殘留下拉會擋住後續點擊。
+  // 等待其關閉；逾時且仍開啟才補一次 Escape（避免誤關外層 modal）。
+  await page.getByRole('listbox').waitFor({ state: 'hidden', timeout: 1500 }).catch(() => {})
+  if (await page.getByRole('listbox').isVisible().catch(() => false))
+    await page.keyboard.press('Escape')
 }
 
 /** 確認彈窗：等待出現 → 點擊確認（testid 約定：confirm-modal / confirm-ok） */

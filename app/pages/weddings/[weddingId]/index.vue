@@ -4,11 +4,10 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   UpdateWeddingBody,
-  WeddingDetail,
-  WeddingUpdatedEvent,
 } from '~/types/api/weddings'
 
 import { z } from 'zod'
+import { getWedding, updateWedding } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -17,9 +16,7 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 婚禮詳情（含 mapLink / parkingInfo / transportInfo，GET 已回傳完整欄位）
-const { data: wedding, refresh } = await useFetch<WeddingDetail>(
-  () => `/api/v1/weddings/${weddingId.value}`,
-)
+const { data: wedding, refresh } = await getWedding(weddingId)
 
 // === 編輯婚禮資訊 ===
 const schema = z.object({
@@ -27,9 +24,12 @@ const schema = z.object({
   venue: z.string().trim().min(1, '請輸入場地'),
   address: z.string().trim().min(1, '請輸入地址'),
   date: z.string().trim().min(1, '請選擇日期'),
+  groomName: z.string().trim().optional(),
+  brideName: z.string().trim().optional(),
   mapLink: z.string().trim().optional(),
   parkingInfo: z.string().trim().optional(),
   transportInfo: z.string().trim().optional(),
+  transportImageUrls: z.array(z.string()).optional(),
 })
 
 type Schema = z.output<typeof schema>
@@ -41,9 +41,12 @@ const state = reactive<Schema>({
   venue: '',
   address: '',
   date: '',
+  groomName: '',
+  brideName: '',
   mapLink: '',
   parkingInfo: '',
   transportInfo: '',
+  transportImageUrls: [],
 })
 
 function openEdit() {
@@ -51,10 +54,42 @@ function openEdit() {
   state.venue = wedding.value?.venue ?? ''
   state.address = wedding.value?.address ?? ''
   state.date = wedding.value?.date ?? ''
+  state.groomName = wedding.value?.groomName ?? ''
+  state.brideName = wedding.value?.brideName ?? ''
   state.mapLink = wedding.value?.mapLink ?? ''
   state.parkingInfo = wedding.value?.parkingInfo ?? ''
   state.transportInfo = wedding.value?.transportInfo ?? ''
+  state.transportImageUrls = [...(wedding.value?.transportImageUrls ?? [])]
   isEditOpen.value = true
+}
+
+// 交通參考圖片：以 dataURL 儲存（與花圖／banner 同模式），可一次選多張
+const MAX_TRANSPORT_IMAGE_SIZE = 5 * 1024 * 1024
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+async function onTransportImageChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = '' // 允許重選同一批檔案
+  for (const file of files) {
+    if (file.size > MAX_TRANSPORT_IMAGE_SIZE) {
+      toast.add({ title: '圖片過大', description: `「${file.name}」超過 5MB，已略過`, color: 'error' })
+      continue
+    }
+    // 逐檔依序讀取，保持選取順序
+    state.transportImageUrls = [...(state.transportImageUrls ?? []), await readAsDataUrl(file)]
+  }
+}
+function removeTransportImage(index: number) {
+  state.transportImageUrls = (state.transportImageUrls ?? []).filter((_, i) => i !== index)
 }
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
@@ -67,14 +102,14 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       venue: event.data.venue,
       address: event.data.address,
       date: event.data.date,
+      groomName: event.data.groomName ?? '',
+      brideName: event.data.brideName ?? '',
       mapLink: event.data.mapLink ?? '',
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
+      transportImageUrls: event.data.transportImageUrls ?? [],
     }
-    await $fetch<WeddingUpdatedEvent>(
-      `/api/v1/weddings/${weddingId.value}`,
-      { method: 'PATCH', body },
-    )
+    await updateWedding(weddingId.value, body)
     toast.add({ title: '婚禮資訊已更新', color: 'success' })
     isEditOpen.value = false
     await refresh()
@@ -94,13 +129,15 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   <div data-testid="wedding-detail-page" class="flex h-full flex-col">
     <PageHeader
       :title="wedding?.title ?? '婚禮詳情'"
+      eyebrow="Wedding Details"
       description="管理此場婚禮的基本資訊"
     >
       <template #actions>
         <UButton
           data-testid="wedding-edit"
           icon="i-heroicons-pencil"
-          color="primary"
+          color="neutral"
+          variant="solid"
           @click="openEdit"
         >
           編輯
@@ -110,95 +147,127 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     <div class="min-h-0 flex-1 overflow-auto">
       <div
-        class="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+        class="rounded-lg border border-line bg-white p-6 sm:p-8 dark:border-neutral-800 dark:bg-neutral-900"
       >
-        <dl class="divide-y divide-neutral-200 dark:divide-neutral-800">
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+        <div class="mb-6 flex items-center gap-3">
+          <span class="h-px w-8 bg-gold" />
+          <p class="text-overline uppercase text-gold-deep">
+            基本資訊
+          </p>
+        </div>
+
+        <!-- 編輯式定義列：細線分隔，label 金色 overline、值墨黑 -->
+        <dl class="divide-y divide-line dark:divide-neutral-800">
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               婚禮名稱
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="font-display text-body-l text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.title }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
+              新人姓名
+            </dt>
+            <dd
+              data-testid="wedding-couple-display"
+              class="text-ink sm:col-span-2 dark:text-paper"
             >
+              <span v-if="wedding?.groomName || wedding?.brideName">
+                {{ wedding?.groomName || '—' }} &amp; {{ wedding?.brideName || '—' }}
+              </span>
+              <span v-else class="text-ink-300">未設定</span>
+            </dd>
+          </div>
+
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               場地
             </dt>
             <dd
               data-testid="wedding-venue-display"
-              class="text-neutral-900 sm:col-span-2 dark:text-white"
+              class="text-ink sm:col-span-2 dark:text-paper"
             >
               {{ wedding?.venue }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               地址
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.address }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               日期
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="font-display text-body-l text-ink sm:col-span-2 dark:text-paper">
               {{ wedding?.date }}
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               地圖連結
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
               <a
                 v-if="wedding?.mapLink"
                 :href="wedding.mapLink"
                 target="_blank"
                 rel="noopener"
-                class="text-primary-600 hover:underline dark:text-primary-400"
+                class="text-gold-deep hover:underline"
               >
                 {{ wedding.mapLink }}
               </a>
-              <span v-else class="text-neutral-400">未設定</span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               停車資訊
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
-              {{ wedding?.parkingInfo || '未設定' }}
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <span v-if="wedding?.parkingInfo">{{ wedding.parkingInfo }}</span>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
 
-          <div class="grid grid-cols-1 gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4">
-            <dt
-              class="text-sm font-medium text-neutral-500 dark:text-neutral-400"
-            >
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
               交通指引
             </dt>
-            <dd class="text-neutral-900 sm:col-span-2 dark:text-white">
-              {{ wedding?.transportInfo || '未設定' }}
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <span v-if="wedding?.transportInfo">{{ wedding.transportInfo }}</span>
+              <span v-else class="text-ink-300">未設定</span>
+            </dd>
+          </div>
+
+          <div class="grid grid-cols-1 gap-1 py-4 sm:grid-cols-3 sm:gap-4">
+            <dt class="text-overline uppercase text-gold-deep">
+              交通參考圖片
+            </dt>
+            <dd class="text-ink sm:col-span-2 dark:text-paper">
+              <div
+                v-if="wedding?.transportImageUrls?.length"
+                class="flex flex-wrap gap-3"
+              >
+                <img
+                  v-for="(url, i) in wedding.transportImageUrls"
+                  :key="i"
+                  :src="url"
+                  :alt="`交通參考圖片 ${i + 1}`"
+                  class="max-h-40 rounded border border-line"
+                >
+              </div>
+              <span v-else class="text-ink-300">未設定</span>
             </dd>
           </div>
         </dl>
@@ -208,9 +277,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     <!-- 編輯婚禮資訊 Modal -->
     <UModal v-model:open="isEditOpen">
       <template #content>
-        <div data-testid="wedding-form-modal" class="p-6">
+        <div data-testid="wedding-form-modal" class="max-h-[85vh] overflow-y-auto p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Edit Details
+          </p>
           <h3
-            class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white"
+            class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper"
           >
             編輯婚禮資訊
           </h3>
@@ -233,6 +305,36 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                 class="w-full"
               />
             </UFormField>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <UFormField
+                label="新郎姓名"
+                name="groomName"
+                class="relative mb-6"
+                :ui="{ error: 'absolute top-full left-0 mt-1' }"
+              >
+                <UInput
+                  v-model="state.groomName"
+                  data-testid="wedding-groom-name"
+                  placeholder="例：振茗"
+                  class="w-full"
+                />
+              </UFormField>
+
+              <UFormField
+                label="新娘姓名"
+                name="brideName"
+                class="relative mb-6"
+                :ui="{ error: 'absolute top-full left-0 mt-1' }"
+              >
+                <UInput
+                  v-model="state.brideName"
+                  data-testid="wedding-bride-name"
+                  placeholder="例：品儀"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
 
             <UFormField
               label="場地"
@@ -318,6 +420,50 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               />
             </UFormField>
 
+            <UFormField
+              label="交通參考圖片"
+              name="transportImageUrls"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <div class="space-y-3">
+                <!-- 維持原生 input（不被 label 關聯）：getByLabel(/交通/) 凍結 strict 匹配只能命中「交通指引」 -->
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  data-testid="wedding-transport-image"
+                  class="block w-full text-caption text-ink-500 file:mr-3 file:rounded file:border-0 file:bg-primary-100 file:px-3 file:py-1.5 file:text-ink"
+                  @change="onTransportImageChange"
+                >
+                <p class="text-caption text-ink-300">
+                  可一次選擇多張圖片（單張上限 5MB）
+                </p>
+                <div v-if="state.transportImageUrls?.length" class="flex flex-wrap gap-3">
+                  <div
+                    v-for="(url, i) in state.transportImageUrls"
+                    :key="i"
+                    class="relative inline-block"
+                  >
+                    <img
+                      :src="url"
+                      :alt="`交通參考圖片預覽 ${i + 1}`"
+                      class="max-h-32 rounded border border-line"
+                    >
+                    <UButton
+                      icon="i-heroicons-x-mark"
+                      color="error"
+                      variant="solid"
+                      size="xs"
+                      class="absolute right-1 top-1"
+                      :aria-label="`移除交通參考圖片 ${i + 1}`"
+                      @click="removeTransportImage(i)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </UFormField>
+
             <div class="flex justify-end gap-3 pt-2">
               <UButton
                 color="neutral"
@@ -330,7 +476,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
               <UButton
                 type="submit"
                 data-testid="wedding-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 儲存

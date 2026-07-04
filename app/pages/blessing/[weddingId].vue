@@ -1,9 +1,9 @@
 <!-- app/pages/blessing/[weddingId].vue -->
 <script setup lang="ts">
 import type {
-  BlessingSubmittedEvent,
   SubmitBlessingBody,
 } from '~/types/api/blessings'
+import { submitBlessing as submitBlessingApi } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -15,6 +15,25 @@ const guestId = computed(() => String(route.query.guestId ?? ''))
 const message = ref('')
 const photoUrl = ref('')
 const photoName = ref('')
+
+// 常用 emoji 面板：點選插入留言游標處
+const EMOJIS = ['🎉', '💍', '💐', '❤️', '🥂', '👏', '😊', '🙏', '💕', '🎊', '🌸', '✨']
+const messageWrap = ref<HTMLElement | null>(null)
+function insertEmoji(emoji: string) {
+  const ta = messageWrap.value?.querySelector('textarea')
+  if (!ta) {
+    message.value += emoji
+    return
+  }
+  const start = ta.selectionStart ?? message.value.length
+  const end = ta.selectionEnd ?? message.value.length
+  message.value = message.value.slice(0, start) + emoji + message.value.slice(end)
+  nextTick(() => {
+    ta.focus()
+    const pos = start + emoji.length
+    ta.setSelectionRange(pos, pos)
+  })
+}
 
 const isSubmitting = ref(false)
 const isSubmitted = ref(false)
@@ -41,10 +60,7 @@ async function submitBlessing() {
       message: message.value.trim(),
       ...(photoUrl.value ? { photoUrl: photoUrl.value } : {}),
     }
-    await $fetch<BlessingSubmittedEvent>(
-      `/api/v1/weddings/${weddingId.value}/blessings`,
-      { method: 'POST', body },
-    )
+    await submitBlessingApi(weddingId.value, body)
     isSubmitted.value = true
   }
   catch (error: any) {
@@ -59,13 +75,18 @@ async function submitBlessing() {
 
 <template>
   <div data-testid="blessing-submit-page" class="flex flex-col">
+    <!-- 沉浸式標題：Guest Blessings overline + Cormorant 大標 + italic 引言 -->
     <div class="text-center">
-      <UIcon name="i-heroicons-heart" class="size-12 text-primary-500" />
-      <h1 class="mt-4 text-xl font-bold text-neutral-900">
+      <div class="mb-4 flex items-center justify-center gap-3">
+        <span class="h-px w-8 bg-gold" />
+        <span class="text-overline uppercase tracking-widest text-gold-deep">Guest Blessings</span>
+        <span class="h-px w-8 bg-gold" />
+      </div>
+      <h1 class="font-display text-display-l font-semibold leading-none text-ink">
         獻上祝福
       </h1>
-      <p class="mt-2 text-neutral-500">
-        留下您對新人的祝福留言與照片
+      <p class="mx-auto mt-4 max-w-sm font-display text-body-l italic leading-relaxed text-ink-500">
+        留下您對新人的祝福留言與照片，<br>讓今晚的喜悅被永遠收藏。
       </p>
     </div>
 
@@ -76,30 +97,56 @@ async function submitBlessing() {
       color="error"
       variant="soft"
       :title="submitError"
-      class="mt-6"
+      class="mt-8"
     />
 
     <!-- 提交成功反饋 -->
-    <UAlert
+    <div
       v-if="isSubmitted"
       data-testid="blessing-submit-success"
-      icon="i-heroicons-check-circle"
-      color="success"
-      variant="soft"
-      title="祝福已送出"
-      description="感謝您的祝福，我們已收到您的留言。"
-      class="mt-6"
-    />
+      class="mt-8 rounded-lg border border-line bg-paper p-8 text-center"
+    >
+      <div class="mx-auto flex size-14 items-center justify-center rounded-full bg-gold-light text-gold-deep">
+        <UIcon name="i-heroicons-check" class="size-7" />
+      </div>
+      <h2 class="mt-4 font-display text-h2 font-semibold text-ink">
+        祝福已送出
+      </h2>
+      <p class="mt-2 text-body text-ink-500">
+        感謝您的祝福，我們已收到您的留言。
+      </p>
+    </div>
 
-    <form v-else class="mt-6 space-y-6" @submit.prevent="submitBlessing">
+    <!-- 留言輸入卡：bg-paper 插入式淺面板 -->
+    <form
+      v-else
+      class="mt-8 space-y-6 rounded-lg border border-line bg-paper p-6 sm:p-8"
+      @submit.prevent="submitBlessing"
+    >
       <UFormField label="祝福留言" name="message">
-        <UTextarea
-          v-model="message"
-          data-testid="blessing-message"
-          :rows="4"
-          placeholder="寫下您的祝福..."
-          class="w-full"
-        />
+        <div ref="messageWrap">
+          <UTextarea
+            v-model="message"
+            data-testid="blessing-message"
+            :rows="4"
+            placeholder="寫下您的祝福..."
+            class="w-full"
+          />
+          <!-- 常用 emoji 面板：點選插入游標處 -->
+          <div data-testid="blessing-emoji-panel" class="mt-2 flex flex-wrap gap-1.5">
+            <button
+              v-for="emoji in EMOJIS"
+              :key="emoji"
+              type="button"
+              :data-testid="`blessing-emoji-${emoji}`"
+              :aria-label="`插入 ${emoji}`"
+              class="flex size-9 items-center justify-center rounded-lg border border-line text-lg transition-colors hover:border-gold-deep hover:bg-paper-soft"
+              @click="insertEmoji(emoji)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+        </div>
       </UFormField>
 
       <UFormField label="祝福照片" name="photo">

@@ -23,6 +23,7 @@ export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEv
     userId: user.userId,
     username: user.username,
     role: user.role,
+    weddingId: user.weddingId,
     accessToken: `mock-token-${user.userId}-${Date.now()}`,
   }
 })

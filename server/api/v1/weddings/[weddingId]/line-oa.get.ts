@@ -10,5 +10,5 @@ export default defineEventHandler((event: H3Event): LineOaDetail | null => {
   if (!oa) {
     return null
   }
-  return { weddingId: oa.weddingId, oaName: oa.oaName, channelId: oa.channelId }
+  return { weddingId: oa.weddingId, oaName: oa.oaName, channelId: oa.channelId, addFriendUrl: oa.addFriendUrl }
 })

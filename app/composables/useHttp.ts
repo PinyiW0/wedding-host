@@ -2,12 +2,16 @@ import type { AsyncData, UseFetchOptions } from 'nuxt/app'
 import type { FetchError, FetchOptions } from 'ofetch'
 import type { MaybeRefOrGetter } from 'vue'
 
+import { useAuthStore } from '~/stores/auth'
+
 // path 佔位符（:id 或 {id}）對應的實際值
 export type PathParams = Record<string, string | number>
 
 // reactive 讀取（useFetch）選項：baseURL 由 useHttp 統一帶入、method 固定，故移除
-export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method'> & {
+// default 在此覆寫：UseFetchOptions<T> 的 default 泛型在巢狀包裝下會塌成 Ref<undefined>，改以 () => T 收斂
+export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method' | 'default'> & {
   pathParams?: PathParams
+  default?: () => T
 }
 
 // imperative 讀取 / 寫入（$fetch）選項：同上
@@ -48,23 +52,31 @@ function withPathParams(url: string, params?: PathParams): string {
  */
 export function useHttp() {
   const baseURL = useRuntimeConfig().public.apiBase
+  const auth = useAuthStore()
+
+  // 已登入則帶上 Authorization（mock auth 層用於識別身分）；公開頁無 token 即不帶
+  function authHeaders(): Record<string, string> {
+    return auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}
+  }
 
   // reactive 讀取：useFetch；url 傳 getter 時 ref 變動會自動重抓
   function get<T>(url: MaybeRefOrGetter<string>, options?: HttpGetOptions<T>) {
-    const { pathParams, ...rest } = options ?? {}
+    const { pathParams, headers, ...rest } = options ?? {}
     // useFetch 泛型包裝的已知型別限制：不帶 <T>、改以斷言收斂 options 與回傳（沿用參考專案做法）
     return useFetch(() => withPathParams(toValue(url), pathParams), {
       baseURL,
+      headers: { ...authHeaders(), ...(headers as Record<string, string> | undefined) },
       ...rest,
     } as unknown as UseFetchOptions<unknown>) as AsyncData<T | undefined, FetchError | undefined>
   }
 
   // imperative：$fetch（getOnce 與寫入共用）
   function request<T>(method: ImperativeMethod, url: string, options?: HttpRequestOptions) {
-    const { pathParams, ...rest } = options ?? {}
+    const { pathParams, headers, ...rest } = options ?? {}
     return $fetch<T>(withPathParams(url, pathParams), {
       baseURL,
       method,
+      headers: { ...authHeaders(), ...(headers as Record<string, string> | undefined) },
       ...rest,
     })
   }

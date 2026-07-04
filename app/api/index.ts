@@ -8,54 +8,104 @@ export { login, registerAdmin } from './auth.api'
 export {
   approveBlessing,
   listBlessings,
+  projectBlessing,
   rejectBlessing,
   submitBlessing,
 } from './blessings.api'
 export {
   configureCakeBoxAssignment,
+  createCakeBoxExtraOrder,
   createCakeBoxType,
+  deleteCakeBoxExtraOrder,
   deleteCakeBoxType,
+  excludeGuestCakeBox,
+  listCakeBoxAssignments,
+  listCakeBoxExclusions,
+  listCakeBoxExtraOrders,
   listCakeBoxTypes,
+  removeCakeBoxExclusion,
   updateCakeBoxType,
 } from './cakebox.api'
+export { listFlowers } from './flowers.api'
+export {
+  createGiftItem,
+  deleteGiftItem,
+  listGiftItems,
+  updateGiftItem,
+} from './gifts.api'
 export {
   bindGuestLine,
   createGuest,
   deleteGuest,
   importGuests,
+  listGuestCategories,
   listGuests,
+  markInvitationSent,
+  renameGuestCategory,
   restoreGuest,
+  saveGuestCategories,
   updateGuest,
 } from './guests.api'
-export { connectLineOa } from './line.api'
+export { connectLineOa, getLineOa } from './line.api'
+export {
+  confirmPendingGuest,
+  listPendingGuests,
+  mergePendingGuest,
+  rejectPendingGuest,
+  submitPublicRsvp,
+} from './pending-guests.api'
+export {
+  getProjectionSettings,
+  updateProjectionSettings,
+} from './projection.api'
 export {
   checkInGuest,
   distributeCakeBox,
+  getReceptionStatus,
   recordGiftMoney,
   selfCheckInGuest,
   updateGiftMoney,
 } from './reception.api'
+export { configureRsvpForm, getRsvpFormConfig } from './rsvp-config.api'
 export {
   overrideRsvp,
   sendRsvpInvitation,
   submitRsvp,
 } from './rsvp.api'
 export {
+  createRundownRole,
+  deleteRundownRole,
+  listRundownItems,
+  listRundownRoles,
+  saveRundownTable,
+  updateRundownRole,
+} from './rundown.api'
+export {
   configureVenueLayout,
   createTable,
+  createVenueMarker,
   deleteTable,
+  deleteVenueMarker,
   dismissEtiquetteWarning,
+  getEtiquetteSettings,
+  getTableSeats,
+  getVenueLayout,
   listEtiquetteWarnings,
   listTables,
+  listVenueMarkers,
   seatGuest,
   unseatGuest,
   updateEtiquetteSettings,
   updateTable,
+  updateVenueMarker,
 } from './seating.api'
 export {
   batchSendThankYou,
   customizeThankYouCard,
   fallbackSendThankYou,
+  getPublicThankYouCard,
+  getThankYouTemplate,
+  listThankYouCustomizations,
   setThankYouTemplate,
 } from './thankyou.api'
 export {

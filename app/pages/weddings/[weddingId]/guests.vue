@@ -4,16 +4,33 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   CreateGuestBody,
-  GuestCreatedEvent,
   GuestDiet,
   GuestListItem,
   GuestSide,
-  GuestUpdatedEvent,
   ImportGuestsBody,
   UpdateGuestBody,
 } from '~/types/api/guests'
 
+import type { MatchConfidence } from '~/utils/guestMatch'
+
 import { z } from 'zod'
+import {
+  confirmPendingGuest,
+  createGuest,
+  deleteGuest,
+  importGuests,
+  listGuestCategories,
+  listGuests,
+  listPendingGuests,
+  mergePendingGuest,
+  rejectPendingGuest,
+  renameGuestCategory,
+  restoreGuest,
+  saveGuestCategories,
+  updateGuest,
+} from '~/api'
+import { matchConfidenceLabel, suggestMatches } from '~/utils/guestMatch'
+import { rsvpAttendingMeta } from '~/utils/statusMeta'
 
 definePageMeta({ layout: 'default' })
 
@@ -22,12 +39,9 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 賓客名單（含已移除，UI 以 deletedAt 分區呈現）
-const { data: guests, refresh } = await useFetch<GuestListItem[]>(
-  () => `/api/v1/weddings/${weddingId.value}/guests`,
-  {
-    default: () => [],
-  },
-)
+const { data: guests, refresh } = await listGuests(weddingId, {
+  default: () => [],
+})
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -36,9 +50,275 @@ const deletedGuests = computed(() =>
   (guests.value ?? []).filter(g => g.deletedAt),
 )
 
+// 出席統計總覽（純前端讀模型）：出席 = rsvpAttending 'attending'；
+// 大人 = partySize − childChairCount；素食以登記筆數計（diet 為每組一筆，無法拆到人頭）
+const attendingGuests = computed(() =>
+  activeGuests.value.filter(g => g.rsvpAttending === 'attending'),
+)
+const guestStats = computed(() => {
+  const adults = attendingGuests.value.reduce((sum, g) => sum + (g.partySize - g.childChairCount), 0)
+  const children = attendingGuests.value.reduce((sum, g) => sum + g.childChairCount, 0)
+  const vegetarian = attendingGuests.value.filter(g => g.diet === 'vegetarian').length
+  return [
+    { key: 'total', label: '出席總人數', value: adults + children },
+    { key: 'adults', label: '大人', value: adults },
+    { key: 'children', label: '小孩（兒童椅）', value: children },
+    { key: 'vegetarian', label: '素食（組）', value: vegetarian },
+  ]
+})
+
+// 婚禮層級分類清單（新增賓客快選 + 管理 modal；GET = 儲存清單 ∪ 在用分類）
+const { data: categories, refresh: refreshCategories } = await listGuestCategories(weddingId, {
+  default: () => [],
+})
+const categoryList = computed(() => categories.value ?? [])
+
+// 各分類使用數（僅計未刪除賓客；刪除分類的守門依據）
+const categoryUsage = computed(() => {
+  const map = new Map<string, number>()
+  for (const g of activeGuests.value) {
+    const name = g.category.trim()
+    if (!name)
+      continue
+    map.set(name, (map.get(name) ?? 0) + 1)
+  }
+  return map
+})
+
+// === 管理分類 modal ===
+const isCategoryOpen = ref(false)
+const isCategorySubmitting = ref(false)
+const categoryActionError = ref('')
+const newCategoryName = ref('')
+// 單列 inline 改名狀態
+const renamingFrom = ref<string | null>(null)
+const renameTo = ref('')
+
+function openCategoryManager() {
+  categoryActionError.value = ''
+  newCategoryName.value = ''
+  renamingFrom.value = null
+  isCategoryOpen.value = true
+}
+
+async function addCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name || isCategorySubmitting.value)
+    return
+  if (categoryList.value.includes(name)) {
+    categoryActionError.value = '分類已存在'
+    return
+  }
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    await saveGuestCategories(weddingId.value, { categories: [...categoryList.value, name] })
+    newCategoryName.value = ''
+    await refreshCategories()
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+async function removeCategory(name: string) {
+  if (isCategorySubmitting.value || (categoryUsage.value.get(name) ?? 0) > 0)
+    return
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    await saveGuestCategories(weddingId.value, { categories: categoryList.value.filter(c => c !== name) })
+    await refreshCategories()
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+function startRename(name: string) {
+  renamingFrom.value = name
+  renameTo.value = name
+  categoryActionError.value = ''
+}
+
+async function confirmRename() {
+  const from = renamingFrom.value
+  const to = renameTo.value.trim()
+  if (!from || isCategorySubmitting.value)
+    return
+  if (!to || from === to) {
+    renamingFrom.value = null
+    return
+  }
+  isCategorySubmitting.value = true
+  categoryActionError.value = ''
+  try {
+    const result = await renameGuestCategory(weddingId.value, { from, to })
+    toast.add({
+      title: '分類已改名',
+      description: `「${from}」→「${to}」，已同步 ${result.updatedGuests} 位賓客`,
+      color: 'success',
+    })
+    renamingFrom.value = null
+    await Promise.all([refresh(), refreshCategories()])
+  }
+  catch (error: any) {
+    categoryActionError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+// 待確認賓客（公開自助回覆，與正式名單隔離；獨立端點）
+const { data: pendingGuests, refresh: refreshPending } = await listPendingGuests(weddingId, {
+  default: () => [],
+})
+const pendingList = computed(() => pendingGuests.value ?? [])
+
+// 姓名提示候選（永不自動合併）：以正式名單比對每筆待確認回覆
+function candidatesFor(pending: GuestListItem) {
+  return suggestMatches(activeGuests.value, pending)
+}
+const confidenceColor: Record<MatchConfidence, 'success' | 'warning' | 'neutral'> = {
+  high: 'success',
+  medium: 'warning',
+  low: 'neutral',
+}
+
+// 待確認動作：併入既有 / 建為新賓客 / 略過
+const actingId = ref<string | null>(null)
+async function doMerge(pending: GuestListItem, target: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await mergePendingGuest(weddingId.value, pending.guestId, { targetGuestId: target.guestId })
+    toast.add({ title: `已併入 ${target.name}`, color: 'success' })
+    await Promise.all([refresh(), refreshPending()])
+  }
+  catch (error: any) {
+    toast.add({
+      title: '併入失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+async function doConfirm(pending: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await confirmPendingGuest(weddingId.value, pending.guestId)
+    toast.add({ title: `已建立賓客 ${pending.name}`, color: 'success' })
+    await Promise.all([refresh(), refreshPending()])
+  }
+  catch (error: any) {
+    toast.add({
+      title: '建立失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+async function doReject(pending: GuestListItem) {
+  if (actingId.value)
+    return
+  actingId.value = pending.guestId
+  try {
+    await rejectPendingGuest(weddingId.value, pending.guestId)
+    toast.add({ title: '已略過此回覆', color: 'success' })
+    await refreshPending()
+  }
+  catch (error: any) {
+    toast.add({
+      title: '略過失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    actingId.value = null
+  }
+}
+
+// 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
+async function copyPublicLink() {
+  const url = `${window.location.origin}/rsvp/public/${weddingId.value}`
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.add({ title: '已複製公開回覆連結', description: url, color: 'success' })
+  }
+  catch {
+    toast.add({ title: '複製失敗', description: url, color: 'error' })
+  }
+}
+
 // 顯示文字對照
 const sideLabel = (side: GuestSide) => (side === 'groom' ? '男方' : '女方')
 const dietLabel = (diet: GuestDiet) => (diet === 'meat' ? '葷食' : '素食')
+
+// RSVP 出席狀態顯示（null = 待回覆）；文字與語意色由 statusMeta 統一（declined 統一為 error）
+const rsvpMeta = (s: GuestListItem['rsvpAttending']) => rsvpAttendingMeta(s)
+
+// === 篩選膠囊（純前端，預設「全部」；膠囊帶數量避免與表單「男方」按鈕撞名）===
+type GuestFilter = 'all' | 'groom' | 'bride' | 'pending' | 'review'
+const filter = ref<GuestFilter>('all')
+const filterTabs = [
+  { key: 'all', label: '全部' },
+  { key: 'groom', label: '男方' },
+  { key: 'bride', label: '女方' },
+  { key: 'pending', label: '待回覆' },
+  { key: 'review', label: '待確認' },
+] as const
+
+function countOf(key: GuestFilter) {
+  if (key === 'review')
+    return pendingList.value.length
+  const list = activeGuests.value
+  if (key === 'groom')
+    return list.filter(g => g.side === 'groom').length
+  if (key === 'bride')
+    return list.filter(g => g.side === 'bride').length
+  if (key === 'pending')
+    return list.filter(g => g.rsvpAttending == null).length
+  return list.length
+}
+
+// 搜尋（純前端，僅過濾已載入資料的顯示，不動 API）
+const search = ref('')
+
+const filteredGuests = computed(() => {
+  let list = activeGuests.value
+  if (filter.value === 'groom')
+    list = list.filter(g => g.side === 'groom')
+  else if (filter.value === 'bride')
+    list = list.filter(g => g.side === 'bride')
+  else if (filter.value === 'pending')
+    list = list.filter(g => g.rsvpAttending == null)
+
+  const keyword = search.value.trim().toLowerCase()
+  if (keyword) {
+    list = list.filter(g =>
+      g.name.toLowerCase().includes(keyword)
+      || g.category.toLowerCase().includes(keyword),
+    )
+  }
+  return list
+})
 
 // === 新增 / 編輯賓客表單 ===
 const schema = z.object({
@@ -47,7 +327,8 @@ const schema = z.object({
   diet: z.enum(['meat', 'vegetarian']),
   category: z.string().trim().min(1, '請輸入分類'),
   contact: z.string().trim(),
-  needChildSeat: z.boolean(),
+  plusOneCount: z.number().min(0), // 同行人數（攜伴大人＋會自己坐吃大人菜的小孩；佔正常席）
+  childChairCount: z.number().min(0), // 兒童椅嬰兒數（額外加位、不佔正常席）
   notes: z.string().trim(),
 })
 
@@ -63,7 +344,8 @@ const state = reactive<Schema>({
   diet: 'meat',
   category: '',
   contact: '',
-  needChildSeat: false,
+  plusOneCount: 0,
+  childChairCount: 0,
   notes: '',
 })
 
@@ -73,7 +355,8 @@ function resetState() {
   state.diet = 'meat'
   state.category = ''
   state.contact = ''
-  state.needChildSeat = false
+  state.plusOneCount = 0
+  state.childChairCount = 0
   state.notes = ''
 }
 
@@ -92,7 +375,9 @@ function openEdit(guest: GuestListItem) {
   state.diet = guest.diet
   state.category = guest.category
   state.contact = guest.contact
-  state.needChildSeat = guest.needChildSeat
+  state.childChairCount = guest.childChairCount
+  // partySize 含本人＋同行＋兒童椅嬰兒，回填時拆出同行人數
+  state.plusOneCount = Math.max(0, guest.partySize - 1 - guest.childChairCount)
   state.notes = guest.notes ?? ''
   isFormOpen.value = true
 }
@@ -111,13 +396,11 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         diet: data.diet,
         category: data.category,
         contact: data.contact,
-        needChildSeat: data.needChildSeat,
+        partySize: 1 + data.plusOneCount + data.childChairCount,
+        childChairCount: data.childChairCount,
         notes: data.notes,
       }
-      await $fetch<GuestUpdatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/guests/${editingId.value}`,
-        { method: 'PATCH', body },
-      )
+      await updateGuest(weddingId.value, editingId.value, body)
       toast.add({ title: '賓客已更新', color: 'success' })
     }
     else {
@@ -127,17 +410,16 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         diet: data.diet,
         category: data.category,
         contact: data.contact,
-        needChildSeat: data.needChildSeat,
+        partySize: 1 + data.plusOneCount + data.childChairCount,
+        childChairCount: data.childChairCount,
         notes: data.notes || undefined,
       }
-      await $fetch<GuestCreatedEvent>(
-        `/api/v1/weddings/${weddingId.value}/guests`,
-        { method: 'POST', body },
-      )
+      await createGuest(weddingId.value, body)
       toast.add({ title: '賓客新增成功', color: 'success' })
     }
     isFormOpen.value = false
-    await refresh()
+    // 自由輸入的新分類會進入在用分類 union，一併刷新快選清單
+    await Promise.all([refresh(), refreshCategories()])
   }
   catch (error: any) {
     // 失敗訊息僅 inline 顯示（避免與 toast 重複造成測試 strict mode violation）
@@ -164,10 +446,7 @@ async function confirmRemove() {
     return
   isRemoving.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/${removeTarget.value.guestId}`,
-      { method: 'DELETE' },
-    )
+    await deleteGuest(weddingId.value, removeTarget.value.guestId)
     toast.add({ title: '賓客已移除', color: 'success' })
     isRemoveOpen.value = false
     await refresh()
@@ -197,10 +476,7 @@ async function confirmRestore() {
     return
   isRestoring.value = true
   try {
-    await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/${restoreTarget.value.guestId}/restore`,
-      { method: 'POST' },
-    )
+    await restoreGuest(weddingId.value, restoreTarget.value.guestId)
     toast.add({ title: '賓客已恢復', color: 'success' })
     isRestoreOpen.value = false
     await refresh()
@@ -250,10 +526,7 @@ async function confirmImport() {
   importError.value = ''
   try {
     const body: ImportGuestsBody = { fileName: selectedFileName.value }
-    const result = await $fetch(
-      `/api/v1/weddings/${weddingId.value}/guests/import`,
-      { method: 'POST', body },
-    )
+    const result = await importGuests(weddingId.value, body)
     importResult.value = result.importedCount
     toast.add({
       title: `成功匯入 ${result.importedCount} 位賓客`,
@@ -273,9 +546,32 @@ async function confirmImport() {
 
 <template>
   <div data-testid="guests-page" class="flex h-full flex-col">
-    <PageHeader title="賓客名單" description="管理此婚禮的賓客資料與批次匯入">
+    <PageHeader
+      title="賓客名單"
+      :eyebrow="`Guest List · ${activeGuests.length} 位`"
+      description="管理此婚禮的賓客資料與批次匯入"
+    >
       <template #actions>
         <div class="flex gap-2">
+          <UButton
+            data-testid="guest-public-link"
+            icon="i-heroicons-link"
+            color="neutral"
+            variant="ghost"
+            @click="copyPublicLink"
+          >
+            公開回覆連結
+          </UButton>
+          <!-- 命名避開凍結 strict regex（不可含「新增」「匯入」） -->
+          <UButton
+            data-testid="vibe-guest-categories"
+            icon="i-heroicons-tag"
+            color="neutral"
+            variant="ghost"
+            @click="openCategoryManager"
+          >
+            管理分類
+          </UButton>
           <UButton
             data-testid="guest-import"
             icon="i-heroicons-arrow-up-tray"
@@ -283,12 +579,13 @@ async function confirmImport() {
             variant="outline"
             @click="openImport"
           >
-            批次匯入
+            匯入名單
           </UButton>
           <UButton
             data-testid="guest-create"
             icon="i-heroicons-plus"
-            color="primary"
+            color="neutral"
+            variant="solid"
             @click="openCreate"
           >
             新增賓客
@@ -297,250 +594,461 @@ async function confirmImport() {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 賓客名單（未移除） -->
-      <table
-        data-testid="guest-list"
-        class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+    <!-- 出席統計總覽（vibe：依 RSVP 出席回覆即時計算，與下方名單同資料源） -->
+    <div
+      data-testid="vibe-guest-stats"
+      class="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4 dark:border-neutral-800 dark:bg-neutral-800"
+    >
+      <div
+        v-for="stat in guestStats"
+        :key="stat.key"
+        :data-testid="`vibe-guest-stats-${stat.key}`"
+        class="bg-white px-5 py-4 dark:bg-neutral-900"
       >
-        <thead class="bg-neutral-50 dark:bg-neutral-900">
-          <tr class="text-left text-sm text-neutral-500 dark:text-neutral-400">
-            <th class="px-4 py-3 font-medium">
-              姓名
-            </th>
-            <th class="hidden px-4 py-3 font-medium sm:table-cell">
-              男女方
-            </th>
-            <th class="hidden px-4 py-3 font-medium sm:table-cell">
-              飲食
-            </th>
-            <th class="hidden px-4 py-3 font-medium md:table-cell">
-              分類
-            </th>
-            <th class="px-4 py-3 text-right font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="guest in activeGuests"
-            :key="guest.guestId"
-            :data-testid="`guest-row-${guest.guestId}`"
-            class="border-t border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
-          >
-            <td class="px-4 py-3">
-              <span class="font-medium text-neutral-900 dark:text-white">
-                {{ guest.name }}
-              </span>
-            </td>
-            <td class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300">
-              {{ sideLabel(guest.side) }}
-            </td>
-            <td class="hidden px-4 py-3 text-neutral-600 sm:table-cell dark:text-neutral-300">
-              {{ dietLabel(guest.diet) }}
-            </td>
-            <td class="hidden px-4 py-3 text-neutral-600 md:table-cell dark:text-neutral-300">
-              {{ guest.category }}
-            </td>
-            <td class="px-4 py-3 text-right">
-              <div class="flex justify-end gap-1">
-                <UButton
-                  data-testid="guest-edit"
-                  icon="i-heroicons-pencil"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`編輯 ${guest.name}`"
-                  @click="openEdit(guest)"
-                >
-                  編輯
-                </UButton>
-                <UButton
-                  data-testid="guest-remove"
-                  icon="i-heroicons-trash"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`移除 ${guest.name}`"
-                  @click="openRemove(guest)"
-                >
-                  移除
-                </UButton>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="activeGuests.length === 0">
-            <td colspan="5">
-              <EmptyState
-                title="目前沒有賓客"
-                description="點擊「新增賓客」或「批次匯入」建立賓客名單"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <p class="text-caption text-ink-500 dark:text-neutral-400">
+          {{ stat.label }}
+        </p>
+        <p class="mt-1 font-display text-h2 font-semibold leading-none text-ink dark:text-paper">
+          {{ stat.value }}
+        </p>
+      </div>
+    </div>
 
-      <!-- 回收區（已移除） -->
-      <div v-if="deletedGuests.length > 0">
-        <h2 class="mb-3 text-sm font-semibold text-neutral-500 dark:text-neutral-400">
-          已移除的賓客
-        </h2>
-        <table
-          data-testid="guest-deleted-list"
-          class="w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800"
+    <!-- 搜尋 + 篩選膠囊（編輯式工具列；純前端篩選） -->
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <UInput
+        v-model="search"
+        data-testid="vibe-guests-search"
+        icon="i-heroicons-magnifying-glass"
+        placeholder="搜尋姓名 / 分類⋯"
+        variant="outline"
+        class="w-full sm:max-w-xs"
+      />
+      <div data-testid="vibe-guests-filter" class="flex flex-wrap gap-2">
+        <button
+          v-for="tab in filterTabs"
+          :key="tab.key"
+          type="button"
+          :data-testid="`vibe-guests-filter-${tab.key}`"
+          class="rounded-full border px-4 py-1.5 text-sm transition-colors"
+          :class="filter === tab.key
+            ? 'border-ink bg-ink text-cream'
+            : 'border-line text-ink-500 hover:border-gold-deep'"
+          @click="filter = tab.key"
         >
-          <tbody>
+          {{ tab.label }} {{ countOf(tab.key) }}
+        </button>
+      </div>
+    </div>
+
+    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
+      <!-- 待確認區（公開自助回覆，人工併入；系統永不自動合併） -->
+      <template v-if="filter === 'review'">
+        <EmptyState
+          v-if="pendingList.length === 0"
+          title="目前沒有待確認回覆"
+          description="賓客透過公開連結自助回覆後，會出現在這裡等待人工確認"
+        />
+        <div v-else class="space-y-4">
+          <div
+            v-for="pending in pendingList"
+            :key="pending.guestId"
+            :data-testid="`pending-card-${pending.guestId}`"
+            class="rounded-lg border border-line bg-paper p-5 dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <!-- 回覆摘要 -->
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-display text-body-l font-semibold text-ink dark:text-paper">
+                  {{ pending.name }}
+                </p>
+                <p class="mt-0.5 text-caption text-ink-300">
+                  {{ sideLabel(pending.side) }} · {{ pending.category }} · {{ dietLabel(pending.diet) }}
+                  <span v-if="pending.contact"> · {{ pending.contact }}</span>
+                </p>
+                <p class="mt-2">
+                  <StatusBadge :color="rsvpMeta(pending.rsvpAttending).color">
+                    {{ rsvpMeta(pending.rsvpAttending).label }}
+                  </StatusBadge>
+                </p>
+                <p v-if="pending.blessing" class="mt-2 whitespace-pre-line text-body text-ink-500">
+                  「{{ pending.blessing }}」
+                </p>
+              </div>
+              <UBadge color="warning" variant="soft">
+                待確認
+              </UBadge>
+            </div>
+
+            <!-- 姓名提示候選 -->
+            <div class="mt-4 border-t border-line pt-4 dark:border-neutral-800">
+              <p class="mb-2 text-overline uppercase text-gold-deep">
+                系統提示候選（永不自動合併，請人工確認）
+              </p>
+              <p v-if="candidatesFor(pending).length === 0" class="text-caption text-ink-300">
+                無相符的既有賓客，建議「建為新賓客」
+              </p>
+              <ul v-else class="space-y-2">
+                <li
+                  v-for="c in candidatesFor(pending)"
+                  :key="c.guest.guestId"
+                  class="flex items-center justify-between gap-3 rounded border border-line px-3 py-2 dark:border-neutral-800"
+                >
+                  <span class="flex min-w-0 flex-wrap items-center gap-2">
+                    <span class="font-medium text-ink dark:text-paper">{{ c.guest.name }}</span>
+                    <UBadge :color="confidenceColor[c.confidence]" variant="soft" size="xs">
+                      {{ matchConfidenceLabel[c.confidence] }}
+                    </UBadge>
+                    <span class="text-caption text-ink-300">{{ c.reason }}</span>
+                  </span>
+                  <UButton
+                    color="primary"
+                    variant="soft"
+                    size="xs"
+                    :loading="actingId === pending.guestId"
+                    :aria-label="`併入${c.guest.name}`"
+                    @click="doMerge(pending, c.guest)"
+                  >
+                    併入
+                  </UButton>
+                </li>
+              </ul>
+            </div>
+
+            <!-- 動作 -->
+            <div class="mt-4 flex flex-wrap gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="sm"
+                icon="i-heroicons-user-plus"
+                :loading="actingId === pending.guestId"
+                @click="doConfirm(pending)"
+              >
+                建為新賓客
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-heroicons-x-mark"
+                :loading="actingId === pending.guestId"
+                @click="doReject(pending)"
+              >
+                略過
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- 正式名單 -->
+      <template v-else>
+        <!-- 賓客名單（未移除）— 編輯式表格 -->
+        <table
+          data-testid="guest-list"
+          class="w-full border-collapse text-body"
+        >
+          <thead>
+            <tr class="text-left text-overline uppercase text-gold-deep">
+              <th class="border-b border-line px-3 py-3.5 font-medium">
+                姓名
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                方
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                餐點
+              </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium md:table-cell">
+                分類
+              </th>
+              <th class="border-b border-line px-3 py-3.5 font-medium">
+                RSVP
+              </th>
+              <th class="border-b border-line px-3 py-3.5 text-right font-medium">
+                操作
+              </th>
+            </tr>
+          </thead>
+          <tbody class="text-ink-700 dark:text-neutral-300">
             <tr
-              v-for="guest in deletedGuests"
+              v-for="guest in filteredGuests"
               :key="guest.guestId"
               :data-testid="`guest-row-${guest.guestId}`"
-              class="border-t border-neutral-200 dark:border-neutral-800"
+              class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
             >
-              <td class="px-4 py-3">
-                <span class="font-medium text-neutral-500 line-through dark:text-neutral-400">
-                  {{ guest.name }}
+              <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <span class="flex items-center gap-2.5">
+                  <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="guest.side === 'groom' ? 'bg-info-500' : 'bg-gold'"
+                  />
+                  <span class="font-medium text-ink dark:text-paper">
+                    {{ guest.name }}
+                  </span>
                 </span>
               </td>
-              <td class="hidden px-4 py-3 text-neutral-400 sm:table-cell">
-                {{ sideLabel(guest.side) }}
+              <td class="hidden border-b border-line px-3 py-4 sm:table-cell dark:border-neutral-800">
+                <span :class="guest.side === 'groom' ? 'text-info-500' : 'text-gold'">
+                  {{ sideLabel(guest.side) }}
+                </span>
               </td>
-              <td class="px-4 py-3 text-right">
-                <UButton
-                  data-testid="guest-restore"
-                  icon="i-heroicons-arrow-uturn-left"
-                  color="primary"
-                  variant="ghost"
-                  size="sm"
-                  :aria-label="`恢復 ${guest.name}`"
-                  @click="openRestore(guest)"
-                >
-                  恢復
-                </UButton>
+              <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
+                <span>{{ dietLabel(guest.diet) }}</span>
+                <span v-if="guest.childChairCount > 0" class="text-ink-300"> · 兒童椅 ×{{ guest.childChairCount }}</span>
+              </td>
+              <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
+                {{ guest.category }}
+              </td>
+              <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <StatusBadge :color="rsvpMeta(guest.rsvpAttending).color">
+                  {{ rsvpMeta(guest.rsvpAttending).label }}
+                </StatusBadge>
+              </td>
+              <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
+                <div class="flex justify-end gap-1">
+                  <UButton
+                    data-testid="guest-edit"
+                    icon="i-heroicons-pencil"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`編輯 ${guest.name}`"
+                    @click="openEdit(guest)"
+                  >
+                    編輯
+                  </UButton>
+                  <UButton
+                    data-testid="guest-remove"
+                    icon="i-heroicons-trash"
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`移除 ${guest.name}`"
+                    @click="openRemove(guest)"
+                  >
+                    移除
+                  </UButton>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="filteredGuests.length === 0">
+              <td colspan="6">
+                <EmptyState
+                  title="目前沒有賓客"
+                  description="點擊「新增賓客」或「匯入名單」建立賓客名單"
+                />
               </td>
             </tr>
           </tbody>
         </table>
-      </div>
+
+        <!-- 回收區（已移除，常駐渲染供恢復操作可達） -->
+        <div v-if="deletedGuests.length > 0">
+          <div class="mb-3 flex items-center gap-3">
+            <span class="text-overline uppercase text-gold-deep">已移除的賓客</span>
+            <span class="h-px flex-1 bg-line" />
+          </div>
+          <table
+            data-testid="guest-deleted-list"
+            class="w-full border-collapse"
+          >
+            <tbody>
+              <tr
+                v-for="guest in deletedGuests"
+                :key="guest.guestId"
+                :data-testid="`guest-row-${guest.guestId}`"
+              >
+                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                  <span class="font-medium text-ink-300 line-through">
+                    {{ guest.name }}
+                  </span>
+                </td>
+                <td class="hidden border-b border-line px-3 py-4 text-ink-300 sm:table-cell dark:border-neutral-800">
+                  {{ sideLabel(guest.side) }}
+                </td>
+                <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
+                  <UButton
+                    data-testid="guest-restore"
+                    icon="i-heroicons-arrow-uturn-left"
+                    color="primary"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`恢復 ${guest.name}`"
+                    @click="openRestore(guest)"
+                  >
+                    恢復
+                  </UButton>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </div>
 
     <!-- 新增 / 編輯賓客 Modal -->
     <UModal v-model:open="isFormOpen">
       <template #content>
-        <div data-testid="guest-form-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
-            {{ editingId ? '編輯賓客' : '新增賓客' }}
-          </h3>
+        <div data-testid="guest-form-modal" class="flex max-h-[85dvh] flex-col bg-paper dark:bg-neutral-900">
+          <!-- 固定標題區 -->
+          <div class="px-8 pt-8">
+            <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
+              {{ editingId ? '編輯賓客' : '新增賓客' }}
+            </h3>
 
-          <UAlert
-            v-if="formError"
-            data-testid="guest-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="formError"
-            class="mb-4"
-          />
+            <UAlert
+              v-if="formError"
+              data-testid="guest-error"
+              icon="i-heroicons-exclamation-triangle"
+              color="error"
+              variant="soft"
+              :title="formError"
+              class="mb-0"
+            />
+          </div>
 
           <UForm
             :schema="schema"
             :state="state"
-            class="space-y-4"
+            class="flex min-h-0 flex-1 flex-col"
             @submit="onSubmit"
           >
-            <UFormField
-              label="姓名"
-              name="name"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="state.name"
-                data-testid="guest-name"
-                placeholder="請輸入賓客姓名"
-                class="w-full"
-              />
-            </UFormField>
+            <!-- 可捲動表單區：欄位過多時只捲這裡，標題與底部按鈕固定 -->
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-8 py-6">
+              <!-- 姓名與分類同排：兩者皆為必填，欄位高度一致，捲動時不會錯版 -->
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField
+                  label="姓名"
+                  name="name"
+                  class="relative mb-6"
+                  :ui="{ error: 'absolute top-full left-0 mt-1' }"
+                >
+                  <UInput
+                    v-model="state.name"
+                    data-testid="guest-name"
+                    placeholder="請輸入賓客姓名"
+                    class="w-full"
+                  />
+                </UFormField>
 
-            <UFormField label="男女方" name="side">
-              <div class="flex gap-2">
-                <UButton
-                  :color="state.side === 'groom' ? 'primary' : 'neutral'"
-                  :variant="state.side === 'groom' ? 'solid' : 'outline'"
-                  @click="state.side = 'groom'"
+                <UFormField
+                  label="分類"
+                  name="category"
+                  class="relative mb-6"
+                  :ui="{ error: 'absolute top-full left-0 mt-1' }"
                 >
-                  男方
-                </UButton>
-                <UButton
-                  :color="state.side === 'bride' ? 'primary' : 'neutral'"
-                  :variant="state.side === 'bride' ? 'solid' : 'outline'"
-                  @click="state.side = 'bride'"
-                >
-                  女方
-                </UButton>
+                  <!-- 保持可 fill 的 UInput（凍結 getByLabel(/分類/).fill 依賴）；下方 badge 快選帶入值 -->
+                  <UInput
+                    v-model="state.category"
+                    data-testid="guest-category"
+                    placeholder="如：同事、家人、朋友"
+                    class="w-full"
+                  />
+                  <div v-if="categoryList.length" class="mt-2 flex flex-wrap gap-1.5">
+                    <button
+                      v-for="c in categoryList"
+                      :key="c"
+                      type="button"
+                      class="rounded-full border px-2.5 py-0.5 text-caption transition-colors"
+                      :class="state.category === c
+                        ? 'border-gold bg-gold-light/40 text-gold-deep'
+                        : 'border-line text-ink-500 hover:border-gold-deep hover:text-gold-deep'"
+                      @click="state.category = c"
+                    >
+                      {{ c }}
+                    </button>
+                  </div>
+                </UFormField>
               </div>
-            </UFormField>
 
-            <UFormField label="飲食" name="diet">
-              <div class="flex gap-2">
-                <UButton
-                  :color="state.diet === 'meat' ? 'primary' : 'neutral'"
-                  :variant="state.diet === 'meat' ? 'solid' : 'outline'"
-                  @click="state.diet = 'meat'"
-                >
-                  葷食
-                </UButton>
-                <UButton
-                  :color="state.diet === 'vegetarian' ? 'primary' : 'neutral'"
-                  :variant="state.diet === 'vegetarian' ? 'solid' : 'outline'"
-                  @click="state.diet = 'vegetarian'"
-                >
-                  素食
-                </UButton>
+              <!-- 男女方與飲食同排 -->
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField label="男女方" name="side">
+                  <div class="flex gap-2">
+                    <UButton
+                      :color="state.side === 'groom' ? 'primary' : 'neutral'"
+                      :variant="state.side === 'groom' ? 'solid' : 'outline'"
+                      @click="state.side = 'groom'"
+                    >
+                      男方
+                    </UButton>
+                    <UButton
+                      :color="state.side === 'bride' ? 'primary' : 'neutral'"
+                      :variant="state.side === 'bride' ? 'solid' : 'outline'"
+                      @click="state.side = 'bride'"
+                    >
+                      女方
+                    </UButton>
+                  </div>
+                </UFormField>
+
+                <UFormField label="飲食" name="diet">
+                  <div class="flex gap-2">
+                    <UButton
+                      :color="state.diet === 'meat' ? 'primary' : 'neutral'"
+                      :variant="state.diet === 'meat' ? 'solid' : 'outline'"
+                      @click="state.diet = 'meat'"
+                    >
+                      葷食
+                    </UButton>
+                    <UButton
+                      :color="state.diet === 'vegetarian' ? 'primary' : 'neutral'"
+                      :variant="state.diet === 'vegetarian' ? 'solid' : 'outline'"
+                      @click="state.diet = 'vegetarian'"
+                    >
+                      素食
+                    </UButton>
+                  </div>
+                </UFormField>
               </div>
-            </UFormField>
 
-            <UFormField
-              label="分類"
-              name="category"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="state.category"
-                data-testid="guest-category"
-                placeholder="如：同事、家人、朋友"
-                class="w-full"
-              />
-            </UFormField>
+              <UFormField label="聯絡方式" name="contact">
+                <UInput
+                  v-model="state.contact"
+                  data-testid="guest-contact"
+                  placeholder="請輸入聯絡電話"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <UFormField label="聯絡方式" name="contact">
-              <UInput
-                v-model="state.contact"
-                data-testid="guest-contact"
-                placeholder="請輸入聯絡電話"
-                class="w-full"
-              />
-            </UFormField>
+              <div class="grid grid-cols-2 gap-3">
+                <UFormField label="同行人數" name="plusOneCount">
+                  <UInput
+                    v-model.number="state.plusOneCount"
+                    data-testid="guest-plus-one"
+                    type="number"
+                    min="0"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="兒童椅嬰兒數" name="childChairCount">
+                  <UInput
+                    v-model.number="state.childChairCount"
+                    data-testid="guest-child-seat"
+                    type="number"
+                    min="0"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+              <p class="-mt-2 text-caption text-ink-300">
+                會自己坐、吃大人菜的小孩請算進「同行人數」；用兒童椅的小嬰兒填「兒童椅嬰兒數」。
+              </p>
 
-            <UFormField name="needChildSeat">
-              <UCheckbox
-                v-model="state.needChildSeat"
-                data-testid="guest-child-seat"
-                label="需要兒童座椅"
-              />
-            </UFormField>
+              <UFormField label="備註" name="notes">
+                <UTextarea
+                  v-model="state.notes"
+                  data-testid="guest-notes"
+                  placeholder="其他備註資訊"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
 
-            <UFormField label="備註" name="notes">
-              <UTextarea
-                v-model="state.notes"
-                data-testid="guest-notes"
-                placeholder="其他備註資訊"
-                class="w-full"
-              />
-            </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
+            <!-- 固定底部按鈕列：正常流、不覆蓋內容 -->
+            <div class="flex justify-end gap-3 border-t border-line bg-paper px-8 py-4 dark:border-neutral-800 dark:bg-neutral-900">
               <UButton
                 color="neutral"
                 variant="outline"
@@ -552,7 +1060,8 @@ async function confirmImport() {
               <UButton
                 type="submit"
                 data-testid="guest-submit"
-                color="primary"
+                color="neutral"
+                variant="solid"
                 :loading="isSubmitting"
               >
                 {{ editingId ? '儲存' : '新增' }}
@@ -566,8 +1075,8 @@ async function confirmImport() {
     <!-- 批次匯入 Modal -->
     <UModal v-model:open="isImportOpen">
       <template #content>
-        <div data-testid="guest-import-modal" class="p-6">
-          <h3 class="mb-4 text-lg font-semibold text-neutral-900 dark:text-white">
+        <div data-testid="guest-import-modal" class="bg-paper p-8 dark:bg-neutral-900">
+          <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
             批次匯入賓客
           </h3>
 
@@ -610,7 +1119,8 @@ async function confirmImport() {
             </UButton>
             <UButton
               data-testid="guest-import-submit"
-              color="primary"
+              color="neutral"
+              variant="solid"
               :loading="isImporting"
               @click="confirmImport"
             >
@@ -642,5 +1152,124 @@ async function confirmImport() {
       :loading="isRestoring"
       @confirm="confirmRestore"
     />
+
+    <!-- 管理分類 Modal -->
+    <UModal v-model:open="isCategoryOpen">
+      <template #content>
+        <div data-testid="vibe-guest-category-modal" class="max-h-[85vh] overflow-y-auto p-6">
+          <p class="text-overline uppercase text-gold-deep">
+            Categories
+          </p>
+          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+            管理分類
+          </h3>
+          <p class="mb-5 mt-1 text-caption text-ink-300">
+            改名會同步所有使用中的賓客；使用中的分類不可刪除
+          </p>
+
+          <UAlert
+            v-if="categoryActionError"
+            data-testid="vibe-guest-category-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="categoryActionError"
+            class="mb-4"
+          />
+
+          <!-- 新增分類 -->
+          <div class="mb-4 flex gap-2">
+            <UInput
+              v-model="newCategoryName"
+              data-testid="vibe-guest-category-input"
+              placeholder="輸入新分類名稱"
+              aria-label="新分類名稱"
+              class="flex-1"
+              @keyup.enter="addCategory"
+            />
+            <UButton
+              data-testid="vibe-guest-category-add"
+              color="neutral"
+              variant="solid"
+              :loading="isCategorySubmitting"
+              @click="addCategory"
+            >
+              加入
+            </UButton>
+          </div>
+
+          <!-- 分類清單（含使用數；inline 改名） -->
+          <EmptyState
+            v-if="categoryList.length === 0"
+            title="尚無分類"
+            description="輸入名稱後點「加入」建立第一個分類"
+          />
+          <ul v-else class="divide-y divide-line rounded-lg border border-line dark:divide-neutral-800 dark:border-neutral-800">
+            <li
+              v-for="c in categoryList"
+              :key="c"
+              class="flex items-center gap-2 px-4 py-2.5"
+            >
+              <template v-if="renamingFrom === c">
+                <UInput
+                  v-model="renameTo"
+                  :aria-label="`改名 ${c}`"
+                  class="flex-1"
+                  @keyup.enter="confirmRename"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="solid"
+                  :loading="isCategorySubmitting"
+                  @click="confirmRename"
+                >
+                  確認改名
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="renamingFrom = null"
+                >
+                  取消改名
+                </UButton>
+              </template>
+              <template v-else>
+                <span class="flex-1 text-body text-ink dark:text-paper">{{ c }}</span>
+                <span class="text-caption text-ink-300">{{ categoryUsage.get(c) ?? 0 }} 位使用</span>
+                <UButton
+                  size="xs"
+                  icon="i-heroicons-pencil"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`改名分類 ${c}`"
+                  @click="startRename(c)"
+                />
+                <UButton
+                  size="xs"
+                  icon="i-heroicons-trash"
+                  color="error"
+                  variant="ghost"
+                  :disabled="(categoryUsage.get(c) ?? 0) > 0"
+                  :aria-label="`刪除分類 ${c}`"
+                  @click="removeCategory(c)"
+                />
+              </template>
+            </li>
+          </ul>
+
+          <div class="mt-5 flex justify-end">
+            <UButton
+              color="neutral"
+              variant="outline"
+              @click="isCategoryOpen = false"
+            >
+              關閉
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

@@ -1,7 +1,7 @@
 // 祝福留言 mock 資料
 // seed：blessing-001（祝福新人百年好合！/ 已提交待審）
 
-import type { BlessingStatus } from '../../../app/types/api/blessings'
+import type { BlessingStatus, BlessingWallStatus } from '../../../app/types/api/blessings'
 
 export interface MockBlessing {
   blessingId: string
@@ -11,6 +11,8 @@ export interface MockBlessing {
   photoUrl: string | null
   status: BlessingStatus
   rejectReason: string | null
+  // approved 後的上牆狀態（待上牆 / 已上牆）
+  wallStatus?: BlessingWallStatus
 }
 
 export const mockBlessings: MockBlessing[] = [

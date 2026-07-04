@@ -13,6 +13,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
 
   const guestId = `guest-${crypto.randomUUID().slice(0, 8)}`
   const notes = body.notes ?? null
+  const partySize = body.partySize ?? 1
+  const childChairCount = body.childChairCount ?? 0
   mockGuests.unshift({
     guestId,
     weddingId,
@@ -21,14 +23,17 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
     diet: body.diet,
     category: body.category,
     contact: body.contact,
-    needChildSeat: body.needChildSeat,
+    childChairCount,
     notes,
     lineUserId: null,
     rsvpAttending: null,
     checkedInAt: null,
     giftAmount: null,
     cakeBoxDistributedTypeId: null,
+    partySize,
+    tableName: null,
     deletedAt: null,
+    invitationSent: false,
   })
 
   setResponseStatus(event, 201)
@@ -40,7 +45,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
     diet: body.diet,
     category: body.category,
     contact: body.contact,
-    needChildSeat: body.needChildSeat,
+    partySize,
+    childChairCount,
     notes,
   }
 })

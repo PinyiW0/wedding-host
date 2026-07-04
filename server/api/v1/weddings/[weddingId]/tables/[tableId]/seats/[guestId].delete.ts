@@ -10,11 +10,16 @@ export default defineEventHandler((event: H3Event) => {
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
-  const index = mockSeats.findIndex(s => s.tableId === tableId && s.guestId === guestId)
-  if (index === -1) {
+  // 一組賓客可能佔多筆座位（本人＋同行＋兒童椅），取消時一次清除該桌該賓客所有座位
+  const before = mockSeats.length
+  for (let i = mockSeats.length - 1; i >= 0; i--) {
+    const s = mockSeats[i]!
+    if (s.tableId === tableId && s.guestId === guestId)
+      mockSeats.splice(i, 1)
+  }
+  if (mockSeats.length === before) {
     throw createError({ statusCode: 404, statusMessage: '賓客不在此桌' })
   }
-  mockSeats.splice(index, 1)
 
   setResponseStatus(event, 204)
 })

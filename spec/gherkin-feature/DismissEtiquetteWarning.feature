@@ -23,17 +23,17 @@ Feature: 覆寫禮俗警告
       When Admin sends DismissEtiquetteWarning on stream "wedding-001":
         """
         {
-          "warningId": "warning-001",
+          "warningId": "warning-main-table-full",
           "weddingId": "wedding-001",
-          "warningType": "gender-separation"
+          "warningType": "main-table-not-full"
         }
         """
       Then the EtiquetteWarningDismissed event is emitted with:
         """
         {
-          "warningId": "warning-001",
+          "warningId": "warning-main-table-full",
           "dismissedBy": "admin-001",
-          "warningType": "gender-separation"
+          "warningType": "main-table-not-full"
         }
         """
 
@@ -47,9 +47,9 @@ Feature: 覆寫禮俗警告
       When Admin sends DismissEtiquetteWarning on stream "wedding-999":
         """
         {
-          "warningId": "warning-001",
+          "warningId": "warning-main-table-full",
           "weddingId": "wedding-999",
-          "warningType": "gender-separation"
+          "warningType": "main-table-not-full"
         }
         """
       Then the operation fails with: 婚禮不存在

@@ -1,9 +1,10 @@
 <!-- app/pages/register.vue -->
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { AdminRegisteredEvent, RegisterAdminBody } from '~/types/api/auth'
+import type { RegisterAdminBody } from '~/types/api/auth'
 
 import { z } from 'zod'
+import { registerAdmin } from '~/api'
 
 definePageMeta({ layout: 'auth' })
 
@@ -36,10 +37,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       email: event.data.email,
       displayName: event.data.displayName,
     }
-    await $fetch<AdminRegisteredEvent>('/api/v1/admins', {
-      method: 'POST',
-      body,
-    })
+    await registerAdmin(body)
     toast.add({
       title: '註冊成功',
       description: '管理員帳號已建立',
@@ -60,83 +58,87 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div data-testid="register-page">
-    <UCard>
-      <template #header>
-        <h2 class="text-lg font-semibold text-neutral-900 dark:text-white">
-          建立管理員帳號
-        </h2>
-        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-          填寫電子郵件與顯示名稱即可註冊
-        </p>
-      </template>
+  <div data-testid="register-page" class="rounded-lg border border-line bg-white p-8 shadow-sm">
+    <div class="mb-7">
+      <p class="text-overline uppercase text-gold-deep">
+        Create Account
+      </p>
+      <h2 class="mt-2 font-display text-h2 font-semibold text-ink">
+        建立管理員帳號
+      </h2>
+      <p class="mt-1 text-body text-ink-500">
+        填寫電子郵件與顯示名稱即可註冊
+      </p>
+    </div>
 
-      <UForm
-        :schema="schema"
-        :state="state"
-        data-testid="register-form"
-        class="space-y-4"
-        @submit="onSubmit"
+    <UForm
+      :schema="schema"
+      :state="state"
+      data-testid="register-form"
+      class="space-y-4"
+      @submit="onSubmit"
+    >
+      <UAlert
+        v-if="errorMessage"
+        color="error"
+        variant="subtle"
+        icon="i-heroicons-exclamation-circle"
+        :title="errorMessage"
+      />
+
+      <UFormField
+        label="電子郵件"
+        name="email"
+        class="relative mb-6"
+        :ui="{ error: 'absolute top-full left-0 mt-1' }"
       >
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="subtle"
-          icon="i-heroicons-exclamation-circle"
-          :title="errorMessage"
+        <UInput
+          v-model="state.email"
+          data-testid="register-email"
+          type="email"
+          placeholder="admin@example.com"
+          class="w-full"
         />
+      </UFormField>
 
-        <UFormField
-          label="電子郵件"
-          name="email"
-          class="relative mb-6"
-          :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      <UFormField
+        label="顯示名稱"
+        name="displayName"
+        class="relative mb-6"
+        :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      >
+        <UInput
+          v-model="state.displayName"
+          data-testid="register-display-name"
+          placeholder="王小明"
+          class="w-full"
+        />
+      </UFormField>
+
+      <UButton
+        type="submit"
+        data-testid="register-submit"
+        color="neutral"
+        variant="solid"
+        size="lg"
+        block
+        :loading="isSubmitting"
+        class="mt-2"
+      >
+        註冊
+      </UButton>
+    </UForm>
+
+    <div class="mt-7 border-t border-line pt-5">
+      <p class="text-center text-body text-ink-500">
+        已有帳號？
+        <NuxtLink
+          to="/login"
+          class="font-medium text-gold-deep hover:text-gold"
         >
-          <UInput
-            v-model="state.email"
-            data-testid="register-email"
-            type="email"
-            placeholder="admin@example.com"
-            class="w-full"
-          />
-        </UFormField>
-
-        <UFormField
-          label="顯示名稱"
-          name="displayName"
-          class="relative mb-6"
-          :ui="{ error: 'absolute top-full left-0 mt-1' }"
-        >
-          <UInput
-            v-model="state.displayName"
-            data-testid="register-display-name"
-            placeholder="王小明"
-            class="w-full"
-          />
-        </UFormField>
-
-        <UButton
-          type="submit"
-          data-testid="register-submit"
-          color="primary"
-          block
-          :loading="isSubmitting"
-        >
-          註冊
-        </UButton>
-      </UForm>
-
-      <template #footer>
-        <p class="text-center text-sm text-neutral-500 dark:text-neutral-400">
-          已有帳號？
-          <NuxtLink
-            to="/login"
-            class="text-primary-600 hover:text-primary-700 dark:text-primary-400"
-          >
-            前往登入
-          </NuxtLink>
-        </p>
-      </template>
-    </UCard>
+          前往登入
+        </NuxtLink>
+      </p>
+    </div>
   </div>
 </template>

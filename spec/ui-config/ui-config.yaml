@@ -47,14 +47,16 @@ meta:
 #   - Nuxt UI plugin 自動從 --color-* 橋接 --ui-color-* 和 --ui-*（不需手動處理）
 # =============================================================================
 theme:
+  # Editorial Luxe（來源：spec/ui-config/ui-reference）—— 米白 cream + 墨黑 ink + 金箔 gold
+  # 完整色階與品牌 token（ink/gold/cream/paper/line）已於 app/assets/css/main.css 的 @theme 定義
   colors:
-    primary: "#BE6A52"      # 主色｜陶土橘
-    secondary: "#7A7C5E"    # 輔色｜橄欖鼠尾草
-    neutral: "#2B2420"      # 中性色｜暖咖啡墨
-    success: "#6E8B6A"      # 成功狀態｜苔綠
-    warning: "#C49A4A"      # 警告狀態｜古銅金
-    error: "#9B3A34"        # 錯誤狀態｜深酒磚紅
-    info: "#6E8499"         # 資訊提示｜霧霾藍
+    primary: "#B8965A"      # 主色｜金箔 gold（點綴與強調）
+    secondary: "#9A7B43"    # 輔色｜深金 gold-deep
+    neutral: "#111111"      # 中性色｜墨黑 ink（暖灰骨幹：50=paper 100=cream 200=line 900=ink）
+    success: "#4A5D4E"      # 成功狀態｜沉穩綠（已報到 / 出席）
+    warning: "#8A6D2F"      # 警告狀態｜琥珀（待回覆 / 提醒）
+    error: "#7A2E2E"        # 錯誤狀態｜暗紅（缺席 / 刪除）
+    info: "#3E5066"         # 資訊提示｜靛藍（葷素 / 一般資訊）
 
 # =============================================================================
 # 測試帳號（從 ui-config-pm.yaml 同步）

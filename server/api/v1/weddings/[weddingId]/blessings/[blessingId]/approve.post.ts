@@ -13,6 +13,8 @@ export default defineEventHandler((event: H3Event): BlessingApprovedEvent => {
     throw createError({ statusCode: 409, statusMessage: '祝福已審核' })
   }
   blessing.status = 'approved'
+  // 通過審核即進入「待上牆」，待管理員推到投影幕
+  blessing.wallStatus = 'pending_wall'
 
   setResponseStatus(event, 201)
   return { blessingId: blessing.blessingId, status: blessing.status }

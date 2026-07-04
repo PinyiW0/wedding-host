@@ -1,15 +1,21 @@
 // 統一 re-export mock 資料
 import { mockReceptionAccounts } from './accounts'
 import { mockBlessings } from './blessings'
-import { mockCakeBoxAssignments, mockCakeBoxTypes } from './cakebox'
+import { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
+import { mockGiftItems } from './gifts'
+import { mockGuestCategories } from './guest-categories'
 import { mockGuests } from './guests'
 import { mockLineOas } from './line'
+import { mockProjectionSettings } from './projection'
+import { mockRsvpFormConfigs } from './rsvp-config'
+import { mockRundownItems, mockRundownRoles } from './rundown'
 import {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
 } from './seating'
 import { mockThankYouCustomizations, mockThankYouTemplates } from './thankyou'
 import { mockUsers } from './users'
@@ -17,15 +23,21 @@ import { mockWeddings } from './weddings'
 
 export { mockReceptionAccounts } from './accounts'
 export { mockBlessings } from './blessings'
-export { mockCakeBoxAssignments, mockCakeBoxTypes } from './cakebox'
+export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
+export { mockGiftItems } from './gifts'
+export { mockGuestCategories } from './guest-categories'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'
+export { mockProjectionSettings } from './projection'
+export { mockRsvpFormConfigs } from './rsvp-config'
+export { mockRundownItems, mockRundownRoles } from './rundown'
 export {
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
 } from './seating'
 export { mockThankYouCustomizations, mockThankYouTemplates } from './thankyou'
 export { getMockCurrentUser, mockUsers } from './users'
@@ -37,14 +49,23 @@ const stores = [
   mockReceptionAccounts,
   mockBlessings,
   mockCakeBoxAssignments,
+  mockCakeBoxExclusions,
+  mockCakeBoxExtraOrders,
   mockCakeBoxTypes,
+  mockGiftItems,
+  mockRundownItems,
+  mockRundownRoles,
+  mockGuestCategories,
   mockGuests,
   mockLineOas,
+  mockProjectionSettings,
+  mockRsvpFormConfigs,
   mockEtiquetteSettings,
   mockEtiquetteWarnings,
   mockSeats,
   mockTables,
   mockVenueLayouts,
+  mockVenueMarkers,
   mockThankYouCustomizations,
   mockThankYouTemplates,
   mockUsers,
