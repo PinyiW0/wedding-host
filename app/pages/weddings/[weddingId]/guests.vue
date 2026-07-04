@@ -18,6 +18,7 @@ import {
   confirmPendingGuest,
   createGuest,
   deleteGuest,
+  getSignedLink,
   importGuests,
   listGuestCategories,
   listGuests,
@@ -257,13 +258,16 @@ async function doReject(pending: GuestListItem) {
 
 // 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
 async function copyPublicLink() {
-  const url = `${window.location.origin}/rsvp/public/${weddingId.value}`
+  const base = `${window.location.origin}/rsvp/public/${weddingId.value}`
   try {
+    // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
+    const { sig } = await getSignedLink(weddingId.value)
+    const url = `${base}?sig=${sig}`
     await navigator.clipboard.writeText(url)
     toast.add({ title: '已複製公開回覆連結', description: url, color: 'success' })
   }
   catch {
-    toast.add({ title: '複製失敗', description: url, color: 'error' })
+    toast.add({ title: '複製失敗', description: base, color: 'error' })
   }
 }
 

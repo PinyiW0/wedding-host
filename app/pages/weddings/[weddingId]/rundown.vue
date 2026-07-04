@@ -12,6 +12,7 @@ import { z } from 'zod'
 import {
   createRundownRole,
   deleteRundownRole,
+  getSignedLink,
   listRundownItems,
   listRundownRoles,
   saveRundownTable,
@@ -396,14 +397,19 @@ function applyTemplateToDraft() {
 
 // === 複製分享連結（免登入公開頁；帶當前篩選角色）===
 async function copyShareLink() {
-  const query = roleFilter.value === ALL_ROLES ? '' : `?role=${roleFilter.value}`
-  const url = `${window.location.origin}/rundown/${weddingId.value}${query}`
+  const base = `${window.location.origin}/rundown/${weddingId.value}`
   try {
+    // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
+    const { sig } = await getSignedLink(weddingId.value)
+    const params = new URLSearchParams({ sig })
+    if (roleFilter.value !== ALL_ROLES)
+      params.set('role', roleFilter.value)
+    const url = `${base}?${params.toString()}`
     await navigator.clipboard.writeText(url)
     toast.add({ title: '已複製分享連結', description: url, color: 'success' })
   }
   catch {
-    toast.add({ title: '複製失敗', description: url, color: 'error' })
+    toast.add({ title: '複製失敗', description: base, color: 'error' })
   }
 }
 

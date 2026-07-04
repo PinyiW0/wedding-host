@@ -9,6 +9,7 @@ import {
   batchSendThankYou,
   customizeThankYouCard,
   fallbackSendThankYou,
+  getSignedLink,
   getThankYouTemplate,
   listGuests,
   listThankYouCustomizations,
@@ -247,13 +248,16 @@ async function copyThankYouLink(guestId: string) {
     toast.add({ title: '請先選擇賓客', color: 'error' })
     return
   }
-  const url = `${window.location.origin}/thankyou/${weddingId.value}/${guestId}`
+  const base = `${window.location.origin}/thankyou/${weddingId.value}/${guestId}`
   try {
+    // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
+    const { sig } = await getSignedLink(weddingId.value, guestId)
+    const url = `${base}?sig=${sig}`
     await navigator.clipboard.writeText(url)
     toast.add({ title: '已複製謝卡連結', description: url, color: 'success' })
   }
   catch {
-    toast.add({ title: '複製失敗', description: url, color: 'error' })
+    toast.add({ title: '複製失敗', description: base, color: 'error' })
   }
 }
 

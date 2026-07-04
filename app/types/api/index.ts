@@ -49,6 +49,9 @@ export type {
   LineOaConnectedEvent,
 } from './line'
 export type {
+  SignedLinkResponse,
+} from './links'
+export type {
   ProjectionMediaType,
   ProjectionSettings,
   ProjectionSettingsUpdatedEvent,
