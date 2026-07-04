@@ -6,16 +6,19 @@ import type { MockUser } from '../mock/data/users'
 import type { AuthTokenPayload } from '../utils/jwt'
 import type { RouteAccess } from '../utils/route-auth'
 
-import { mockReceptionAccounts } from '../mock/data/accounts'
-import { getMockCurrentUser, mockUsers } from '../mock/data/users'
-import { mockWeddings } from '../mock/data/weddings'
+import { eq } from 'drizzle-orm'
+
+import { ensureDbReady, useDb } from '../db'
+import { receptionAccounts, users, weddings } from '../db/schema'
+import { getMockCurrentUser } from '../mock/data/users'
 
 // JWT 主體回查為完整使用者（帳號已刪除則視為無效）
-function resolveAuthUser(payload: AuthTokenPayload): MockUser | null {
-  const user = mockUsers.find(u => u.userId === payload.userId && !u.deletedAt)
-  if (user)
+async function resolveAuthUser(payload: AuthTokenPayload): Promise<MockUser | null> {
+  const db = useDb()
+  const [user] = await db.select().from(users).where(eq(users.userId, payload.userId))
+  if (user && !user.deletedAt)
     return user
-  const account = mockReceptionAccounts.find(a => a.accountId === payload.userId)
+  const [account] = await db.select().from(receptionAccounts).where(eq(receptionAccounts.accountId, payload.userId))
   if (account) {
     return {
       userId: account.accountId,
@@ -33,9 +36,9 @@ function resolveAuthUser(payload: AuthTokenPayload): MockUser | null {
 
 // 婚禮範圍授權：新人限自有婚禮、接待員限綁定婚禮、管理者跨場放行
 // 婚禮不存在時放行給 handler 回 404（保留 not-found 語意）
-function assertWeddingScope(user: MockUser, weddingId: string): void {
+async function assertWeddingScope(user: MockUser, weddingId: string): Promise<void> {
   if (user.role === '新人') {
-    const wedding = mockWeddings.find(w => w.weddingId === weddingId)
+    const [wedding] = await useDb().select({ ownerId: weddings.ownerId }).from(weddings).where(eq(weddings.weddingId, weddingId))
     if (wedding && wedding.ownerId !== user.userId)
       throw createError({ statusCode: 403, statusMessage: '無權存取此婚禮' })
   }
@@ -59,6 +62,9 @@ export default defineEventHandler(async (event) => {
   if (!pathname.startsWith('/api/'))
     return
 
+  // dev／e2e：首個 API 請求前確保 migration + seed 已完成（production 為 no-op，部署階段跑 db:migrate）
+  await ensureDbReady()
+
   const enforced = useRuntimeConfig().authMode === 'enforced'
 
   // 測試專用端點（reset）僅存在於 open 模式，正式環境 404
@@ -81,7 +87,7 @@ export default defineEventHandler(async (event) => {
   if (header?.startsWith('Bearer ')) {
     const payload = await verifyAuthToken(header.slice(7))
     if (payload)
-      user = resolveAuthUser(payload)
+      user = await resolveAuthUser(payload)
     if (!user && enforced)
       throw createError({ statusCode: 401, statusMessage: '登入已過期，請重新登入' })
   }
@@ -91,7 +97,7 @@ export default defineEventHandler(async (event) => {
   if (user) {
     event.context.authUser = user
     if (weddingId)
-      assertWeddingScope(user, weddingId)
+      await assertWeddingScope(user, weddingId)
     assertRouteRole(route, user)
     return
   }

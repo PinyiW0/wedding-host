@@ -1,7 +1,10 @@
 import type { H3Event } from 'h3'
 import type { CreateRundownRoleBody, RundownRoleCreatedEvent } from '../../../../../../app/types/api/rundown'
 
-import { mockRundownRoles } from '../../../../../mock/data/rundown'
+import { and, eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { rundownRoles } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<RundownRoleCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -11,12 +14,14 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownRoleCre
   if (!name) {
     throw createError({ statusCode: 400, statusMessage: '請輸入角色名稱' })
   }
-  if (mockRundownRoles.some(r => r.weddingId === weddingId && r.name === name)) {
+  const db = useDb()
+  const [dup] = await db.select().from(rundownRoles).where(and(eq(rundownRoles.weddingId, weddingId), eq(rundownRoles.name, name)))
+  if (dup) {
     throw createError({ statusCode: 400, statusMessage: '角色名稱已存在' })
   }
 
   const roleId = `role-${crypto.randomUUID().slice(0, 8)}`
-  mockRundownRoles.push({ roleId, weddingId, name })
+  await db.insert(rundownRoles).values({ roleId, weddingId, name })
 
   setResponseStatus(event, 201)
   return { roleId, weddingId, name }

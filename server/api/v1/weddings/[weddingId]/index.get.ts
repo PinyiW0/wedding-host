@@ -1,11 +1,14 @@
 import type { H3Event } from 'h3'
 import type { WeddingDetail } from '../../../../../app/types/api/weddings'
 
-import { mockWeddings } from '../../../../mock/data/weddings'
+import { eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event): WeddingDetail => {
-  const weddingId = getRouterParam(event, 'weddingId')
-  const wedding = mockWeddings.find(w => w.weddingId === weddingId)
+import { useDb } from '../../../../db'
+import { weddings } from '../../../../db/schema'
+
+export default defineEventHandler(async (event: H3Event): Promise<WeddingDetail> => {
+  const weddingId = getRouterParam(event, 'weddingId')!
+  const [wedding] = await useDb().select().from(weddings).where(eq(weddings.weddingId, weddingId))
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }

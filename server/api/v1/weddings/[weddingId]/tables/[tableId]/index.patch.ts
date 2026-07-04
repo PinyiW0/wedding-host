@@ -1,31 +1,41 @@
 import type { H3Event } from 'h3'
 import type { TableUpdatedEvent, UpdateTableBody } from '../../../../../../../app/types/api/seating'
 
-import { mockTables } from '../../../../../../mock/data/seating'
+import { eq } from 'drizzle-orm'
+
+import { useDb } from '../../../../../../db'
+import { seatingTables } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<TableUpdatedEvent> => {
-  const tableId = getRouterParam(event, 'tableId')
+  const tableId = getRouterParam(event, 'tableId')!
   const body = await readBody<UpdateTableBody>(event)
 
-  const table = mockTables.find(t => t.tableId === tableId)
-  if (!table) {
+  const db = useDb()
+  const [existing] = await db.select().from(seatingTables).where(eq(seatingTables.tableId, tableId))
+  if (!existing) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
 
+  const patch: Partial<typeof seatingTables.$inferInsert> = {}
   if (body.tableName !== undefined)
-    table.tableName = body.tableName
+    patch.tableName = body.tableName
   if (body.capacity !== undefined)
-    table.capacity = body.capacity
+    patch.capacity = body.capacity
   if (body.positionX !== undefined)
-    table.positionX = body.positionX
+    patch.positionX = body.positionX
   if (body.positionY !== undefined)
-    table.positionY = body.positionY
+    patch.positionY = body.positionY
+
+  // 空 patch 時不打 update（drizzle set({}) 會擲錯），直接回現值
+  const [table] = Object.keys(patch).length
+    ? await db.update(seatingTables).set(patch).where(eq(seatingTables.tableId, tableId)).returning()
+    : [existing]
 
   return {
-    tableId: table.tableId,
-    tableName: table.tableName,
-    capacity: table.capacity,
-    positionX: table.positionX,
-    positionY: table.positionY,
+    tableId: table!.tableId,
+    tableName: table!.tableName,
+    capacity: table!.capacity,
+    positionX: table!.positionX,
+    positionY: table!.positionY,
   }
 })

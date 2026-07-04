@@ -1,17 +1,22 @@
 import type { H3Event } from 'h3'
 import type { ThankYouBatchSentEvent } from '../../../../../../app/types/api/thankyou'
 
-import { mockGuests } from '../../../../../mock/data/guests'
-import { mockWeddings } from '../../../../../mock/data/weddings'
+import { and, asc, eq, isNull, ne } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { guests, weddings } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<ThankYouBatchSentEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
 
-  if (!mockWeddings.some(w => w.weddingId === weddingId)) {
+  const db = useDb()
+  const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))
+  if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
 
-  const boundGuests = mockGuests.filter(g => g.weddingId === weddingId && g.lineUserId && !g.deletedAt)
+  // 已綁定 LINE 的賓客：lineUserId <> '' 同時排除 NULL 與空字串（對齊原 truthy 篩選）
+  const boundGuests = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), ne(guests.lineUserId, ''), isNull(guests.deletedAt))).orderBy(asc(guests.seq))
   if (boundGuests.length === 0) {
     throw createError({ statusCode: 409, statusMessage: '沒有已綁定 LINE 的賓客' })
   }

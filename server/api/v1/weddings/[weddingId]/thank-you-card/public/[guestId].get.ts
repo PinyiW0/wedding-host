@@ -1,30 +1,30 @@
 import type { H3Event } from 'h3'
 import type { PublicThankYouCard } from '../../../../../../../app/types/api/thankyou'
 
-import { mockGuests } from '../../../../../../mock/data/guests'
-import { mockThankYouCustomizations, mockThankYouTemplates } from '../../../../../../mock/data/thankyou'
-import { mockWeddings } from '../../../../../../mock/data/weddings'
+import { and, eq, isNull } from 'drizzle-orm'
+
+import { useDb } from '../../../../../../db'
+import { guests, thankYouCustomizations, thankYouTemplates, weddings } from '../../../../../../db/schema'
 
 const GUEST_NAME_TOKEN_RE = /\{\{\s*guestName\s*\}\}/g
 
 // 賓客公開謝卡（公開讀取）：解析範本 / 客製 → 帶入賓客名與婚禮資料
-export default defineEventHandler((event: H3Event): PublicThankYouCard => {
+export default defineEventHandler(async (event: H3Event): Promise<PublicThankYouCard> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const guestId = getRouterParam(event, 'guestId')!
 
-  const wedding = mockWeddings.find(w => w.weddingId === weddingId && !w.deletedAt)
+  const db = useDb()
+  const [wedding] = await db.select().from(weddings).where(and(eq(weddings.weddingId, weddingId), isNull(weddings.deletedAt)))
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
-  const guest = mockGuests.find(g => g.guestId === guestId && !g.deletedAt)
+  const [guest] = await db.select().from(guests).where(and(eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
 
-  const template = mockThankYouTemplates.find(t => t.weddingId === weddingId)
-  const customization = mockThankYouCustomizations.find(
-    c => c.weddingId === weddingId && c.guestId === guestId,
-  )
+  const [template] = await db.select().from(thankYouTemplates).where(eq(thankYouTemplates.weddingId, weddingId))
+  const [customization] = await db.select().from(thankYouCustomizations).where(and(eq(thankYouCustomizations.weddingId, weddingId), eq(thankYouCustomizations.guestId, guestId)))
 
   const coupleName = wedding.groomName && wedding.brideName
     ? `${wedding.groomName} & ${wedding.brideName}`

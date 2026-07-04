@@ -1,17 +1,23 @@
 import type { H3Event } from 'h3'
 
-import { mockSeats, mockTables } from '../../../../../../mock/data/seating'
+import { eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event) => {
-  const tableId = getRouterParam(event, 'tableId')
-  const index = mockTables.findIndex(t => t.tableId === tableId)
-  if (index === -1) {
+import { useDb } from '../../../../../../db'
+import { seatingTables, seats } from '../../../../../../db/schema'
+
+export default defineEventHandler(async (event: H3Event): Promise<void> => {
+  const tableId = getRouterParam(event, 'tableId')!
+
+  const db = useDb()
+  const [table] = await db.select().from(seatingTables).where(eq(seatingTables.tableId, tableId))
+  if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
-  if (mockSeats.some(s => s.tableId === tableId)) {
+  const [occupied] = await db.select().from(seats).where(eq(seats.tableId, tableId))
+  if (occupied) {
     throw createError({ statusCode: 409, statusMessage: '桌次上還有賓客，無法移除' })
   }
-  mockTables.splice(index, 1)
+  await db.delete(seatingTables).where(eq(seatingTables.tableId, tableId))
 
   setResponseStatus(event, 204)
 })

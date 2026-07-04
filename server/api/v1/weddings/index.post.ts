@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
 import type { CreateWeddingBody, WeddingCreatedEvent } from '../../../../app/types/api/weddings'
 
-import { mockWeddings } from '../../../mock/data/weddings'
+import { useDb } from '../../../db'
+import { weddings } from '../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<WeddingCreatedEvent> => {
   const body = await readBody<CreateWeddingBody>(event)
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingCreated
   }
 
   const weddingId = `wedding-${crypto.randomUUID().slice(0, 8)}`
-  mockWeddings.unshift({
+  await useDb().insert(weddings).values({
     weddingId,
     title: body.title,
     venue: body.venue,

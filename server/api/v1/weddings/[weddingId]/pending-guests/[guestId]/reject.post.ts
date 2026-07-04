@@ -1,19 +1,25 @@
 import type { H3Event } from 'h3'
 import type { PendingGuestRejectedEvent } from '../../../../../../../app/types/api/pending-guests'
 
-import { mockGuests } from '../../../../../../mock/data/guests'
+import { and, eq, isNull } from 'drizzle-orm'
+
+import { useDb } from '../../../../../../db'
+import { guests } from '../../../../../../db/schema'
 
 // 略過：拒絕此待確認回覆（軟刪除，從待確認區移除）
-export default defineEventHandler((event: H3Event): PendingGuestRejectedEvent => {
-  const guestId = getRouterParam(event, 'guestId')
+export default defineEventHandler(async (event: H3Event): Promise<PendingGuestRejectedEvent> => {
+  const guestId = getRouterParam(event, 'guestId')!
 
-  const pending = mockGuests.find(
-    g => g.guestId === guestId && g.status === 'pending_review' && !g.deletedAt,
-  )
+  const db = useDb()
+  const [pending] = await db.select().from(guests).where(and(
+    eq(guests.guestId, guestId),
+    eq(guests.status, 'pending_review'),
+    isNull(guests.deletedAt),
+  ))
   if (!pending) {
     throw createError({ statusCode: 404, statusMessage: '待確認賓客不存在' })
   }
 
-  pending.deletedAt = new Date().toISOString()
+  await db.update(guests).set({ deletedAt: new Date().toISOString() }).where(eq(guests.guestId, guestId))
   return { guestId: pending.guestId }
 })

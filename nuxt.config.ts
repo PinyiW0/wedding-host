@@ -13,6 +13,9 @@ export default defineNuxtConfig({
     jwtSecret: 'dev-only-jwt-secret-change-me',
     jwtExpiresIn: '7d',
     guestLinkSecret: 'dev-only-guest-link-secret-change-me',
+    // Postgres 連線字串（NUXT_DATABASE_URL 覆蓋；正式環境填 Neon pooled URL）
+    // 預設值＝docker-compose 的本機 db 服務，與 drizzle.config.ts 一致
+    databaseUrl: 'postgresql://wedding:wedding@localhost:5433/wedding',
     // LINE Messaging API（M4 基礎建設：留空＝維持 mock 行為，填入後 batch-send 走真發送）
     lineChannelAccessToken: '',
     public: {

@@ -1,22 +1,31 @@
 import type { H3Event } from 'h3'
 
-import { mockRundownItems, mockRundownRoles } from '../../../../../../mock/data/rundown'
+import { and, eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event): void => {
+import { useDb } from '../../../../../../db'
+import { rundownItems, rundownRoles } from '../../../../../../db/schema'
+
+export default defineEventHandler(async (event: H3Event): Promise<void> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const roleId = getRouterParam(event, 'roleId')!
 
-  const index = mockRundownRoles.findIndex(r => r.weddingId === weddingId && r.roleId === roleId)
-  if (index === -1) {
+  const db = useDb()
+  const [role] = await db.select().from(rundownRoles).where(and(eq(rundownRoles.weddingId, weddingId), eq(rundownRoles.roleId, roleId)))
+  if (!role) {
     throw createError({ statusCode: 404, statusMessage: '流程角色不存在' })
   }
 
-  mockRundownRoles.splice(index, 1)
+  await db.delete(rundownRoles)
+    .where(and(eq(rundownRoles.weddingId, weddingId), eq(rundownRoles.roleId, roleId)))
 
   // 級聯清理：從各項目的 roleTasks 移除該角色的條目
-  for (const item of mockRundownItems) {
-    if (item.weddingId === weddingId && item.roleTasks.some(rt => rt.roleId === roleId))
-      item.roleTasks = item.roleTasks.filter(rt => rt.roleId !== roleId)
+  const items = await db.select().from(rundownItems).where(eq(rundownItems.weddingId, weddingId))
+  for (const item of items) {
+    if (item.roleTasks.some(rt => rt.roleId === roleId)) {
+      await db.update(rundownItems)
+        .set({ roleTasks: item.roleTasks.filter(rt => rt.roleId !== roleId) })
+        .where(eq(rundownItems.rundownItemId, item.rundownItemId))
+    }
   }
 
   setResponseStatus(event, 204)

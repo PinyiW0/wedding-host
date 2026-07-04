@@ -1,19 +1,29 @@
 import type { H3Event } from 'h3'
 import type { ProjectionSettings } from '../../../../../app/types/api/projection'
 
-import { mockProjectionSettings } from '../../../../mock/data/projection'
-import { mockWeddings } from '../../../../mock/data/weddings'
+import { eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event): ProjectionSettings => {
+import { useDb } from '../../../../db'
+import { projectionSettings, weddings } from '../../../../db/schema'
+
+export default defineEventHandler(async (event: H3Event): Promise<ProjectionSettings> => {
   const weddingId = getRouterParam(event, 'weddingId')!
 
-  if (!mockWeddings.some(w => w.weddingId === weddingId)) {
+  const db = useDb()
+  const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))
+  if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
 
   // 未設定回預設值（對齊 rsvp-config「未設定回預設」慣例）
-  const existing = mockProjectionSettings.find(s => s.weddingId === weddingId)
+  const [existing] = await db.select().from(projectionSettings).where(eq(projectionSettings.weddingId, weddingId))
   return existing
-    ? { ...existing, customFlowers: [...existing.customFlowers] }
+    ? {
+        weddingId: existing.weddingId,
+        mediaType: existing.mediaType,
+        photoDataUrl: existing.photoDataUrl,
+        videoUrl: existing.videoUrl,
+        customFlowers: existing.customFlowers,
+      }
     : { weddingId, mediaType: 'none', photoDataUrl: null, videoUrl: null, customFlowers: [] }
 })

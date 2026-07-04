@@ -1,15 +1,20 @@
 import type { H3Event } from 'h3'
 
-import { mockVenueMarkers } from '../../../../../mock/data/seating'
+import { and, eq } from 'drizzle-orm'
 
-export default defineEventHandler((event: H3Event): void => {
-  const weddingId = getRouterParam(event, 'weddingId')
-  const markerId = getRouterParam(event, 'markerId')
+import { useDb } from '../../../../../db'
+import { venueMarkers } from '../../../../../db/schema'
 
-  const index = mockVenueMarkers.findIndex(m => m.weddingId === weddingId && m.markerId === markerId)
-  if (index === -1)
+export default defineEventHandler(async (event: H3Event): Promise<void> => {
+  const weddingId = getRouterParam(event, 'weddingId')!
+  const markerId = getRouterParam(event, 'markerId')!
+
+  const db = useDb()
+  const [existing] = await db.select().from(venueMarkers).where(and(eq(venueMarkers.weddingId, weddingId), eq(venueMarkers.markerId, markerId)))
+  if (!existing)
     throw createError({ statusCode: 404, statusMessage: '標記不存在' })
 
-  mockVenueMarkers.splice(index, 1)
+  await db.delete(venueMarkers)
+    .where(and(eq(venueMarkers.weddingId, weddingId), eq(venueMarkers.markerId, markerId)))
   setResponseStatus(event, 204)
 })

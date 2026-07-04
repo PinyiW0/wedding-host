@@ -1,7 +1,8 @@
 import type { H3Event } from 'h3'
 import type { CreateTableBody, TableCreatedEvent } from '../../../../../../app/types/api/seating'
 
-import { mockTables } from '../../../../../mock/data/seating'
+import { useDb } from '../../../../../db'
+import { seatingTables } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<TableCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -20,7 +21,8 @@ export default defineEventHandler(async (event: H3Event): Promise<TableCreatedEv
     positionX: body.positionX,
     positionY: body.positionY,
   }
-  mockTables.push(table)
+  const db = useDb()
+  await db.insert(seatingTables).values(table)
 
   setResponseStatus(event, 201)
   return table
