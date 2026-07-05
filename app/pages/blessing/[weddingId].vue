@@ -12,6 +12,8 @@ const weddingId = computed(() => String(route.params.weddingId))
 // 賓客透過專屬連結進入，連結帶 guestId
 const guestId = computed(() => String(route.query.guestId ?? ''))
 
+const { uploadImage } = useImageUpload()
+
 const message = ref('')
 const photoUrl = ref('')
 const photoName = ref('')
@@ -55,10 +57,14 @@ async function submitBlessing() {
   isSubmitting.value = true
   submitError.value = ''
   try {
+    // R2 啟用時照片先直傳（回公開 URL）；本機模式維持 dataURL
+    const uploadedPhotoUrl = photoUrl.value
+      ? await uploadImage(photoUrl.value, weddingId.value, 'blessing')
+      : ''
     const body: SubmitBlessingBody = {
       guestId: guestId.value,
       message: message.value.trim(),
-      ...(photoUrl.value ? { photoUrl: photoUrl.value } : {}),
+      ...(uploadedPhotoUrl ? { photoUrl: uploadedPhotoUrl } : {}),
     }
     await submitBlessingApi(weddingId.value, body)
     isSubmitted.value = true

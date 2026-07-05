@@ -109,6 +109,7 @@ export {
   listThankYouCustomizations,
   setThankYouTemplate,
 } from './thankyou.api'
+export { presignUpload } from './uploads.api'
 export {
   createWedding,
   deleteWedding,

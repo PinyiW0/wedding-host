@@ -7,6 +7,7 @@ definePageMeta({ layout: 'default' })
 
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 const toast = useToast()
 
 const { data: wedding } = await getWedding(weddingId)
@@ -41,10 +42,14 @@ const isSaving = ref(false)
 async function save() {
   isSaving.value = true
   try {
+    // R2 啟用時 banner 先直傳（已是 URL 則原樣返回）；本機模式維持 dataURL
+    const banner = draft.value.banner
+      ? await uploadImage(draft.value.banner, weddingId.value, 'rsvp-banner')
+      : null
     await configureRsvpForm(weddingId.value, {
       weddingId: weddingId.value,
       theme: draft.value.theme,
-      banner: draft.value.banner,
+      banner,
       questions: draft.value.questions,
     })
     // 新人姓名有異動才同步回婚禮資訊

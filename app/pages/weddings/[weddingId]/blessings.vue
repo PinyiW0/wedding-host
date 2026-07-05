@@ -16,6 +16,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 
 const { data: blessings } = await listBlessings(weddingId, { default: () => [] })
 
@@ -93,11 +94,18 @@ async function saveProjectionSettings() {
     return
   isSettingsSaving.value = true
   try {
+    // R2 啟用時照片與花朵圖逐張直傳（已是 URL 的原樣保留）；本機模式維持 dataURL
+    const photoDataUrl = settingsDraft.photoDataUrl
+      ? await uploadImage(settingsDraft.photoDataUrl, weddingId.value, 'projection')
+      : ''
+    const customFlowers: string[] = []
+    for (const flower of settingsDraft.customFlowers)
+      customFlowers.push(await uploadImage(flower, weddingId.value, 'projection'))
     const body: UpdateProjectionSettingsBody = {
       mediaType: settingsDraft.mediaType,
-      photoDataUrl: settingsDraft.photoDataUrl || null,
+      photoDataUrl: photoDataUrl || null,
       videoUrl: settingsDraft.videoUrl.trim() || null,
-      customFlowers: settingsDraft.customFlowers,
+      customFlowers,
     }
     await updateProjectionSettings(weddingId.value, body)
     broadcast()

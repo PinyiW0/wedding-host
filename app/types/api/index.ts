@@ -105,6 +105,7 @@ export type {
   ThankYouFallbackSentEvent,
   ThankYouTemplateSetEvent,
 } from './thankyou'
+export type { PresignUploadBody, PresignUploadResponse } from './uploads'
 export type {
   CreateWeddingBody,
   UpdateWeddingBody,
