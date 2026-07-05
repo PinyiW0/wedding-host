@@ -14,6 +14,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 
 // 婚禮詳情（含 mapLink / parkingInfo / transportInfo，GET 已回傳完整欄位）
 const { data: wedding, refresh } = await getWedding(weddingId)
@@ -97,6 +98,10 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     return
   isSubmitting.value = true
   try {
+    // R2 啟用時逐張直傳（已是 URL 的原樣保留）；本機模式維持 dataURL
+    const transportImageUrls: string[] = []
+    for (const url of event.data.transportImageUrls ?? [])
+      transportImageUrls.push(await uploadImage(url, weddingId.value, 'transport'))
     const body: UpdateWeddingBody = {
       title: event.data.title,
       venue: event.data.venue,
@@ -107,7 +112,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       mapLink: event.data.mapLink ?? '',
       parkingInfo: event.data.parkingInfo ?? '',
       transportInfo: event.data.transportInfo ?? '',
-      transportImageUrls: event.data.transportImageUrls ?? [],
+      transportImageUrls,
     }
     await updateWedding(weddingId.value, body)
     toast.add({ title: '婚禮資訊已更新', color: 'success' })

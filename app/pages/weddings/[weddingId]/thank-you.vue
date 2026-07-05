@@ -25,6 +25,7 @@ const COUPLE_SUFFIX_RE = /的婚禮$/
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 
 // 婚禮資訊（顯示用）：謝卡預覽的新人名與日期
 const { wedding } = useCurrentWedding()
@@ -124,9 +125,13 @@ async function submitTemplate() {
   isTemplateSubmitting.value = true
   templateError.value = ''
   try {
+    // R2 啟用時範本圖先直傳（已是 URL 則原樣返回）；本機模式維持 dataURL
+    const uploadedTemplateImageUrl = templateImageUrl.value
+      ? await uploadImage(templateImageUrl.value, weddingId.value, 'thank-you')
+      : null
     const body: SetThankYouTemplateBody = {
       templateContent: templateContentInput.value.trim(),
-      ...(templateImageUrl.value ? { templateImageUrl: templateImageUrl.value } : {}),
+      ...(uploadedTemplateImageUrl ? { templateImageUrl: uploadedTemplateImageUrl } : {}),
       ...(greetingInput.value.trim() ? { greeting: greetingInput.value.trim() } : {}),
       ...(signatureInput.value.trim() ? { signature: signatureInput.value.trim() } : {}),
       ...(signatureDateInput.value.trim() ? { signatureDate: signatureDateInput.value.trim() } : {}),

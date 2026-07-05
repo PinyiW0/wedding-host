@@ -18,7 +18,14 @@ export default defineNuxtConfig({
     databaseUrl: 'postgresql://wedding:wedding@localhost:5433/wedding',
     // LINE Messaging API（M4 基礎建設：留空＝維持 mock 行為，填入後 batch-send 走真發送）
     lineChannelAccessToken: '',
+    // Cloudflare R2（issue #9）：四項全填＝啟用 presigned 直傳；留空＝圖片維持 dataURL 模式（本機 dev/e2e）
+    r2Endpoint: '',
+    r2AccessKeyId: '',
+    r2SecretAccessKey: '',
+    r2Bucket: '',
     public: {
+      // R2 公開讀取前綴（NUXT_PUBLIC_R2_PUBLIC_URL）：有值＝前端上傳走 R2、圖片存公開 URL
+      r2PublicUrl: '',
       // 統一 API domain，可由 NUXT_PUBLIC_API_BASE 覆蓋
       // 預設空字串：path_prefix（/api/v1）已內嵌在各 *.api.ts 的路徑字串中
       apiBase: '',

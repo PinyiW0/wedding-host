@@ -24,6 +24,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 
 // 禮物品項清單
 const { data: giftItems, refresh } = await listGiftItems(
@@ -206,6 +207,10 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   isSubmitting.value = true
   formError.value = ''
   try {
+    // R2 啟用時縮圖先直傳（已是 URL 則原樣返回）；本機模式維持 dataURL
+    const imageUrl = draft.imageUrl
+      ? await uploadImage(draft.imageUrl, weddingId.value, 'gift')
+      : ''
     if (editingId.value) {
       const body: UpdateGiftItemBody = {
         category: draft.category,
@@ -215,7 +220,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         shippingFee1: toNumber(draft.shippingFee1),
         shippingFee2: toNumber(draft.shippingFee2),
         otherFee: toNumber(draft.otherFee),
-        imageUrl: draft.imageUrl,
+        imageUrl,
         purchaseUrl: draft.purchaseUrl.trim(),
         distributionTime: draft.distributionTime.trim(),
         note: draft.note.trim(),
@@ -232,7 +237,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         shippingFee1: toNumber(draft.shippingFee1),
         shippingFee2: toNumber(draft.shippingFee2),
         otherFee: toNumber(draft.otherFee),
-        imageUrl: draft.imageUrl || undefined,
+        imageUrl: imageUrl || undefined,
         purchaseUrl: draft.purchaseUrl.trim() || undefined,
         distributionTime: draft.distributionTime.trim() || undefined,
         note: draft.note.trim() || undefined,

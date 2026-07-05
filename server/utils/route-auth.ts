@@ -66,7 +66,8 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   // 婚禮分享資料：公開頁讀取＋公開表單／祝福提交（SubmitRsvp、SubmitBlessing: Guest）
   if (method === 'GET' && SHARE_GET.has(sub))
     return { kind: 'share', weddingId }
-  if (method === 'POST' && (sub === 'guests/rsvp-public' || sub === 'blessings'))
+  // uploads/presign：公開頁（祝福照片等）與管理端共用的圖片直傳簽名
+  if (method === 'POST' && (sub === 'guests/rsvp-public' || sub === 'blessings' || sub === 'uploads/presign'))
     return { kind: 'share', weddingId }
 
   // 接待端白名單（CheckInByReception／RecordGiftMoney／DistributeCakeBox／審核祝福）

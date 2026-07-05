@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "db:create-admin": "node scripts/create-admin.mjs",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -25,6 +26,9 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/s3-request-presigner": "^3.1079.0",
+    "@neondatabase/serverless": "^1.1.0",
     "@nuxt/ui": "^4.6.0",
     "@pinia/nuxt": "^0.11.3",
     "drizzle-orm": "^0.45.2",

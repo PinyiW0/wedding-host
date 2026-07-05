@@ -32,6 +32,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
+const { uploadImage } = useImageUpload()
 
 // 喜餅款式清單
 const { data: cakeBoxTypes, refresh } = await listCakeBoxTypes(
@@ -189,12 +190,16 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const rawPrice = priceText.value
     const priceNum = rawPrice === '' || rawPrice == null ? Number.NaN : Number(rawPrice)
     const price = Number.isNaN(priceNum) ? undefined : priceNum
+    // R2 啟用時縮圖先直傳（已是 URL 則原樣返回）；本機模式維持 dataURL
+    const uploadedImageUrl = imageUrl.value
+      ? await uploadImage(imageUrl.value, weddingId.value, 'cake-box')
+      : ''
     if (editingId.value) {
       const body: UpdateCakeBoxTypeBody = {
         name: data.name,
         description: data.description,
         isDefault: data.isDefault, // 可事後切換預設款
-        imageUrl: imageUrl.value,
+        imageUrl: uploadedImageUrl,
         price,
       }
       await updateCakeBoxType(weddingId.value, editingId.value, body)
@@ -205,7 +210,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         name: data.name,
         description: data.description || undefined,
         isDefault: data.isDefault,
-        imageUrl: imageUrl.value || undefined,
+        imageUrl: uploadedImageUrl || undefined,
         price,
       }
       await createCakeBoxType(weddingId.value, body)
