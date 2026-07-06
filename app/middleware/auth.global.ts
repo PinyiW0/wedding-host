@@ -22,6 +22,9 @@ const RECEPTIONIST_PATTERNS = [
   /^\/weddings\/[^/]+\/blessings(\/|$)/,
 ]
 
+// 管理者限定頁（新人帳號管理）：非管理者一律導走（API 層 adminOnly 403 兜底）
+const ADMIN_ONLY_PATTERNS = [/^\/users(\/|$)/]
+
 // 擷取路徑中的 weddingId（新人守衛用；提至 module scope 避免每次重編譯）
 const WEDDING_PATH_RE = /^\/weddings\/([^/]+)/
 
@@ -43,6 +46,11 @@ export default defineNuxtRouteMiddleware((to) => {
     const target = `/reception?weddingId=${auth.weddingId ?? 'wedding-001'}`
     if (to.fullPath !== target)
       return navigateTo(target)
+  }
+
+  // 管理者限定頁：新人導回自己的婚禮（接待員已在上方被導回接待台）
+  if (!auth.isAdmin && ADMIN_ONLY_PATTERNS.some(re => re.test(to.path))) {
+    return navigateTo(auth.isCouple && auth.weddingId ? `/weddings/${auth.weddingId}` : '/login')
   }
 
   // 新人：只能進自己的婚禮；存取全部婚禮列表或他人婚禮時導回自己的婚禮

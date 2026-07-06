@@ -3,6 +3,7 @@ export {
   createReceptionAccount,
   deleteReceptionAccount,
   listReceptionAccounts,
+  updateReceptionAccount,
 } from './accounts.api'
 export { login, registerAdmin } from './auth.api'
 export {
@@ -111,6 +112,12 @@ export {
   setThankYouTemplate,
 } from './thankyou.api'
 export { presignUpload } from './uploads.api'
+export {
+  createCoupleAccount,
+  deleteCoupleAccount,
+  listCoupleAccounts,
+  updateCoupleAccount,
+} from './users.api'
 export {
   createWedding,
   deleteWedding,

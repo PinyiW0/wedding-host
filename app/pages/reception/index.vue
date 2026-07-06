@@ -620,8 +620,8 @@ async function submitCake() {
           </p>
         </div>
 
-        <!-- 結果卡片列表 -->
-        <div data-testid="reception-list" class="min-h-0 flex-1 space-y-3 overflow-auto">
+        <!-- 結果卡片列表；flex-1 讓空狀態撐滿 -->
+        <div data-testid="reception-list" class="flex min-h-0 flex-1 flex-col space-y-3 overflow-auto">
           <div
             v-for="guest in filteredGuests"
             :key="guest.guestId"
@@ -745,6 +745,8 @@ async function submitCake() {
 
           <EmptyState
             v-if="filteredGuests.length === 0"
+            bordered
+            class="flex-1"
             :title="searchTerm ? '找不到相符的賓客' : '目前沒有賓客'"
             :description="searchTerm ? '請確認姓名或新增臨時賓客' : '請先於賓客管理新增賓客'"
           />
@@ -794,8 +796,10 @@ async function submitCake() {
 
         <!-- 桌次平面（米色點陣畫布 + 桌卡） -->
         <div class="min-h-0 flex-1 overflow-auto">
-          <div v-if="(tables ?? []).length === 0" data-testid="vibe-reception-table-empty">
+          <div v-if="(tables ?? []).length === 0" data-testid="vibe-reception-table-empty" class="flex h-full flex-col">
             <EmptyState
+              bordered
+              class="flex-1"
               title="目前沒有桌次"
               description="點擊「新增桌次」開始安排現場座位"
             />

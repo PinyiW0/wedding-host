@@ -37,7 +37,13 @@ const globalNav = computed(() => {
       ? [{ label: '返回後台', icon: 'i-heroicons-arrow-uturn-left', to: backTarget }]
       : []),
     { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
-    { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
+    // 管理者限定入口（新人/接待員的分支不會走到這裡）
+    { label: '新人帳號', icon: 'i-heroicons-user-group', to: '/users' },
+    // 接待台屬於單一婚禮：僅在婚禮情境內顯示並帶當前 weddingId
+    // （裸 /reception 會 fallback 到 wedding-001，多婚禮情境會默默進錯場次）
+    ...(weddingId.value
+      ? [{ label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: `/reception?weddingId=${weddingId.value}` }]
+      : []),
   ]
 })
 

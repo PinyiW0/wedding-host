@@ -14,6 +14,8 @@ const router = useRouter()
 const schema = z.object({
   email: z.string().trim().min(1, '請輸入電子郵件').email('電子郵件格式不正確'),
   displayName: z.string().trim().min(1, '請輸入顯示名稱'),
+  // 選填（凍結 spec 僅填 email＋顯示名稱）：未設定則無法以此帳號登入
+  password: z.string().optional(),
 })
 
 type Schema = z.output<typeof schema>
@@ -21,7 +23,10 @@ type Schema = z.output<typeof schema>
 const state = reactive<Schema>({
   email: '',
   displayName: '',
+  password: '',
 })
+
+const showPassword = ref(false)
 
 const isSubmitting = ref(false)
 // 後端錯誤訊息（如 email 已被註冊），inline 顯示供使用者感知失敗原因
@@ -36,6 +41,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     const body: RegisterAdminBody = {
       email: event.data.email,
       displayName: event.data.displayName,
+      ...(event.data.password ? { password: event.data.password } : {}),
     }
     await registerAdmin(body)
     toast.add({
@@ -113,6 +119,34 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
           placeholder="王小明"
           class="w-full"
         />
+      </UFormField>
+
+      <UFormField
+        label="登入密碼"
+        name="password"
+        hint="選填；設定後可用電子郵件＋密碼登入"
+        class="relative mb-6"
+        :ui="{ error: 'absolute top-full left-0 mt-1' }"
+      >
+        <UInput
+          v-model="state.password"
+          data-testid="vibe-register-password"
+          :type="showPassword ? 'text' : 'password'"
+          placeholder="請輸入登入密碼"
+          autocomplete="new-password"
+          class="w-full"
+        >
+          <template #trailing>
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
+              :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+              @click="showPassword = !showPassword"
+            />
+          </template>
+        </UInput>
       </UFormField>
 
       <UButton

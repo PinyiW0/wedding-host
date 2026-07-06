@@ -3,6 +3,8 @@
 export interface RegisterAdminBody {
   email: string
   displayName: string
+  // 選填：未設定則帳號建立後不可登入（可由管理端重設）
+  password?: string
 }
 
 export interface AdminRegisteredEvent {

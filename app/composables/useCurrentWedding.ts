@@ -22,6 +22,9 @@ export function useCurrentWedding() {
     (id) => {
       if (id)
         execute()
+      // 離開婚禮頁（如回「所有婚禮」）時清掉殘留資料，否則側欄標頭會停在上一場婚禮
+      else
+        wedding.value = undefined
     },
     { immediate: true },
   )
