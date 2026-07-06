@@ -12,6 +12,7 @@ import {
   createReceptionAccount,
   deleteReceptionAccount,
   listReceptionAccounts,
+  updateReceptionAccount,
 } from '~/api'
 
 definePageMeta({ layout: 'default' })
@@ -70,6 +71,54 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
   }
   finally {
     isSubmitting.value = false
+  }
+}
+
+// === 編輯接待帳號（改名／重設密碼，issue #23）===
+const editSchema = z.object({
+  username: z.string().trim().min(1, '請輸入帳號名稱'),
+  // 留空＝不變更密碼；不回顯既有密碼
+  password: z.string().optional(),
+})
+
+type EditSchema = z.output<typeof editSchema>
+
+const isEditOpen = ref(false)
+const isEditing = ref(false)
+const editErrorMsg = ref('')
+const showEditPassword = ref(false)
+const editTarget = ref<ReceptionAccountListItem | null>(null)
+const editState = reactive<EditSchema>({ username: '', password: '' })
+
+function openEdit(account: ReceptionAccountListItem) {
+  editTarget.value = account
+  editState.username = account.username
+  editState.password = ''
+  showEditPassword.value = false
+  editErrorMsg.value = ''
+  isEditOpen.value = true
+}
+
+async function onEditSubmit(event: FormSubmitEvent<EditSchema>) {
+  if (!editTarget.value || isEditing.value)
+    return
+  isEditing.value = true
+  editErrorMsg.value = ''
+  try {
+    await updateReceptionAccount(weddingId.value, editTarget.value.accountId, {
+      username: event.data.username,
+      ...(event.data.password ? { password: event.data.password } : {}),
+    })
+    toast.add({ title: '接待帳號已更新', color: 'success' })
+    isEditOpen.value = false
+    await refresh()
+  }
+  catch (error: any) {
+    editErrorMsg.value
+      = error?.data?.message || error?.statusMessage || '更新失敗，請稍後再試'
+  }
+  finally {
+    isEditing.value = false
   }
 }
 
@@ -160,6 +209,17 @@ function avatarInitial(name: string) {
           <StatusBadge color="warning">
             受限
           </StatusBadge>
+          <UButton
+            data-testid="vibe-account-edit"
+            icon="i-heroicons-pencil-square"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :aria-label="`編輯 ${account.username}`"
+            @click="openEdit(account)"
+          >
+            編輯
+          </UButton>
           <UButton
             data-testid="account-remove"
             icon="i-heroicons-trash"
@@ -266,6 +326,96 @@ function avatarInitial(name: string) {
                 :loading="isSubmitting"
               >
                 建立
+              </UButton>
+            </div>
+          </UForm>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 編輯接待帳號 Modal（改名／重設密碼） -->
+    <UModal v-model:open="isEditOpen">
+      <template #content>
+        <div data-testid="vibe-account-edit-modal" class="p-6">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
+            編輯接待帳號
+          </h3>
+
+          <UAlert
+            v-if="editErrorMsg"
+            data-testid="vibe-account-edit-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="editErrorMsg"
+            class="mb-4"
+          />
+
+          <UForm
+            :schema="editSchema"
+            :state="editState"
+            class="space-y-4"
+            @submit="onEditSubmit"
+          >
+            <UFormField
+              label="帳號名稱"
+              name="username"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <UInput
+                v-model="editState.username"
+                data-testid="vibe-account-edit-username"
+                placeholder="請輸入帳號名稱"
+                class="w-full"
+              />
+            </UFormField>
+
+            <UFormField
+              label="新密碼"
+              name="password"
+              hint="留空表示不變更；不會顯示既有密碼"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <UInput
+                v-model="editState.password"
+                data-testid="vibe-account-edit-password"
+                :type="showEditPassword ? 'text' : 'password'"
+                placeholder="留空不變更"
+                autocomplete="new-password"
+                class="w-full"
+              >
+                <template #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    :icon="showEditPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
+                    :aria-label="showEditPassword ? '隱藏密碼' : '顯示密碼'"
+                    @click="showEditPassword = !showEditPassword"
+                  />
+                </template>
+              </UInput>
+            </UFormField>
+
+            <div class="flex justify-end gap-3 pt-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                :disabled="isEditing"
+                @click="isEditOpen = false"
+              >
+                取消
+              </UButton>
+              <UButton
+                type="submit"
+                data-testid="vibe-account-edit-submit"
+                color="neutral"
+                variant="solid"
+                :loading="isEditing"
+              >
+                儲存
               </UButton>
             </div>
           </UForm>

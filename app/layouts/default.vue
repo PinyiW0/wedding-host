@@ -37,6 +37,8 @@ const globalNav = computed(() => {
       ? [{ label: '返回後台', icon: 'i-heroicons-arrow-uturn-left', to: backTarget }]
       : []),
     { label: '所有婚禮', icon: 'i-heroicons-heart', to: '/weddings' },
+    // 管理者限定入口（新人/接待員的分支不會走到這裡）
+    { label: '新人帳號', icon: 'i-heroicons-user-group', to: '/users' },
     { label: '接待報到', icon: 'i-heroicons-clipboard-document-check', to: '/reception' },
   ]
 })
