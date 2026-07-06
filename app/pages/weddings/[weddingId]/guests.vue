@@ -256,6 +256,14 @@ async function doReject(pending: GuestListItem) {
   }
 }
 
+// 連結中心（issue #15）：單一賓客四類簽名連結 + QR
+const linkCenterOpen = ref(false)
+const linkCenterGuest = ref<{ guestId: string, name: string } | null>(null)
+function openLinkCenter(guest: GuestListItem) {
+  linkCenterGuest.value = { guestId: guest.guestId, name: guest.name }
+  linkCenterOpen.value = true
+}
+
 // 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
 async function copyPublicLink() {
   const base = `${window.location.origin}/rsvp/public/${weddingId.value}`
@@ -813,6 +821,17 @@ async function confirmImport() {
               <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
                 <div class="flex justify-end gap-1">
                   <UButton
+                    data-testid="vibe-guest-links"
+                    icon="i-heroicons-qr-code"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :aria-label="`連結 ${guest.name}`"
+                    @click="openLinkCenter(guest)"
+                  >
+                    連結
+                  </UButton>
+                  <UButton
                     data-testid="guest-edit"
                     icon="i-heroicons-pencil"
                     color="neutral"
@@ -1275,5 +1294,12 @@ async function confirmImport() {
         </div>
       </template>
     </UModal>
+
+    <!-- 連結中心：每位賓客四類簽名連結 + QR -->
+    <GuestLinkCenter
+      v-model:open="linkCenterOpen"
+      :wedding-id="weddingId"
+      :guest="linkCenterGuest"
+    />
   </div>
 </template>
