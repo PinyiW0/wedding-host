@@ -348,7 +348,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
             Edit Details
           </p>
           <h3
-            class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper"
+            class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper"
           >
             編輯婚禮資訊
           </h3>

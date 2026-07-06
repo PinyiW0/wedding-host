@@ -1930,7 +1930,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             桌次
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             {{ editingTableId ? '編輯桌次' : '新增桌次' }}
           </h3>
 
@@ -2027,7 +2027,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             座位
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             安排座位
           </h3>
 
@@ -2104,7 +2104,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             場地
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             設定場地佈局
           </h3>
 
@@ -2189,7 +2189,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             禮俗
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             禮俗建議設定
           </h3>
 
@@ -2253,7 +2253,7 @@ function guestMeta(g: GuestListItem): string {
     <UModal v-model:open="isRemoveOpen">
       <template #content>
         <div data-testid="confirm-modal" class="p-6">
-          <h3 class="font-display text-h2 text-ink">
+          <h3 class="text-body-l font-semibold text-ink">
             確認移除
           </h3>
           <p class="mt-2 text-body text-ink-500">
@@ -2322,7 +2322,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             Marker
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingMarkerId ? '編輯標記' : '加入標記' }}
           </h3>
           <p class="mb-5 mt-1 text-caption text-ink-300">

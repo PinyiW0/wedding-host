@@ -1,13 +1,12 @@
 <!-- app/components/common/EmptyState.vue -->
+<!-- 空狀態是頁面的最低視覺層級（issue #19）：無 icon、內文級字重，不與主標題搶焦點 -->
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    icon?: string
     title?: string
     description?: string
   }>(),
   {
-    icon: 'i-heroicons-circle-stack',
     title: '目前沒有資料',
     description: '',
   },
@@ -15,14 +14,11 @@ withDefaults(
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center px-6 py-16 text-center">
-    <div class="flex size-16 items-center justify-center rounded-full border border-line text-gold">
-      <UIcon :name="icon" class="size-7" />
-    </div>
-    <p class="mt-4 font-display text-h2 font-semibold text-ink dark:text-paper">
+  <div class="px-6 py-10 text-center">
+    <p class="text-body text-ink-500 dark:text-neutral-400">
       {{ title }}
     </p>
-    <p v-if="description" class="mt-2 text-body text-ink-300">
+    <p v-if="description" class="mt-1 text-caption text-ink-300">
       {{ description }}
     </p>
   </div>

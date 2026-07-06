@@ -185,7 +185,7 @@ function avatarInitial(name: string) {
     <UModal v-model:open="isCreateOpen">
       <template #content>
         <div data-testid="account-form-modal" class="p-6">
-          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             建立接待帳號
           </h3>
 

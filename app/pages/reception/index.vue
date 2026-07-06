@@ -876,7 +876,7 @@ async function submitCake() {
           <p class="text-overline uppercase text-gold-deep">
             禮金登記 · {{ giftTarget?.name }}
           </p>
-          <h3 class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             {{ giftIsUpdate ? '更正禮金' : '登記禮金' }}
           </h3>
 
@@ -955,7 +955,7 @@ async function submitCake() {
           <p class="text-overline uppercase text-gold-deep">
             喜餅款式 · {{ cakeTarget?.name }}
           </p>
-          <h3 class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             發放喜餅
           </h3>
 
@@ -984,7 +984,7 @@ async function submitCake() {
                     : 'border-line bg-white hover:border-gold/60 dark:border-neutral-800 dark:bg-neutral-800'"
                   @click="cakeTypeId = opt.value"
                 >
-                  <span class="text-h2 font-medium text-ink dark:text-paper">{{ opt.label }}</span>
+                  <span class="text-body-l font-medium text-ink dark:text-paper">{{ opt.label }}</span>
                   <span
                     class="flex size-7 shrink-0 items-center justify-center rounded"
                     :class="cakeTypeId === opt.value ? 'bg-gold text-white' : 'border border-line'"
@@ -1037,7 +1037,7 @@ async function submitCake() {
           <p class="text-overline uppercase text-gold-deep">
             Floor Plan
           </p>
-          <h3 class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             新增桌次
           </h3>
 
@@ -1102,7 +1102,7 @@ async function submitCake() {
           <p class="text-overline uppercase text-gold-deep">
             Guest
           </p>
-          <h3 class="mb-6 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             新增賓客
           </h3>
 

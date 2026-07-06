@@ -447,7 +447,7 @@ async function submitReject() {
           <p class="text-overline uppercase text-gold-deep">
             Review
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             審核拒絕祝福
           </h3>
 
@@ -502,7 +502,7 @@ async function submitReject() {
           <p class="text-overline uppercase text-gold-deep">
             Projection
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             投影設定
           </h3>
           <p class="mb-6 mt-1 text-caption text-ink-300">
@@ -647,7 +647,7 @@ async function submitReject() {
           <p class="text-overline uppercase text-gold-deep">
             Shared Blessing
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             共用祝福 QR
           </h3>
           <p class="mt-1 text-caption text-ink-300">
