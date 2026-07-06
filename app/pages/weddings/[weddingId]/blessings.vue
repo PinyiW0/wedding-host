@@ -7,6 +7,7 @@ import type {
   RejectBlessingBody,
 } from '~/types/api/blessings'
 import type { ProjectionMediaType, UpdateProjectionSettingsBody } from '~/types/api/projection'
+import QRCode from 'qrcode'
 import { approveBlessing, getProjectionSettings, getSignedLink, listBlessings, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
 import { blessingStatusMeta } from '~/utils/statusMeta'
 import { toYouTubeEmbed } from '~/utils/videoEmbed'
@@ -44,6 +45,36 @@ const MEDIA_OPTIONS: { label: string, value: ProjectionMediaType }[] = [
   { label: '照片', value: 'photo' },
   { label: '影片', value: 'video' },
 ]
+
+// 共用祝福 QR（issue #17）：w. 婚禮簽名連結，現場立牌供賓客掃碼自填姓名送祝福
+const isSharedBlessingOpen = ref(false)
+const sharedBlessingUrl = ref('')
+const sharedBlessingQr = ref('')
+const sharedBlessingError = ref(false)
+async function openSharedBlessingQr() {
+  isSharedBlessingOpen.value = true
+  if (sharedBlessingQr.value)
+    return
+  sharedBlessingError.value = false
+  try {
+    const { sig } = await getSignedLink(weddingId.value)
+    sharedBlessingUrl.value = `${window.location.origin}/blessing/${weddingId.value}?sig=${sig}`
+    sharedBlessingQr.value = await QRCode.toDataURL(sharedBlessingUrl.value, { width: 320, margin: 1 })
+  }
+  catch {
+    sharedBlessingError.value = true
+  }
+}
+
+async function copySharedBlessingLink() {
+  try {
+    await navigator.clipboard.writeText(sharedBlessingUrl.value)
+    toast.add({ title: '已複製共用祝福連結', description: sharedBlessingUrl.value, color: 'success' })
+  }
+  catch {
+    toast.add({ title: '複製失敗', description: sharedBlessingUrl.value, color: 'error' })
+  }
+}
 
 // 複製附簽名的投影牆連結：供未登入的現場投影設備開啟（enforced 模式憑簽名放行）
 async function copyProjectionLink() {
@@ -251,6 +282,15 @@ async function submitReject() {
       <template #actions>
         <div class="flex items-center gap-3">
           <UButton
+            data-testid="vibe-shared-blessing-qr"
+            icon="i-heroicons-qr-code"
+            color="neutral"
+            variant="outline"
+            @click="openSharedBlessingQr"
+          >
+            共用祝福 QR
+          </UButton>
+          <UButton
             data-testid="projection-settings"
             icon="i-heroicons-cog-6-tooth"
             color="neutral"
@@ -309,7 +349,7 @@ async function submitReject() {
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
                 <p class="text-caption uppercase tracking-wide text-ink-500">
-                  賓客 · {{ blessing.guestId }}
+                  {{ blessing.guestName ? `${blessing.guestName} · 現場填寫` : `賓客 · ${blessing.guestId}` }}
                 </p>
                 <div class="flex shrink-0 items-center gap-2">
                   <StatusBadge :color="blessingStatusMeta(blessing.status).color">
@@ -599,5 +639,49 @@ async function submitReject() {
         </div>
       </template>
     </USlideover>
+
+    <!-- 共用祝福 QR：現場立牌可印，賓客掃碼自填姓名送祝福 -->
+    <UModal v-model:open="isSharedBlessingOpen">
+      <template #content>
+        <div data-testid="vibe-shared-blessing-panel" class="flex flex-col items-center p-6 text-center">
+          <p class="text-overline uppercase text-gold-deep">
+            Shared Blessing
+          </p>
+          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+            共用祝福 QR
+          </h3>
+          <p class="mt-1 text-caption text-ink-300">
+            列印或投放於現場，賓客掃碼後自填姓名即可送出祝福
+          </p>
+
+          <p v-if="sharedBlessingError" class="mt-6 text-caption text-ink-500 dark:text-neutral-300">
+            連結簽名載入失敗，請稍後再試
+          </p>
+          <template v-else-if="sharedBlessingQr">
+            <img
+              :src="sharedBlessingQr"
+              alt="共用祝福連結 QR code"
+              class="mt-6 size-52 rounded border border-line dark:border-neutral-800"
+            >
+            <p class="mt-3 w-full truncate text-caption text-ink-500 dark:text-neutral-400">
+              {{ sharedBlessingUrl }}
+            </p>
+            <UButton
+              data-testid="vibe-shared-blessing-copy"
+              icon="i-heroicons-clipboard-document"
+              color="neutral"
+              variant="soft"
+              class="mt-3"
+              @click="copySharedBlessingLink"
+            >
+              複製連結
+            </UButton>
+          </template>
+          <div v-else class="mt-6 flex h-52 items-center justify-center text-ink-300">
+            <UIcon name="i-heroicons-arrow-path" class="size-5 animate-spin" />
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

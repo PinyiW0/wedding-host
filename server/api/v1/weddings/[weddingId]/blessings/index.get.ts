@@ -14,6 +14,7 @@ export default defineEventHandler(async (event: H3Event): Promise<BlessingListIt
     blessingId: b.blessingId,
     weddingId: b.weddingId,
     guestId: b.guestId,
+    guestName: b.guestName,
     message: b.message,
     photoUrl: b.photoUrl,
     status: b.status,

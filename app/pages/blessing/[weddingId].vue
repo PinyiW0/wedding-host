@@ -9,11 +9,13 @@ definePageMeta({ layout: 'guest' })
 
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
-// 賓客透過專屬連結進入，連結帶 guestId
+// 專屬連結帶 guestId；共用 QR（現場立牌）無 guestId，改由賓客自填姓名
 const guestId = computed(() => String(route.query.guestId ?? ''))
+const isSharedEntry = computed(() => !guestId.value)
 
 const { uploadImage } = useImageUpload()
 
+const guestName = ref('')
 const message = ref('')
 const photoUrl = ref('')
 const photoName = ref('')
@@ -50,6 +52,10 @@ function onPhotoSelected(payload: { name: string, dataUrl: string }) {
 async function submitBlessing() {
   if (isSubmitting.value || isSubmitted.value)
     return
+  if (isSharedEntry.value && !guestName.value.trim()) {
+    submitError.value = '請輸入您的姓名'
+    return
+  }
   if (!message.value.trim()) {
     submitError.value = '請輸入祝福留言'
     return
@@ -62,7 +68,9 @@ async function submitBlessing() {
       ? await uploadImage(photoUrl.value, weddingId.value, 'blessing')
       : ''
     const body: SubmitBlessingBody = {
-      guestId: guestId.value,
+      ...(isSharedEntry.value
+        ? { guestName: guestName.value.trim() }
+        : { guestId: guestId.value }),
       message: message.value.trim(),
       ...(uploadedPhotoUrl ? { photoUrl: uploadedPhotoUrl } : {}),
     }
@@ -129,6 +137,16 @@ async function submitBlessing() {
       class="mt-8 space-y-6 rounded-lg border border-line bg-paper p-6 sm:p-8"
       @submit.prevent="submitBlessing"
     >
+      <!-- 共用 QR 進入：無賓客身分，由賓客自填姓名 -->
+      <UFormField v-if="isSharedEntry" label="您的姓名" name="guestName" required>
+        <UInput
+          v-model="guestName"
+          data-testid="vibe-blessing-guest-name"
+          placeholder="請輸入您的姓名"
+          class="w-full"
+        />
+      </UFormField>
+
       <UFormField label="祝福留言" name="message">
         <div ref="messageWrap">
           <UTextarea

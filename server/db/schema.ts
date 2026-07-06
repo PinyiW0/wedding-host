@@ -91,7 +91,9 @@ export const blessings = pgTable('blessings', {
   seq: integer().generatedByDefaultAsIdentity(),
   blessingId: text().primaryKey(),
   weddingId: text().notNull(),
-  guestId: text().notNull(),
+  // 共用 QR 提交無賓客實體：guestId 為 null、姓名存 guestName
+  guestId: text(),
+  guestName: text(),
   message: text().notNull(),
   photoUrl: text(),
   status: text().$type<BlessingStatus>().notNull(),

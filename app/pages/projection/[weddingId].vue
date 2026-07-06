@@ -33,7 +33,7 @@ const embedUrl = computed(() =>
 // 只播已通過審核
 const approved = computed(() => (blessings.value ?? []).filter(b => b.status === 'approved'))
 
-function guestName(guestId: string): string {
+function guestName(guestId: string | null): string {
   return (guests.value ?? []).find(g => g.guestId === guestId)?.name ?? '一位賓客'
 }
 
@@ -49,7 +49,8 @@ const marqueeRows = computed<MarqueeItem[][]>(() => {
   const items = approved.value.map(b => ({
     blessingId: b.blessingId,
     message: b.message,
-    name: guestName(b.guestId),
+    // 共用 QR 提交（無賓客實體）優先用自填姓名
+    name: b.guestName ?? guestName(b.guestId),
   }))
   const n = items.length
   if (n === 0)
