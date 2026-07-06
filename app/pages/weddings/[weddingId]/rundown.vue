@@ -856,7 +856,7 @@ function downloadRundownJpeg() {
         </div>
         <EmptyState
           v-else
-          icon="i-heroicons-clock"
+          bordered
           title="尚無流程安排"
           :description="roleFilter === ALL_ROLES
             ? '點「新增一列」建立，或用「帶入宴客段範本」快速起步'
@@ -892,7 +892,7 @@ function downloadRundownJpeg() {
     <UModal v-model:open="isRoleFormOpen">
       <template #content>
         <div data-testid="rundown-role-form" class="p-6">
-          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingRole ? '角色改名' : '新增角色' }}
           </h3>
 
@@ -949,7 +949,7 @@ function downloadRundownJpeg() {
     <UModal v-model:open="isTemplateOpen">
       <template #content>
         <div data-testid="rundown-template-form" class="p-6">
-          <h3 class="mb-2 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-2 text-body-l font-semibold text-ink dark:text-paper">
             帶入宴客段範本
           </h3>
           <p class="mb-4 text-body text-ink-500 dark:text-neutral-400">

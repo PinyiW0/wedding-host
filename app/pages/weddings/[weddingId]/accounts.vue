@@ -129,14 +129,14 @@ function avatarInitial(name: string) {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 overflow-auto">
+    <div class="flex min-h-0 flex-1 flex-col overflow-auto">
       <!-- 區段金色 overline -->
-      <p class="text-overline mb-4 uppercase text-gold-deep">
+      <p class="text-overline mb-4 shrink-0 uppercase text-gold-deep">
         角色與帳號
       </p>
 
-      <!-- 帳號列：編輯式卡片（頭像金圓 + 名稱 + 角色 caption + 權限 badge） -->
-      <div data-testid="account-list" class="flex flex-col gap-2.5">
+      <!-- 帳號列：編輯式卡片（頭像金圓 + 名稱 + 角色 caption + 權限 badge）；flex-1 讓空狀態撐滿 -->
+      <div data-testid="account-list" class="flex flex-1 flex-col gap-2.5">
         <div
           v-for="account in accounts"
           :key="account.accountId"
@@ -175,6 +175,8 @@ function avatarInitial(name: string) {
 
         <EmptyState
           v-if="(accounts?.length ?? 0) === 0"
+          bordered
+          class="flex-1"
           title="目前沒有接待帳號"
           description="點擊「建立接待帳號」新增第一個帳號"
         />
@@ -185,7 +187,7 @@ function avatarInitial(name: string) {
     <UModal v-model:open="isCreateOpen">
       <template #content>
         <div data-testid="account-form-modal" class="p-6">
-          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             建立接待帳號
           </h3>
 

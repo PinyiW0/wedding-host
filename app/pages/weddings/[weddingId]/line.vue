@@ -92,7 +92,7 @@ async function submitConnect() {
                 <StatusBadge color="success" size="md">
                   已連結
                 </StatusBadge>
-                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">
+                <span class="text-body-l font-semibold text-ink dark:text-paper">
                   {{ connectedOa.oaName }}
                 </span>
               </div>
@@ -155,7 +155,7 @@ async function submitConnect() {
     <UModal v-model:open="isOpen">
       <template #content>
         <div data-testid="line-modal" class="p-6">
-          <h3 class="mb-4 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             連結 LINE 官方帳號
           </h3>
 

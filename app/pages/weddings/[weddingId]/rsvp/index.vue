@@ -753,7 +753,7 @@ async function confirmRemove() {
           <p class="text-overline uppercase text-gold-deep">
             Edit Reply
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             編輯回覆
           </h3>
           <p class="mb-5 mt-1 text-caption text-ink-300">
@@ -930,7 +930,7 @@ async function confirmRemove() {
           <p class="text-overline uppercase text-gold-deep">
             RSVP Reply
           </p>
-          <h3 class="mb-2 mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-2 mt-1 text-body-l font-semibold text-ink dark:text-paper">
             {{ detailTarget.name }} 的回覆
           </h3>
           <UBadge

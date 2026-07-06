@@ -29,7 +29,7 @@ const isOpen = defineModel<boolean>('open', { default: false })
   <UModal v-model:open="isOpen">
     <template #content>
       <div data-testid="confirm-modal" class="bg-paper p-8 dark:bg-neutral-900">
-        <h3 class="font-display text-h2 font-semibold text-ink dark:text-paper">
+        <h3 class="text-body-l font-semibold text-ink dark:text-paper">
           {{ title }}
         </h3>
         <p class="mt-3 text-body text-ink-500 dark:text-neutral-400">

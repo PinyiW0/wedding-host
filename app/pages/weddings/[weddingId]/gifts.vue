@@ -349,7 +349,7 @@ async function confirmRemove() {
           :data-testid="`gift-category-${cat.value}`"
         >
           <div class="mb-4 flex items-baseline gap-3">
-            <h2 class="font-display text-h2 font-semibold text-ink dark:text-paper">
+            <h2 class="text-body-l font-semibold text-ink dark:text-paper">
               {{ cat.label }}
             </h2>
             <span class="text-caption text-ink-400 dark:text-neutral-500">
@@ -360,7 +360,6 @@ async function confirmRemove() {
 
           <EmptyState
             v-if="itemsByCategory[cat.value].length === 0"
-            icon="i-heroicons-gift"
             :title="`尚無${cat.label}品項`"
             description="點擊右上「新增禮物品項」加入"
           />
@@ -468,7 +467,7 @@ async function confirmRemove() {
       <div class="my-6 rounded-xl bg-ink p-6 text-cream">
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <span class="text-overline uppercase text-gold">全部總額</span>
-          <span data-testid="gift-grand-total" class="font-display text-h1 font-semibold text-gold">
+          <span data-testid="gift-grand-total" class="font-display text-h2 font-semibold text-gold">
             {{ formatPrice(grandTotal) }}
           </span>
         </div>

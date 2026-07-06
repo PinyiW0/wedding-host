@@ -1667,8 +1667,11 @@ function guestMeta(g: GuestListItem): string {
         <div
           v-if="(tables ?? []).length === 0"
           data-testid="table-list-empty"
+          class="flex min-h-0 flex-1 flex-col"
         >
           <EmptyState
+            bordered
+            class="flex-1"
             title="目前沒有桌次"
             description="點擊右上「新增桌子」開始規劃座位"
           />
@@ -1885,7 +1888,14 @@ function guestMeta(g: GuestListItem): string {
         </p>
 
         <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
-        <div data-testid="vibe-seating-guest-list" class="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+        <div data-testid="vibe-seating-guest-list" class="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto pr-1">
+          <EmptyState
+            v-if="sidebarGuests.length === 0"
+            bordered
+            class="flex-1"
+            :title="seatedCount > 0 ? '賓客皆已排席' : '目前沒有賓客'"
+            :description="seatedCount > 0 ? '' : '請先於賓客管理新增賓客'"
+          />
           <div
             v-for="guest in sidebarGuests"
             :key="guest.guestId"
@@ -1930,7 +1940,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             桌次
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             {{ editingTableId ? '編輯桌次' : '新增桌次' }}
           </h3>
 
@@ -2027,7 +2037,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             座位
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             安排座位
           </h3>
 
@@ -2104,7 +2114,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             場地
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             設定場地佈局
           </h3>
 
@@ -2189,7 +2199,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             禮俗
           </p>
-          <h3 class="mb-4 mt-1 font-display text-h2 text-ink">
+          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
             禮俗建議設定
           </h3>
 
@@ -2253,7 +2263,7 @@ function guestMeta(g: GuestListItem): string {
     <UModal v-model:open="isRemoveOpen">
       <template #content>
         <div data-testid="confirm-modal" class="p-6">
-          <h3 class="font-display text-h2 text-ink">
+          <h3 class="text-body-l font-semibold text-ink">
             確認移除
           </h3>
           <p class="mt-2 text-body text-ink-500">
@@ -2322,7 +2332,7 @@ function guestMeta(g: GuestListItem): string {
           <p class="text-overline uppercase text-gold-deep">
             Marker
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingMarkerId ? '編輯標記' : '加入標記' }}
           </h3>
           <p class="mb-5 mt-1 text-caption text-ink-300">

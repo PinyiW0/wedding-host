@@ -917,7 +917,7 @@ async function confirmImport() {
         <div data-testid="guest-form-modal" class="flex max-h-[85dvh] flex-col bg-paper dark:bg-neutral-900">
           <!-- 固定標題區 -->
           <div class="px-8 pt-8">
-            <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
+            <h3 class="mb-5 text-body-l font-semibold text-ink dark:text-paper">
               {{ editingId ? '編輯賓客' : '新增賓客' }}
             </h3>
 
@@ -1099,7 +1099,7 @@ async function confirmImport() {
     <UModal v-model:open="isImportOpen">
       <template #content>
         <div data-testid="guest-import-modal" class="bg-paper p-8 dark:bg-neutral-900">
-          <h3 class="mb-5 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mb-5 text-body-l font-semibold text-ink dark:text-paper">
             批次匯入賓客
           </h3>
 
@@ -1183,7 +1183,7 @@ async function confirmImport() {
           <p class="text-overline uppercase text-gold-deep">
             Categories
           </p>
-          <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
             管理分類
           </h3>
           <p class="mb-5 mt-1 text-caption text-ink-300">

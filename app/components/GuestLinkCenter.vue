@@ -81,7 +81,7 @@ async function copyLink(entry: LinkEntry) {
         <p class="text-overline uppercase text-gold-deep">
           Link Center
         </p>
-        <h3 class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+        <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
           {{ guest?.name }} 的專屬連結
         </h3>
         <p class="mb-6 mt-1 text-caption text-ink-300">

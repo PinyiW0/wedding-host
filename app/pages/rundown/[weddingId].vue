@@ -129,7 +129,6 @@ function visibleTasks(item: RundownItemListItem): { name: string, task: string }
     </div>
     <EmptyState
       v-else
-      icon="i-heroicons-clock"
       title="尚無流程安排"
       :description="filterRoleName ? '此角色目前沒有參與的時段' : '新人尚未安排當天流程，請稍後再來'"
     />
