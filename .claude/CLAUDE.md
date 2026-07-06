@@ -88,6 +88,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 |------|------|----------|
 | 程式碼品質驗證 | [rules/code-quality.md](rules/code-quality.md) | 修改 app/、server/ 程式碼時 |
 | UI 實作規範 | [rules/ui-conventions.md](rules/ui-conventions.md) | 修改 pages/、components/、layouts/ 時 |
+| 視覺層級規範 | [rules/visual-hierarchy.md](rules/visual-hierarchy.md) | 修改 pages/、components/、layouts/ 時 |
 | UI 設定 | `spec/ui-config/ui-config.yaml` | UI 實作時讀取 |
 | Business Invariants | `spec/e2e-flows/*.flow.md` 開頭段 | Vibe UI 前必讀 |
 
