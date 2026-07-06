@@ -10,7 +10,7 @@
 | 區塊標題 | 頁內分區 | `text-overline uppercase text-gold-deep`（可配 `h-px bg-line` 分隔線） | 不限 |
 | Modal / Slideover 標題 | 覆蓋層標題 | `text-body-l font-semibold text-ink dark:text-paper`（**不用 font-display，不用 text-h2**） | — |
 | 卡片 / 項目標題 | 列表項、卡片 | `text-body font-medium` 或 `text-body-l font-semibold` | 不限 |
-| 空狀態 | EmptyState 元件 | `text-body text-ink-500`（元件內建，**無 icon、無大字**） | 最低層級 |
+| 空狀態 | EmptyState 元件 | `text-body text-ink-500`（元件內建，**無 icon、無大字、透明底**——背景一律跟頁面底色走，不自帶底色）；複雜多區塊 layout 加 `bordered`（虛線細框標出區塊邊界）；撐滿容器時外部傳 `class="flex-1"` | 最低層級 |
 
 ## 數值展示（非標題，不受上表限制）
 
