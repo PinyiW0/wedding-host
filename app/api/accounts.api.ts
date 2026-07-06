@@ -4,6 +4,7 @@ import type {
   CreateReceptionAccountBody,
   ReceptionAccountCreatedEvent,
   ReceptionAccountListItem,
+  UpdateReceptionAccountBody,
 } from '~/types/api/accounts'
 import { useHttp } from '~/composables/useHttp'
 
@@ -21,6 +22,13 @@ export function createReceptionAccount(weddingId: string, body: CreateReceptionA
   return useHttp().post<ReceptionAccountCreatedEvent>(
     '/api/v1/weddings/{weddingId}/reception-accounts',
     { pathParams: { weddingId }, body },
+  )
+}
+
+export function updateReceptionAccount(weddingId: string, accountId: string, body: UpdateReceptionAccountBody) {
+  return useHttp().patch<ReceptionAccountCreatedEvent>(
+    '/api/v1/weddings/{weddingId}/reception-accounts/{accountId}',
+    { pathParams: { weddingId, accountId }, body },
   )
 }
 

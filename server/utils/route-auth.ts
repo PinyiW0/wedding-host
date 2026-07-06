@@ -45,6 +45,10 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   if ((rest === 'auth/login' || rest === 'admins') && method === 'POST')
     return { kind: 'public' }
 
+  // 新人帳號管理（users CRUD）：管理者限定（issue #23，authMatrix 補「管理者限定」定義）
+  if (rest === 'users' || rest.startsWith('users/'))
+    return { kind: 'auth', weddingId: null, receptionist: false, adminOnly: true }
+
   const weddingMatch = rest.match(WEDDING_PATH_RE)
   if (!weddingMatch) {
     // weddings 列表／建立與其他未知路由：一律需登入管理端
