@@ -1667,8 +1667,11 @@ function guestMeta(g: GuestListItem): string {
         <div
           v-if="(tables ?? []).length === 0"
           data-testid="table-list-empty"
+          class="flex min-h-0 flex-1 flex-col"
         >
           <EmptyState
+            bordered
+            class="flex-1"
             title="目前沒有桌次"
             description="點擊右上「新增桌子」開始規劃座位"
           />
@@ -1885,7 +1888,14 @@ function guestMeta(g: GuestListItem): string {
         </p>
 
         <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
-        <div data-testid="vibe-seating-guest-list" class="min-h-0 flex-1 space-y-2 overflow-auto pr-1">
+        <div data-testid="vibe-seating-guest-list" class="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto pr-1">
+          <EmptyState
+            v-if="sidebarGuests.length === 0"
+            bordered
+            class="flex-1"
+            :title="seatedCount > 0 ? '賓客皆已排席' : '目前沒有賓客'"
+            :description="seatedCount > 0 ? '' : '請先於賓客管理新增賓客'"
+          />
           <div
             v-for="guest in sidebarGuests"
             :key="guest.guestId"

@@ -326,7 +326,7 @@ async function submitReject() {
 
     <div class="min-h-0 flex-1 overflow-auto">
       <div v-if="items.length === 0">
-        <EmptyState title="目前沒有祝福" description="賓客提交祝福後會顯示於此" />
+        <EmptyState bordered title="目前沒有祝福" description="賓客提交祝福後會顯示於此" />
       </div>
 
       <ul v-else class="space-y-4">

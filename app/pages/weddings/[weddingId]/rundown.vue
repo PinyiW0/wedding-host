@@ -856,6 +856,7 @@ function downloadRundownJpeg() {
         </div>
         <EmptyState
           v-else
+          bordered
           title="尚無流程安排"
           :description="roleFilter === ALL_ROLES
             ? '點「新增一列」建立，或用「帶入宴客段範本」快速起步'
