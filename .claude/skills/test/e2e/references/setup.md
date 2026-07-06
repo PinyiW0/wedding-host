@@ -30,11 +30,28 @@ npx playwright install chromium
 
 ### Step 2：確認 playwright.config.ts
 
-檢查 `playwright.config.ts` 是否存在。若不存在，建立：
+檢查 `playwright.config.ts` 是否存在。若不存在，建立。
+
+模板重點（測試環境隔離，issue #12）：
+- **per-worktree 確定性 port**：由 config 所在目錄 hash 出 3100–3499 的 port——同 worktree 每次同 port（`reuseExistingServer` 可安全重用），不同 worktree 不同 port（多 session 並行不互撞）。**不要寫死 port**
+- **`E2E_BASE_URL` 外部 server 模式**：存在時整個不掛 webServer（Docker gate 等外部環境直接打該 URL）
+- **本專案 webServer 走 `npm run dev`**（predev 自動拉 docker postgres），不可用 `npx nuxt dev`
+- **webServer.env 強制 `NUXT_PUBLIC_API_BASE=''`**：避免 `.env` 的絕對 URL 讓瀏覽器打錯 port（本專案 apiBase 是 ofetch baseURL、路徑自帶 /api 前綴，同源值為空字串）
 
 ```typescript
+import { createHash } from 'node:crypto'
+import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
+
+// === 測試環境隔離：per-worktree 確定性 port ===
+const worktreeRoot = path.dirname(fileURLToPath(import.meta.url))
+const portHash = createHash('md5').update(worktreeRoot).digest().readUInt16BE(0)
+const devPort = 3100 + (portHash % 400) // 3100–3499，避開 dev 慣用的 3000/3001
+
+// E2E_BASE_URL 存在（Docker gate / 外部 server 模式）→ 直接打該 URL，不啟本機 dev server
+const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${devPort}`
 
 export default defineConfig({
   testDir: './test/e2e/specs',
@@ -47,7 +64,7 @@ export default defineConfig({
     ['html', { open: 'never' }],
   ],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3001',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     locale: 'zh-TW',
@@ -60,12 +77,18 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npx nuxt dev --port 3001',
-    url: 'http://localhost:3001',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  // Docker gate 模式（E2E_BASE_URL）不掛 webServer，由外部 container 提供受測 server
+  ...(process.env.E2E_BASE_URL
+    ? {}
+    : {
+        webServer: {
+          command: `npm run dev -- --port ${devPort}`,
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+          env: { NUXT_AUTH_MODE: 'open', NUXT_PUBLIC_API_BASE: '' },
+        },
+      }),
 })
 ```
 
@@ -81,23 +104,27 @@ export default defineConfig({
 }
 ```
 
-### Step 4：建立 Mock Data Reset Endpoint
+### Step 4：建立 Reset Endpoint
 
-讓每個 spec 在 `test.beforeEach` 重設 mock 資料，確保測試獨立可執行。
+讓每個 spec 在 `test.beforeEach` 重設資料，確保測試獨立可執行。
+
+本專案（M0-b 之後）為真 DB 版：truncate 全表後回填 seed（mock 陣列為唯一 seed 源）。
 
 ```typescript
 // server/api/__test__/reset.post.ts
 import type { H3Event } from 'h3'
-import { resetMockData } from '~/server/mock/data'
+
+import { useDb } from '../../db'
+import { resetDb } from '../../db/seed'
 
 export default defineEventHandler(async (_event: H3Event) => {
-  resetMockData()
+  await resetDb(useDb())
   return { ok: true }
 })
 ```
 
-> 若 `server/mock/data/index.ts` 尚無 `resetMockData()`，需新增。
-> 此函式將所有 mock store 重設為初始值（深拷貝原始資料）。
+> enforced 模式（production 預設）下此端點被 auth middleware 直接 404；
+> e2e／Docker gate 以 `NUXT_AUTH_MODE=open` 執行，端點才可用。
 
 ### Step 5：建立 helpers
 

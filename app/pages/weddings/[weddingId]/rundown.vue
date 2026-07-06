@@ -324,19 +324,15 @@ async function onRoleSubmit(event: FormSubmitEvent<RoleSchema>) {
   }
 }
 
-// === 角色移除（確認彈窗；後端級聯清理各列 roleTasks）===
-const isRoleRemoveOpen = ref(false)
+// === 角色移除（膠囊上兩段式 inline 確認；後端級聯清理各列 roleTasks）===
+// 不用 ConfirmModal：modal（Reka Dialog）開啟時 body 其餘內容被設 aria-hidden，
+// 角色膠囊會從 accessibility tree 消失——外部觀察者（e2e 以 role 定位）會誤判
+// 「角色已移除」而在級聯完成前搶讀；inline 確認讓膠囊持續可見直到 refresh 完成
+const roleRemoveConfirmId = ref<string | null>(null)
 const isRoleRemoving = ref(false)
-const removeRoleTarget = ref<RundownRoleListItem | null>(null)
 
-function openRoleRemove(role: RundownRoleListItem) {
-  removeRoleTarget.value = role
-  isRoleRemoveOpen.value = true
-}
-
-async function confirmRoleRemove() {
-  const role = removeRoleTarget.value
-  if (!role || isRoleRemoving.value)
+async function confirmRoleRemove(role: RundownRoleListItem) {
+  if (isRoleRemoving.value)
     return
   isRoleRemoving.value = true
   try {
@@ -345,7 +341,6 @@ async function confirmRoleRemove() {
     // 若正篩選被移除的角色，回到全部
     if (roleFilter.value === role.roleId)
       roleFilter.value = ALL_ROLES
-    isRoleRemoveOpen.value = false
     // 後端已級聯清掉各項目的 roleTasks，items 要重抓
     await Promise.all([refreshRoles(), refreshItems()])
     // 草稿鏡射級聯：移除該角色欄的 entry；原本乾淨才整份重建對齊（dirty 時保留未儲存編輯）
@@ -361,6 +356,7 @@ async function confirmRoleRemove() {
   }
   finally {
     isRoleRemoving.value = false
+    roleRemoveConfirmId.value = null
   }
 }
 
@@ -593,22 +589,45 @@ function downloadRundownJpeg() {
             class="flex items-center gap-1 rounded-full border border-line bg-white py-1 pl-4 pr-1.5 dark:border-neutral-800 dark:bg-neutral-900"
           >
             <span class="mr-1 text-body font-medium text-ink dark:text-paper">{{ role.name }}</span>
-            <UButton
-              icon="i-heroicons-pencil-square"
-              color="neutral"
-              variant="ghost"
-              size="xs"
-              :aria-label="`編輯 ${role.name}`"
-              @click="openRoleEdit(role)"
-            />
-            <UButton
-              icon="i-heroicons-trash"
-              color="error"
-              variant="ghost"
-              size="xs"
-              :aria-label="`移除 ${role.name}`"
-              @click="openRoleRemove(role)"
-            />
+            <!-- 兩段式移除：點垃圾桶後就地變成「確認移除／取消」，全程不離開畫面 -->
+            <template v-if="roleRemoveConfirmId === role.roleId">
+              <UButton
+                color="error"
+                variant="solid"
+                size="xs"
+                :loading="isRoleRemoving"
+                @click="confirmRoleRemove(role)"
+              >
+                確認移除
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :disabled="isRoleRemoving"
+                @click="roleRemoveConfirmId = null"
+              >
+                取消
+              </UButton>
+            </template>
+            <template v-else>
+              <UButton
+                icon="i-heroicons-pencil-square"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :aria-label="`編輯 ${role.name}`"
+                @click="openRoleEdit(role)"
+              />
+              <UButton
+                icon="i-heroicons-trash"
+                color="error"
+                variant="ghost"
+                size="xs"
+                :aria-label="`移除 ${role.name}`"
+                @click="roleRemoveConfirmId = role.roleId"
+              />
+            </template>
           </div>
         </div>
         <p v-else class="text-body text-ink-300">
@@ -986,16 +1005,5 @@ function downloadRundownJpeg() {
         </div>
       </template>
     </UModal>
-
-    <!-- 角色移除確認 -->
-    <ConfirmModal
-      v-model:open="isRoleRemoveOpen"
-      title="確認移除角色"
-      :description="`確定要移除角色「${removeRoleTarget?.name ?? ''}」嗎？各時段中此角色的個別事項將一併清除。`"
-      confirm-label="移除"
-      confirm-color="error"
-      :loading="isRoleRemoving"
-      @confirm="confirmRoleRemove"
-    />
   </div>
 </template>
