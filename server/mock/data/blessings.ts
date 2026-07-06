@@ -6,7 +6,9 @@ import type { BlessingStatus, BlessingWallStatus } from '../../../app/types/api/
 export interface MockBlessing {
   blessingId: string
   weddingId: string
-  guestId: string
+  // 專屬連結提交＝賓客 id；共用 QR 提交＝null（姓名在 guestName）
+  guestId: string | null
+  guestName: string | null
   message: string
   photoUrl: string | null
   status: BlessingStatus
@@ -16,7 +18,7 @@ export interface MockBlessing {
 }
 
 export const mockBlessings: MockBlessing[] = [
-  { blessingId: 'blessing-001', weddingId: 'wedding-001', guestId: 'guest-001', message: '祝福新人百年好合！', photoUrl: null, status: 'submitted', rejectReason: null },
-  { blessingId: 'blessing-002', weddingId: 'wedding-001', guestId: 'guest-002', message: '永浴愛河，白頭偕老！', photoUrl: null, status: 'submitted', rejectReason: null },
-  { blessingId: 'blessing-003', weddingId: 'wedding-001', guestId: 'guest-003', message: '早生貴子，幸福美滿！', photoUrl: null, status: 'submitted', rejectReason: null },
+  { blessingId: 'blessing-001', weddingId: 'wedding-001', guestId: 'guest-001', guestName: null, message: '祝福新人百年好合！', photoUrl: null, status: 'submitted', rejectReason: null },
+  { blessingId: 'blessing-002', weddingId: 'wedding-001', guestId: 'guest-002', guestName: null, message: '永浴愛河，白頭偕老！', photoUrl: null, status: 'submitted', rejectReason: null },
+  { blessingId: 'blessing-003', weddingId: 'wedding-001', guestId: 'guest-003', guestName: null, message: '早生貴子，幸福美滿！', photoUrl: null, status: 'submitted', rejectReason: null },
 ]

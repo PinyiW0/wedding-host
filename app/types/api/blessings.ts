@@ -7,7 +7,9 @@ export type BlessingWallStatus = 'pending_wall' | 'on_wall'
 export interface BlessingListItem {
   blessingId: string
   weddingId: string
-  guestId: string
+  // 專屬連結提交＝賓客 id；共用 QR 提交＝null（姓名在 guestName）
+  guestId: string | null
+  guestName: string | null
   message: string
   photoUrl: string | null
   status: BlessingStatus
@@ -21,15 +23,18 @@ export interface BlessingProjectedEvent {
   wallStatus: BlessingWallStatus
 }
 
+// 提交身分二擇一：專屬連結帶 guestId；共用 QR（現場立牌）帶賓客自填的 guestName
 export interface SubmitBlessingBody {
-  guestId: string
+  guestId?: string
+  guestName?: string
   message: string
   photoUrl?: string
 }
 
 export interface BlessingSubmittedEvent {
   blessingId: string
-  guestId: string
+  guestId: string | null
+  guestName: string | null
   message: string
   photoUrl: string | null
 }
