@@ -1,10 +1,12 @@
 #!/usr/bin/env sh
 # Pre-push gate: 跑 gate config（主 spec + vibe spec，與 /vibe-check 同一套）
-# 約 3 分鐘。specs/ 紅燈 = 破壞 Business Invariant（修 UI 不可改 spec）；
+# Docker 可用 → 以 production image 隔離跑（多 session 並行 push 不互撞，且驗的是 build 產物）；
+# Docker 不可用 → fallback 本機 dev server（per-worktree port，仍有隔離）。
+# specs/ 紅燈 = 破壞 Business Invariant（修 UI 不可改 spec）；
 # vibe/ 紅燈 = vibe 層行為壞了（修 UI 或更新/刪該 vibe spec 皆合法）。
 #
 # 最佳化：若本次 push 的 commit「只動到非程式碼檔」（.env*／docs／docker 設定等），
-# 這些變更不會影響被測程式邏輯，因此跳過測試，不必空等 2 分鐘。
+# 這些變更不會影響被測程式邏輯，因此跳過測試，不必空等。
 # 保守原則：只要有任何一個程式碼檔被改到，就照常跑全套測試。
 
 z40="0000000000000000000000000000000000000000"
@@ -13,7 +15,8 @@ z40="0000000000000000000000000000000000000000"
 #   .env*／*.md／docker 設定／*.txt 等純設定，以及 .husky/ 下的 git hook 本身
 #   （E2E 守的是 UI 業務合約，git hook 邏輯不歸它守，故改 hook 不必跑 E2E）
 #   docs/ 整個目錄為純文件（含 .json metadata sidecar 等），不影響被測程式
-SKIP_PATTERN='(^|/)\.env($|\.)|\.md$|^docker-compose\.ya?ml$|^Dockerfile$|^\.dockerignore$|^\.gitignore$|^LICENSE$|\.txt$|(^|/)\.husky/|(^|/)docs/'
+#   scripts/docker-gate.sh 是 gate 基礎設施本身，同 .husky/ 邏輯
+SKIP_PATTERN='(^|/)\.env($|\.)|\.md$|^docker-compose\.ya?ml$|^Dockerfile$|^\.dockerignore$|^\.gitignore$|^LICENSE$|\.txt$|(^|/)\.husky/|(^|/)docs/|^scripts/docker-gate\.sh$'
 
 need_test=0
 
@@ -43,33 +46,29 @@ if [ "$need_test" -eq 0 ]; then
   exit 0
 fi
 
-# 模板初始階段可能還沒任何 gate 測試檔（SDD 流程尚未產出 spec）。
-# Playwright 對「No tests found」會回非 0，會誤擋 push；
-# 故先確認 gate 範圍內（specs/、vibe/，排除 vibe/unstable/）有測試檔，
-# 沒有則印警告並視為通過 —— 等之後產出 spec，gate 才真正生效。
-# 注意：目錄不存在時 find 回非 0，sh -e 會觸發 errexit，故加 || true（同上方 grep）
-gate_specs=$(find test/e2e/specs test/e2e/vibe -name '*.spec.ts' -not -path '*/vibe/unstable/*' 2>/dev/null || true)
-if [ -z "$gate_specs" ]; then
-  echo "⚠️  尚無 gate 測試檔（test/e2e/specs｜vibe/*.spec.ts）→ 跳過 gate spec。"
-  echo "   （SDD 流程產出 spec 後，此 gate 才會真正守。）"
-  exit 0
+# Gate 執行策略：
+#   Docker 可用 → scripts/docker-gate.sh：production image 隔離跑（ephemeral port + DB，並行 push 不互撞）
+#   Docker 不可用 → fallback 本機 dev server（per-worktree port 已根治誤連問題），大聲警告
+# 注意：husky 以 sh -e 執行本檔，用 `|| gate_status=$?` 接住失敗才能印出下方分流指引
+gate_status=0
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  echo "🔍 Running gate spec（Docker production build）…"
+  sh scripts/docker-gate.sh || gate_status=$?
+else
+  echo "⚠️  Docker 不可用（未安裝或 daemon 未啟動）→ fallback 本機 dev server 跑 gate。"
+  echo "   本機模式驗的是 dev build 而非 production build；建議啟動 Docker 後再 push。"
+  npx playwright test --config playwright.gate.config.ts || gate_status=$?
 fi
 
-# 清掉測試專用 port 3100 的殘留程序（前次測試被中斷沒殺乾淨時，
-# reuseExistingServer: false 會因 port 被占而 fail-fast，先清保平安）
-lsof -ti:3100 2>/dev/null | xargs kill 2>/dev/null || true
-
-echo "🔍 Running gate spec（主 spec + vibe spec）…"
-npx playwright test --config playwright.gate.config.ts
-
-if [ $? -ne 0 ]; then
+if [ "$gate_status" -ne 0 ]; then
   echo ""
   echo "❌ Gate spec failed. 依失敗的 spec 路徑分流："
   echo "   → test/e2e/specs/ 紅燈 = 破壞 Business Invariant。"
   echo "     不可改 spec。請對照 spec/e2e-flows/*.flow.md 找出違反的 invariant，修 UI。"
   echo "   → test/e2e/vibe/ 紅燈 = vibe 層行為壞了。"
   echo "     修 UI，或更新/刪除該 vibe spec（vibe 層不凍結），時序敏感可搬 vibe/unstable/。"
-  echo "   → 緊急情況可用 --no-verify 跳過（不推薦，CLAUDE.md 政策禁止）。"
+  echo "   → gate 已全綠但 push 因 SSH timeout 中斷時，可 --no-verify 重推（驗證已完成非跳過）。"
+  echo "   → 其他情況勿用 --no-verify（CLAUDE.md 政策禁止）。"
   exit 1
 fi
 
