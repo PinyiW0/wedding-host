@@ -26,6 +26,7 @@ export {
   removeCakeBoxExclusion,
   updateCakeBoxType,
 } from './cakebox.api'
+export { getDashboardStats } from './dashboard.api'
 export { listFlowers } from './flowers.api'
 export {
   createGiftItem,

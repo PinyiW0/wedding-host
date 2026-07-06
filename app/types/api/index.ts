@@ -29,6 +29,9 @@ export type {
   UpdateCakeBoxTypeBody,
 } from './cakebox'
 export type {
+  DashboardStats,
+} from './dashboard'
+export type {
   BindGuestLineBody,
   CreateGuestBody,
   GuestCreatedEvent,

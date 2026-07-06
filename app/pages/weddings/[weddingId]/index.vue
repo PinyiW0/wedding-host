@@ -7,7 +7,7 @@ import type {
 } from '~/types/api/weddings'
 
 import { z } from 'zod'
-import { getWedding, updateWedding } from '~/api'
+import { getDashboardStats, getWedding, updateWedding } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
@@ -18,6 +18,44 @@ const { uploadImage } = useImageUpload()
 
 // 婚禮詳情（含 mapLink / parkingInfo / transportInfo，GET 已回傳完整欄位）
 const { data: wedding, refresh } = await getWedding(weddingId)
+
+// === 儀表板統計（issue #11：出席率／報到進度／禮金／待確認數）===
+const { data: dashboardStats } = await getDashboardStats(weddingId)
+
+const statCards = computed(() => {
+  const s = dashboardStats.value
+  if (!s)
+    return []
+  const rsvpHints = [`不出席 ${s.rsvp.declined}・待回覆 ${s.rsvp.pending} 組`]
+  if (s.pendingReviewCount > 0)
+    rsvpHints.push(`待審核 ${s.pendingReviewCount} 位`)
+  return [
+    {
+      key: 'attendance',
+      label: '出席人數',
+      value: String(s.attendance.headcount),
+      hint: `大人 ${s.attendance.adults}・小孩 ${s.attendance.children}・素食 ${s.attendance.vegetarian} 組`,
+    },
+    {
+      key: 'rsvp',
+      label: '出席回覆',
+      value: `${s.rsvp.attending}/${s.rsvp.totalGroups} 組`,
+      hint: rsvpHints.join('・'),
+    },
+    {
+      key: 'checkin',
+      label: '報到進度',
+      value: `${s.checkIn.checkedIn}/${s.checkIn.expected} 組`,
+      hint: '已報到／預期出席',
+    },
+    {
+      key: 'gift',
+      label: '禮金累計',
+      value: `NT$ ${s.giftMoney.totalAmount.toLocaleString()}`,
+      hint: `已登記 ${s.giftMoney.recordCount} 筆`,
+    },
+  ]
+})
 
 // === 編輯婚禮資訊 ===
 const schema = z.object({
@@ -151,6 +189,29 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto">
+      <!-- 籌備統計總覽（儀表板；dashboard-stats 聚合端點，樣式對齊賓客頁 stats bar） -->
+      <div
+        data-testid="vibe-dashboard-stats"
+        class="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4 dark:border-neutral-800 dark:bg-neutral-800"
+      >
+        <div
+          v-for="card in statCards"
+          :key="card.key"
+          :data-testid="`vibe-dashboard-${card.key}`"
+          class="bg-white px-5 py-4 dark:bg-neutral-900"
+        >
+          <p class="text-caption text-ink-500 dark:text-neutral-400">
+            {{ card.label }}
+          </p>
+          <p class="mt-1 font-display text-h2 font-semibold leading-none text-ink dark:text-paper">
+            {{ card.value }}
+          </p>
+          <p class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
+            {{ card.hint }}
+          </p>
+        </div>
+      </div>
+
       <div
         class="rounded-lg border border-line bg-white p-6 sm:p-8 dark:border-neutral-800 dark:bg-neutral-900"
       >
