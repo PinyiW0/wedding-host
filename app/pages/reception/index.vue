@@ -33,6 +33,17 @@ definePageMeta({ layout: 'default' })
 
 const route = useRoute()
 const toast = useToast()
+// 禮金彙總屬對帳視角：僅管理者／新人可見，現場共用接待帳號不顯示入口
+const authStore = useAuthStore()
+
+// 頂列身分膠囊：顯示實際登入身分（原為寫死「接待 · 共用帳號」，管理者／新人登入時會誤導）
+const identityLabel = computed(() => {
+  if (authStore.isCouple)
+    return '新人 · 婚禮主'
+  if (authStore.isAdmin)
+    return '主辦 · 管理員'
+  return '接待 · 共用帳號'
+})
 // SSR：loadSeats 於 setup 多個 await 後才迴圈呼叫 getTableSeats（內部用 useHttp→useRuntimeConfig），
 // 需於 await 前取得 nuxtApp，迴圈內以 runWithContext 保留 Nuxt context
 const nuxtApp = useNuxtApp()
@@ -131,6 +142,10 @@ const checkInRate = computed(() => {
 })
 
 // === 報到 ===
+// 報到成功後的大字桌次回饋（issue #25）：賓客報到完第一句話是「我坐哪桌」，
+// 單筆與批量共用；下一次報到覆蓋，不用計時器（避免時序敏感測試）
+const lastCheckIns = ref<{ name: string, table: string }[]>([])
+
 const checkingInId = ref<string | null>(null)
 async function checkIn(guest: GuestListItem) {
   if (checkingInId.value)
@@ -139,6 +154,7 @@ async function checkIn(guest: GuestListItem) {
   try {
     await checkInGuest(weddingId.value, guest.guestId)
     ensureStatus(guest.guestId).checkedIn = true
+    lastCheckIns.value = [{ name: guest.name, table: guestTable(guest) }]
     toast.add({ title: `${guest.name} 報到成功`, color: 'success' })
   }
   catch (error: any) {
@@ -149,6 +165,93 @@ async function checkIn(guest: GuestListItem) {
     checkingInId.value = null
   }
 }
+
+// === 批量報到（多選模式，issue #25）===
+// 尖峰時段同行多組一次完成；沿用單筆 check-in 端點逐筆呼叫，不動凍結合約
+const batchMode = ref(false)
+const selectedIds = ref(new Set<string>())
+const isBatchChecking = ref(false)
+
+// 可勾選對象：目前篩選結果中尚未報到者
+const selectableGuests = computed(() =>
+  filteredGuests.value.filter(g => !status[g.guestId]?.checkedIn),
+)
+
+function toggleBatchMode() {
+  batchMode.value = !batchMode.value
+  selectedIds.value = new Set()
+}
+
+function toggleSelect(guestId: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(guestId))
+    next.delete(guestId)
+  else
+    next.add(guestId)
+  selectedIds.value = next
+}
+
+function selectAllFiltered() {
+  selectedIds.value = new Set(selectableGuests.value.map(g => g.guestId))
+}
+
+async function batchCheckIn() {
+  if (isBatchChecking.value || selectedIds.value.size === 0)
+    return
+  isBatchChecking.value = true
+  const targets = selectableGuests.value.filter(g => selectedIds.value.has(g.guestId))
+  try {
+    const results = await Promise.allSettled(
+      targets.map(g => checkInGuest(weddingId.value, g.guestId)),
+    )
+    const succeeded: GuestListItem[] = []
+    const failedNames: string[] = []
+    results.forEach((r, i) => {
+      const guest = targets[i]!
+      if (r.status === 'fulfilled') {
+        ensureStatus(guest.guestId).checkedIn = true
+        succeeded.push(guest)
+      }
+      else {
+        failedNames.push(guest.name)
+      }
+    })
+    if (succeeded.length) {
+      lastCheckIns.value = succeeded.map(g => ({ name: g.name, table: guestTable(g) }))
+      toast.add({ title: `已報到 ${succeeded.length} 組`, color: 'success' })
+    }
+    if (failedNames.length) {
+      toast.add({ title: `報到失敗 ${failedNames.length} 組`, description: failedNames.join('、'), color: 'error' })
+    }
+    batchMode.value = false
+    selectedIds.value = new Set()
+  }
+  finally {
+    isBatchChecking.value = false
+  }
+}
+
+// === 禮金彙總（issue #25）===
+// 宴後對帳視圖：由賓客清單 × 接待狀態衍生，零新端點
+const isGiftSummaryOpen = ref(false)
+
+const giftRecords = computed(() =>
+  activeGuests.value
+    .map(g => ({ guest: g, amount: status[g.guestId]?.giftAmount ?? null }))
+    .filter((r): r is { guest: GuestListItem, amount: number } => r.amount != null),
+)
+const giftTotal = computed(() => giftRecords.value.reduce((sum, r) => sum + r.amount, 0))
+const giftBySide = computed(() => {
+  const summary = {
+    groom: { amount: 0, count: 0 },
+    bride: { amount: 0, count: 0 },
+  }
+  for (const r of giftRecords.value) {
+    summary[r.guest.side].amount += r.amount
+    summary[r.guest.side].count++
+  }
+  return summary
+})
 
 // === 禮金登記 / 更正 ===
 const isGiftOpen = ref(false)
@@ -276,7 +379,7 @@ onMounted(() => {
   pollTimer = setInterval(() => {
     if (document.visibilityState !== 'visible')
       return
-    if (checkingInId.value || isGiftSubmitting.value || isCakeSubmitting.value || quickDistributingId.value)
+    if (checkingInId.value || isBatchChecking.value || isGiftSubmitting.value || isCakeSubmitting.value || quickDistributingId.value)
       return
     Promise.all([
       refreshGuests(),
@@ -586,21 +689,49 @@ async function submitCake() {
             <span class="text-caption font-medium text-gold-deep">報到率 {{ checkInRate }}%</span>
           </div>
         </div>
-        <span class="rounded-full border border-line px-4 py-2 text-caption uppercase tracking-wider text-gold-deep dark:border-neutral-700">
-          接待 · 共用帳號
+        <span class="whitespace-nowrap rounded-full border border-line px-4 py-2 text-caption uppercase tracking-wider text-gold-deep dark:border-neutral-700">
+          {{ identityLabel }}
         </span>
       </div>
     </div>
 
-    <!-- 兩欄：左 報到（窄） / 右 現場桌次圖（寬） -->
-    <div class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+    <!-- 兩欄：左 報到（窄） / 右 現場桌次圖（寬）
+         手機（<lg）：上下堆疊、頁面自然增高跟著 main 捲動（鎖高會把兩欄壓扁互疊）；
+         lg 以上：鎖滿版高、兩欄各自內部捲動 -->
+    <div class="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
       <!-- 左欄：報到搜尋 + 結果（較寬） -->
-      <div class="flex min-h-0 flex-1 flex-col">
+      <div class="flex flex-col lg:min-h-0 lg:flex-1">
         <!-- 報到搜尋標題 -->
-        <div class="mb-3 shrink-0">
+        <div class="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
           <h2 class="font-display text-xl font-semibold leading-none text-ink dark:text-paper">
             請輸入賓客姓名
           </h2>
+          <!-- 手機滿寬均分、44px 觸控目標；lg 恢復原尺寸 -->
+          <div class="flex w-full items-center gap-2 lg:w-auto">
+            <UButton
+              v-if="authStore.isAdmin || authStore.isCouple"
+              data-testid="vibe-gift-summary-open"
+              icon="i-heroicons-banknotes"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              class="h-11 flex-1 justify-center lg:h-auto lg:flex-none"
+              @click="isGiftSummaryOpen = true"
+            >
+              禮金彙總
+            </UButton>
+            <UButton
+              data-testid="vibe-batch-toggle"
+              :icon="batchMode ? 'i-heroicons-x-mark' : 'i-heroicons-check-circle'"
+              :color="batchMode ? 'neutral' : 'primary'"
+              :variant="batchMode ? 'outline' : 'solid'"
+              size="sm"
+              class="h-11 flex-1 justify-center lg:h-auto lg:flex-none"
+              @click="toggleBatchMode"
+            >
+              {{ batchMode ? '取消多選' : '多選報到' }}
+            </UButton>
+          </div>
         </div>
 
         <!-- 搜尋框：白底、墨黑粗框、金色游標感 -->
@@ -620,8 +751,74 @@ async function submitCake() {
           </p>
         </div>
 
-        <!-- 結果卡片列表；flex-1 讓空狀態撐滿 -->
-        <div data-testid="reception-list" class="flex min-h-0 flex-1 flex-col space-y-3 overflow-auto">
+        <!-- 批量報到工具列（多選模式限定） -->
+        <div
+          v-if="batchMode"
+          data-testid="vibe-batch-toolbar"
+          class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900"
+        >
+          <span class="text-body text-ink-500 dark:text-neutral-400">
+            已選 <span class="font-semibold text-ink dark:text-paper">{{ selectedIds.size }}</span> 組
+          </span>
+          <!-- 手機滿寬均分、44px 觸控目標；lg 恢復原尺寸 -->
+          <div class="flex w-full items-center gap-2 lg:w-auto">
+            <UButton
+              data-testid="vibe-batch-select-all"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              class="h-11 flex-1 justify-center lg:h-auto lg:flex-none"
+              :disabled="selectableGuests.length === 0"
+              @click="selectAllFiltered"
+            >
+              全選未報到
+            </UButton>
+            <UButton
+              data-testid="vibe-batch-checkin"
+              color="primary"
+              size="sm"
+              class="h-11 flex-1 justify-center lg:h-auto lg:flex-none"
+              :disabled="selectedIds.size === 0"
+              :loading="isBatchChecking"
+              @click="batchCheckIn"
+            >
+              報到 {{ selectedIds.size }} 組
+            </UButton>
+          </div>
+        </div>
+
+        <!-- 報到完成大字桌次回饋：賓客一問「我坐哪桌」即答；下一次報到覆蓋 -->
+        <div
+          v-if="lastCheckIns.length"
+          data-testid="vibe-checkin-table-banner"
+          class="mb-4 shrink-0 rounded-lg border border-gold bg-gold-light/20 px-5 py-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-overline uppercase text-gold-deep">
+                報到完成 · 桌次
+              </p>
+              <p
+                v-for="entry in lastCheckIns"
+                :key="entry.name"
+                class="mt-1 truncate font-display text-2xl font-semibold text-ink dark:text-paper"
+              >
+                {{ entry.name }}<span class="mx-2 font-normal text-ink-300">—</span>{{ entry.table }}
+              </p>
+            </div>
+            <UButton
+              icon="i-heroicons-x-mark"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              aria-label="關閉桌次提示"
+              @click="lastCheckIns = []"
+            />
+          </div>
+        </div>
+
+        <!-- 結果卡片列表；lg 鎖高內捲、flex-1 讓空狀態撐滿 -->
+        <div data-testid="reception-list" class="flex flex-col space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-auto">
           <div
             v-for="guest in filteredGuests"
             :key="guest.guestId"
@@ -633,6 +830,16 @@ async function submitCake() {
           >
             <!-- 身分 + 報到狀態 -->
             <div class="flex items-start gap-4">
+              <!-- 多選模式：未報到者顯示勾選框 -->
+              <UCheckbox
+                v-if="batchMode && !status[guest.guestId]?.checkedIn"
+                :model-value="selectedIds.has(guest.guestId)"
+                :data-testid="`vibe-batch-tick-${guest.guestId}`"
+                :aria-label="`選取 ${guest.name}`"
+                size="lg"
+                class="mt-3"
+                @update:model-value="toggleSelect(guest.guestId)"
+              />
               <span class="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold-light/40 font-display text-xl font-semibold text-gold-deep">
                 {{ guest.name.charAt(0) }}
               </span>
@@ -690,6 +897,7 @@ async function submitCake() {
                   color="neutral"
                   variant="outline"
                   size="sm"
+                  class="h-11 lg:h-auto"
                   @click="openGift(guest)"
                 >
                   {{ status[guest.guestId]?.giftAmount != null ? '更正' : '登記禮金' }}
@@ -721,6 +929,7 @@ async function submitCake() {
                     color="neutral"
                     variant="outline"
                     size="sm"
+                    class="h-11 lg:h-auto"
                     @click="openCake(guest)"
                   >
                     發放喜餅
@@ -734,6 +943,7 @@ async function submitCake() {
                 :data-testid="`reception-checkin-${guest.guestId}`"
                 color="primary"
                 size="lg"
+                class="h-11 lg:h-auto"
                 :loading="checkingInId === guest.guestId"
                 :aria-label="`報到 ${guest.name}`"
                 @click="checkIn(guest)"
@@ -754,7 +964,7 @@ async function submitCake() {
       </div>
 
       <!-- 右欄：現場桌次圖（接待人員比照；可現場新增賓客 / 新增桌次） -->
-      <div class="flex min-h-0 flex-col lg:w-[520px] lg:shrink-0">
+      <div class="flex flex-col lg:min-h-0 lg:w-[520px] lg:shrink-0">
         <div class="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div>
             <h2 class="font-display text-xl font-semibold leading-none text-ink dark:text-paper">
@@ -1233,5 +1443,100 @@ async function submitCake() {
         </div>
       </template>
     </UModal>
+
+    <!-- 禮金彙總（宴後對帳）：總額 / 筆數 / 依側小計 / 逐筆清單 -->
+    <USlideover v-model:open="isGiftSummaryOpen">
+      <template #content>
+        <div data-testid="vibe-gift-summary" class="flex h-full flex-col bg-paper p-6 dark:bg-neutral-900">
+          <div class="flex shrink-0 items-start justify-between gap-3">
+            <div>
+              <p class="text-overline uppercase text-gold-deep">
+                Gift Money Summary
+              </p>
+              <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
+                禮金彙總
+              </h3>
+            </div>
+            <UButton
+              icon="i-heroicons-x-mark"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              aria-label="關閉禮金彙總"
+              @click="isGiftSummaryOpen = false"
+            />
+          </div>
+
+          <!-- 總額大數字（數值展示，非標題） -->
+          <div class="mt-5 shrink-0 rounded-lg border border-line bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
+            <p class="text-caption uppercase tracking-wider text-ink-300">
+              禮金總額
+            </p>
+            <p data-testid="vibe-gift-summary-total" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+              NT$ {{ giftTotal.toLocaleString('en-US') }}
+            </p>
+            <p data-testid="vibe-gift-summary-count" class="mt-1 text-body text-ink-500 dark:text-neutral-400">
+              共 {{ giftRecords.length }} 筆
+            </p>
+          </div>
+
+          <!-- 男方 / 女方小計 -->
+          <div class="mt-3 grid shrink-0 grid-cols-2 gap-3">
+            <div data-testid="vibe-gift-summary-groom" class="rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+              <p class="text-caption uppercase tracking-wider text-ink-300">
+                男方
+              </p>
+              <p class="mt-1 font-display text-xl font-semibold text-ink dark:text-paper">
+                NT$ {{ giftBySide.groom.amount.toLocaleString('en-US') }}
+              </p>
+              <p class="text-caption text-ink-500 dark:text-neutral-400">
+                {{ giftBySide.groom.count }} 筆
+              </p>
+            </div>
+            <div data-testid="vibe-gift-summary-bride" class="rounded-lg border border-line bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+              <p class="text-caption uppercase tracking-wider text-ink-300">
+                女方
+              </p>
+              <p class="mt-1 font-display text-xl font-semibold text-ink dark:text-paper">
+                NT$ {{ giftBySide.bride.amount.toLocaleString('en-US') }}
+              </p>
+              <p class="text-caption text-ink-500 dark:text-neutral-400">
+                {{ giftBySide.bride.count }} 筆
+              </p>
+            </div>
+          </div>
+
+          <!-- 逐筆清單 -->
+          <p class="text-overline mb-2 mt-5 shrink-0 uppercase text-gold-deep">
+            逐筆明細
+          </p>
+          <div data-testid="vibe-gift-summary-list" class="flex min-h-0 flex-1 flex-col overflow-auto">
+            <div
+              v-for="record in giftRecords"
+              :key="record.guest.guestId"
+              role="article"
+              :aria-label="record.guest.name"
+              class="flex items-center justify-between gap-3 border-b border-line/60 py-2.5 last:border-0 dark:border-neutral-800"
+            >
+              <div class="min-w-0 flex-1">
+                <span class="text-body font-medium text-ink dark:text-paper">{{ record.guest.name }}</span>
+                <span class="ml-2 text-caption text-ink-500 dark:text-neutral-400">{{ sideLabel(record.guest.side) }}</span>
+              </div>
+              <span class="shrink-0 font-display text-body-l font-semibold text-ink dark:text-paper">
+                NT$ {{ record.amount.toLocaleString('en-US') }}
+              </span>
+            </div>
+
+            <EmptyState
+              v-if="giftRecords.length === 0"
+              bordered
+              class="flex-1"
+              title="尚未登記任何禮金"
+              description="於賓客卡片點「登記禮金」後會列於此"
+            />
+          </div>
+        </div>
+      </template>
+    </USlideover>
   </div>
 </template>
