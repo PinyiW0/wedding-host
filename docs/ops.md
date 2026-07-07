@@ -1,0 +1,48 @@
+# 營運手冊（issue #26）
+
+正式站：<https://everafter-iota.vercel.app>（Vercel Hobby，region hnd1）
+資料庫：Neon Free（Singapore，autoscaling 鎖 0.25CU）｜圖片：Cloudflare R2 bucket `wedding-host`
+
+---
+
+## 錯誤監控（Sentry）
+
+DSN 未設定時 Sentry 完全停用（本機 dev / e2e 零影響），設定後自動啟用：
+
+| 環境變數 | 作用 | 設定位置 |
+|---|---|---|
+| `NUXT_PUBLIC_SENTRY_DSN` | 前端（瀏覽器）錯誤上報 | Vercel → Settings → Environment Variables |
+| `SENTRY_DSN` | 後端（Nitro server）錯誤上報 | 同上（兩個都填同一組 DSN 即可） |
+
+- 建立專案：Sentry 免費方案 → Create Project → 選 Nuxt → 複製 DSN
+- **DSN 必須在 build 前設定**（模組依環境變數條件載入，避免拖慢本機 dev／e2e）；設好後重新部署才生效
+- Source maps 上傳（讓 stack trace 還原原始碼）目前未啟用；要開啟時在 `nuxt.config.ts` 補 `sentry: { org, project, authToken }` 並設 `SENTRY_AUTH_TOKEN`
+- 已知限制：Vercel serverless 上後端自動 instrumentation 有限，後端錯誤以 Nitro 層捕捉為主；前端上報不受影響
+
+## 健康檢查與外部監測
+
+- 公開端點：`GET /api/v1/health` → 正常 `200 { status: 'ok', db: true }`；DB 連不上 `503 { status: 'degraded', db: false }`
+- 建議用 [UptimeRobot](https://uptimerobot.com)（免費 50 個 monitor、5 分鐘間隔）監測 `https://everafter-iota.vercel.app/api/v1/health`，關鍵字告警設 `"status":"ok"`
+- 婚禮當天前一晚手動打一次確認綠燈
+
+## 管理員密碼救援
+
+唯一管理員忘記密碼時（`/register` 在正式環境已收斂，系統有管理員後需管理員登入才能再建）：
+
+```bash
+# 需要 Neon direct（非 pooled）連線字串，放本機 .env 的 NUXT_DATABASE_URL
+npm run db:create-admin
+```
+
+互動式輸入帳號密碼（scrypt 雜湊與 server 同格式）。同 email 已存在時視腳本提示處理；新人／接待帳號的密碼重設走管理端 UI 即可（`/users`、婚禮內「帳號設定」）。
+
+## 常見故障排查
+
+| 症狀 | 原因 | 處置 |
+|---|---|---|
+| push 到 main 後 Vercel 沒部署 | import 時 clone 出副本 repo，push 不觸發 auto-deploy | Vercel → Settings → Git 重連正牌 repo（檢查部署來源 commit 是否在本 repo） |
+| 按 Redeploy 沒帶到新程式碼 | Redeploy 是重部署「該筆」的舊 build | 對最新 main 的 deployment 操作，或 push 空 commit 觸發 |
+| 上線後 API 全 500 | secrets 環境變數缺漏或 `.env` 留空值覆蓋預設（如 `NUXT_JWT_SECRET=` 空字串） | 檢查 Vercel env：`NUXT_JWT_SECRET`／`NUXT_GUEST_LINK_SECRET`／`NUXT_DATABASE_URL`；`.env` 範本未填的 secret 必須註解掉不能留空值 |
+| DB 連線錯誤 | pooled / direct 用途混用 | runtime 用 Neon pooled URL；migration 與腳本（db:migrate、db:create-admin）用 direct URL |
+| 圖片上傳失敗 | R2 四項環境變數不全 | `NUXT_R2_*` 四項 + `NUXT_PUBLIC_R2_PUBLIC_URL` 全填才啟用 presigned 直傳，否則退回 dataURL |
+| 本機 push 卡 6 分鐘後失敗 | pre-push Docker gate 期間 SSH 閒置被 GitHub 斷線 | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |

@@ -29,9 +29,21 @@ export default defineNuxtConfig({
       // 統一 API domain，可由 NUXT_PUBLIC_API_BASE 覆蓋
       // 預設空字串：path_prefix（/api/v1）已內嵌在各 *.api.ts 的路徑字串中
       apiBase: '',
+      // Sentry 錯誤監控（issue #26）：NUXT_PUBLIC_SENTRY_DSN 有值＝啟用；留空＝完全停用（本機 dev / e2e）
+      sentry: {
+        dsn: '',
+      },
     },
   },
-  modules: ['@nuxt/ui', '@nuxt/eslint', '@pinia/nuxt', 'pinia-plugin-persistedstate/nuxt'],
+  // Sentry 模組條件載入（issue #26）：DSN 環境變數存在（正式 build）才掛——
+  // 模組本身的 build instrumentation 會把本機 dev / e2e gate 拖慢數倍，未啟用時不該付這成本
+  modules: [
+    '@nuxt/ui',
+    '@nuxt/eslint',
+    '@pinia/nuxt',
+    'pinia-plugin-persistedstate/nuxt',
+    ...(process.env.NUXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN ? ['@sentry/nuxt/module'] : []),
+  ],
   // 共用元件不加目錄前綴：app/components/common 下以原檔名 auto-import
   // （頁面以 <PageHeader>/<ConfirmModal>/<EmptyState> 直接引用，不需 Common 前綴）
   components: [{ path: '~/components', pathPrefix: false }],
