@@ -45,6 +45,10 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   if ((rest === 'auth/login' || rest === 'admins') && method === 'POST')
     return { kind: 'public' }
 
+  // 健康檢查（issue #26）：外部監測用，完全公開
+  if (rest === 'health' && method === 'GET')
+    return { kind: 'public' }
+
   // 新人帳號管理（users CRUD）：管理者限定（issue #23，authMatrix 補「管理者限定」定義）
   if (rest === 'users' || rest.startsWith('users/'))
     return { kind: 'auth', weddingId: null, receptionist: false, adminOnly: true }
