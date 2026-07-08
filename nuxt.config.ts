@@ -18,6 +18,11 @@ export default defineNuxtConfig({
     databaseUrl: 'postgresql://wedding:wedding@localhost:5433/wedding',
     // LINE Messaging API（M4 基礎建設：留空＝維持 mock 行為，填入後 batch-send 走真發送）
     lineChannelAccessToken: '',
+    // LINE Login OAuth（M4 賓客綁定）：ID + secret 留空＝bind 頁維持 mock 綁定
+    // redirectUri 未設定時以請求 origin 推導（本機開發），正式環境建議明確指定
+    lineLoginChannelId: '',
+    lineLoginChannelSecret: '',
+    lineLoginRedirectUri: '',
     // Cloudflare R2（issue #9）：四項全填＝啟用 presigned 直傳；留空＝圖片維持 dataURL 模式（本機 dev/e2e）
     r2Endpoint: '',
     r2AccessKeyId: '',
