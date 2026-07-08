@@ -33,6 +33,7 @@ const RECEPTION_GET = new Set([
 ])
 
 const GUEST_ACTION_RE = /^guests\/([^/]+)\/(?:rsvp|self-check-in|line-binding)$/
+const GUEST_LINE_LOGIN_RE = /^guests\/([^/]+)\/line-login$/ // OAuth 起手（GET）：同賓客專屬授權
 const THANK_YOU_PUBLIC_RE = /^thank-you-card\/public\/([^/]+)$/
 const RECEPTION_ACTION_RE = /^guests\/[^/]+\/(?:check-in|cake-box-distribution)$/
 const GIFT_MONEY_RE = /^guests\/[^/]+\/gift-money$/
@@ -64,7 +65,9 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   const sub = weddingMatch[2] ?? ''
 
   // 賓客專屬操作（簽名需含相符 guestId）
-  const guestAction = method === 'POST' ? sub.match(GUEST_ACTION_RE) : null
+  const guestAction = method === 'POST'
+    ? sub.match(GUEST_ACTION_RE)
+    : method === 'GET' ? sub.match(GUEST_LINE_LOGIN_RE) : null
   if (guestAction)
     return { kind: 'guest', weddingId, guestId: decodeURIComponent(guestAction[1]!) }
   const thankYouPublic = method === 'GET' ? sub.match(THANK_YOU_PUBLIC_RE) : null

@@ -111,6 +111,12 @@ export interface GuestsImportedEvent {
   importedCount: number
 }
 
+// OAuth 起手資訊：LINE Login 未設定（configured: false）時前端退回 mock 綁定
+export interface GuestLineLoginInfo {
+  configured: boolean
+  authorizeUrl: string | null
+}
+
 export interface BindGuestLineBody {
   lineUserId: string
 }
