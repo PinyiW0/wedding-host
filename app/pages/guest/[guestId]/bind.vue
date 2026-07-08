@@ -1,7 +1,7 @@
 <!-- app/pages/guest/[guestId]/bind.vue -->
 <script setup lang="ts">
 import type { BindGuestLineBody } from '~/types/api/guests'
-import { bindGuestLine } from '~/api'
+import { bindGuestLine, getGuestLineLogin } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -14,24 +14,42 @@ const isBinding = ref(false)
 const isBound = ref(false)
 const bindError = ref('')
 
+// OAuth callback 導回結果（server 驗完 state 與寫入後帶 bindResult 旗標回來）
+const CALLBACK_RESULT_MESSAGES: Record<string, string> = {
+  already: '已綁定 LINE',
+  cancelled: '已取消 LINE 授權，請再試一次',
+  failed: '綁定失敗，請稍後再試',
+}
+const callbackResult = String(route.query.bindResult ?? '')
+if (callbackResult === 'success')
+  isBound.value = true
+else if (CALLBACK_RESULT_MESSAGES[callbackResult])
+  bindError.value = CALLBACK_RESULT_MESSAGES[callbackResult]!
+
 async function bindLine() {
   if (isBinding.value || isBound.value)
     return
   isBinding.value = true
   bindError.value = ''
   try {
-    // 模擬完成 LINE 授權回傳的 lineUserId
+    // LINE Login 已設定：整頁導向 LINE 授權，後續由 callback 完成綁定並導回
+    const login = await getGuestLineLogin(weddingId.value, guestId.value)
+    if (login.authorizeUrl) {
+      window.location.href = login.authorizeUrl
+      return // 維持 loading 直到離開頁面
+    }
+
+    // 未設定（本機開發／e2e）：模擬完成 LINE 授權回傳的 lineUserId
     const body: BindGuestLineBody = {
       lineUserId: `line-u-${guestId.value}-${Date.now()}`,
     }
     await bindGuestLine(weddingId.value, guestId.value, body)
     isBound.value = true
+    isBinding.value = false
   }
   catch (error: any) {
     bindError.value
       = error?.data?.message || error?.statusMessage || '綁定失敗，請稍後再試'
-  }
-  finally {
     isBinding.value = false
   }
 }
