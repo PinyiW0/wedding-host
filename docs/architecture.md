@@ -2,7 +2,7 @@
 
 EverAfter 婚禮管理系統——一人 full-stack 的婚禮 SaaS。本文件描述**目前實際運行的系統架構**（以程式碼為準），開發流程（SDD）另見 `doc/frontend/frontend-workflow.md`，日常維運見 [ops.md](ops.md)。
 
-> 最後更新：2026-07-07。repo 名 `nuxt4-template` 為模板出身，產品名為 EverAfter。
+> 最後更新：2026-07-09。repo 名 `nuxt4-template` 為模板出身，產品名為 EverAfter。
 
 ---
 
@@ -19,15 +19,15 @@ Nuxt 4 單體（monolith）：前端 Vue SSR 與後端 Nitro API 同一個應用
 │                                                                 │
 │  app/（Vue 3 + NuxtUI）          server/（Nitro）                │
 │  ├─ pages/    後台·接待·公開·投影  ├─ middleware/auth.ts  統一授權  │
-│  ├─ api/      client API 包裝層   ├─ api/v1/**          103 支    │
+│  ├─ api/      client API 包裝層   ├─ api/v1/**          105 支    │
 │  ├─ types/api API 合約型別        │   route handler（務實 CRUD）   │
-│  └─ stores/   auth（persisted）   └─ db/ Drizzle schema（24 表）  │
+│  └─ stores/   auth（persisted）   └─ db/ Drizzle schema（25 表）  │
 └──────────┬──────────────┬──────────────┬──────────────┬─────────┘
            ▼              ▼              ▼              ▼
-     PostgreSQL      Cloudflare R2    LINE Messaging   Sentry
-     （Neon／本機      （圖片 presigned  （謝卡推播，       （錯誤監控，
-      docker 5433）    直傳，可退回      可退回 mock）     DSN 未設即停用）
-                       dataURL）
+     PostgreSQL      Cloudflare R2    LINE 平台         Sentry
+     （Neon／本機      （圖片 presigned  （謝卡 multicast   （錯誤監控，
+      docker 5433）    直傳，可退回      ＋Login 綁定，    DSN 未設即停用）
+                       dataURL）        可退回 mock）
 ```
 
 結構性主軸有兩條，理解它們就理解大半個系統：
@@ -129,7 +129,7 @@ setResponseStatus(201) / 回傳 XxxEvent
 
 ### 4.2 路由組織與授權
 
-- 一律 `/api/v1/` 前綴，Nitro file-based routing（`*.get.ts` / `*.post.ts`…），共 103 支 handler。POST 兼作動作端點（`check-in`、`approve`、`merge`），PUT 用於整批覆寫設定。
+- 一律 `/api/v1/` 前綴，Nitro file-based routing（`*.get.ts` / `*.post.ts`…），共 105 支 handler。POST 兼作動作端點（`check-in`、`approve`、`merge`），PUT 用於整批覆寫設定。唯一例外：`/api/line-login/callback` 刻意放在 v1 之外——OAuth callback 需向 LINE console 登錄固定 URL，不隨 API 版本演進。
 - `server/middleware/auth.ts` 統一把關，流程：
   1. `classifyRoute()`（`server/utils/route-auth.ts`）將路由分類為 `public / share / guest / auth`
   2. 解析 Bearer token → 回查 `users` 或 `reception_accounts`（已刪帳號視為無效）
@@ -155,7 +155,8 @@ setResponseStatus(201) / 回傳 XxxEvent
 | `jwt.ts` | `jose` HS256，payload `{ userId(sub), role, weddingId }`，預設 7d |
 | `password.ts` | Node 內建 scrypt，格式 `scrypt$<salt>$<hash>`，零外部依賴 |
 | `r2.ts` | R2 presigned PUT（10 分鐘），`isR2Configured()` 未設退 dataURL |
-| `line.ts` | LINE Messaging API 推播，未設 token 回 false 維持 mock 行為 |
+| `line.ts` | LINE Messaging API：單推＋multicast 群發（≤500/批、去重、過濾非真實 userId 格式）＋當月推播額度查詢；未設 token 維持 mock 行為 |
+| `line-login.ts` | LINE Login OAuth（賓客綁定）：authorize URL、state HMAC 簽名（綁 weddingId＋guestId、10 分鐘時效防 CSRF）、code 換 token 取 userId；未設 channel ID/secret 時 bind 頁維持 mock 綁定 |
 | `auth.ts` | `getRequestUser()`、`assertWeddingAccess()`（handler 內二次確認） |
 | `couple-account.ts` | 婚禮綁定新人帳號的存在／占用檢查 |
 
@@ -167,7 +168,7 @@ setResponseStatus(201) / 回傳 XxxEvent
 
 ## 5. 資料層
 
-### 5.1 Schema 設計原則（`server/db/schema.ts`，24 張表）
+### 5.1 Schema 設計原則（`server/db/schema.ts`，25 張表）
 
 務實派取捨，全部為了與既有 mock/API 合約無縫銜接：
 
@@ -188,7 +189,7 @@ setResponseStatus(201) / 回傳 XxxEvent
 | 喜餅 | `cake_box_types`、`cake_box_assignments`、`cake_box_exclusions`、`cake_box_extra_orders` |
 | 禮品/祝福 | `gift_items`、`blessings` |
 | 流程 | `rundown_roles`、`rundown_items` |
-| 設定/整合 | `rsvp_form_configs`、`line_oas`、`thank_you_templates`、`thank_you_customizations`、`projection_settings` |
+| 設定/整合 | `rsvp_form_configs`、`line_oas`、`thank_you_templates`、`thank_you_customizations`、`thank_you_batch_sends`（謝卡群發紀錄：成敗人數、sentAt、sentBy）、`projection_settings` |
 
 ### 5.2 連線與 migration
 
@@ -207,7 +208,7 @@ setResponseStatus(201) / 回傳 XxxEvent
 | 層 | 目錄 | 性質 |
 |----|------|------|
 | 主 spec（凍結合約） | `test/e2e/specs/`（19 檔，`00-auth` ~ `18-invitations`） | SSOT，不得修改；業務合約定義於對應 `spec/e2e-flows/*.flow.md` 的 Business Invariants |
-| vibe spec | `test/e2e/vibe/`（21 檔：interaction / persistence / structure） | 不凍結，刪改由使用者決定；時序敏感者隔離到 `vibe/unstable/`（不進守門，目前為空） |
+| vibe spec | `test/e2e/vibe/`（25 檔：interaction / persistence / structure） | 不凍結，刪改由使用者決定；時序敏感者隔離到 `vibe/unstable/`（不進守門，目前為空） |
 
 ### 6.2 三份 Playwright config
 
@@ -260,6 +261,8 @@ app/pages（為通過 spec 而建）
 | `NUXT_JWT_SECRET`、`NUXT_GUEST_LINK_SECRET` | JWT／賓客簽名 | 上線必填；**不可留空字串**（會覆蓋預設） |
 | `NUXT_DATABASE_URL` | Postgres 連線 | 預設本機 docker（localhost:5433） |
 | `NUXT_LINE_CHANNEL_ACCESS_TOKEN` | LINE 推播 | 留空＝mock 行為 |
+| `NUXT_LINE_LOGIN_CHANNEL_ID`、`NUXT_LINE_LOGIN_CHANNEL_SECRET` | LINE Login OAuth（賓客綁定） | 留空＝bind 頁維持 mock 綁定 |
+| `NUXT_LINE_LOGIN_REDIRECT_URI` | OAuth callback 網址（LINE console 需登錄一致） | 未設＝以請求 origin 推導（本機用）；正式環境建議明確指定 |
 | `NUXT_R2_*` 四項＋`NUXT_PUBLIC_R2_PUBLIC_URL` | 圖片 presigned 直傳 | 不全＝dataURL 模式 |
 | `NUXT_PUBLIC_SENTRY_DSN`、`SENTRY_DSN` | 前／後端錯誤上報 | 留空＝Sentry 完全停用（連模組都不載入） |
 | `NUXT_PUBLIC_API_BASE` | API base | 預設空字串（`/api/v1` 內嵌在 client 層） |
