@@ -144,6 +144,15 @@ gh pr view --web                   # 開瀏覽器
 ```
 
 - 使用者透過 `$ARGUMENTS` 指定了 reviewer / label 才加 `--reviewer <人>` / `--label <標籤>`（預設不帶；label 須 repo 已存在）。
+- **不預設 Copilot 做 code review**：絕不主動帶 `--reviewer` 指派 Copilot。建 PR 後檢查是否被 GitHub 帳號層級設定自動掛上 Copilot review request，有就移除：
+
+  ```
+  gh pr view --json number,reviewRequests   # reviewRequests 出現 login 含 copilot 者 → 移除
+  gh api -X DELETE "repos/{owner}/{repo}/pulls/<PR編號>/requested_reviewers" \
+    -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+  ```
+
+  > 此設定不在 repo 內（skills / workflows / rulesets 皆無），源頭是 GitHub 帳號層級的「Automatic Copilot code review」；要根治請到 github.com/settings/copilot 關閉，本步驟為 repo 端防禦。
 
 ### 7. 收尾
 
