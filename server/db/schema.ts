@@ -259,6 +259,16 @@ export const thankYouCustomizations = pgTable('thank_you_customizations', {
   customContent: text().notNull(),
 }, t => [primaryKey({ columns: [t.weddingId, t.guestId] })])
 
+// 謝卡群發紀錄（M4 額度追蹤）：僅真發送落檔，成敗人數與操作者可回溯
+export const thankYouBatchSends = pgTable('thank_you_batch_sends', {
+  seq: integer().generatedByDefaultAsIdentity(),
+  weddingId: text().notNull(),
+  successCount: integer().notNull(),
+  failedCount: integer().notNull(),
+  sentAt: text().notNull(),
+  sentBy: text().notNull(),
+}, t => [index().on(t.weddingId)])
+
 export const projectionSettings = pgTable('projection_settings', {
   weddingId: text().primaryKey(),
   mediaType: text().$type<ProjectionMediaType>().notNull(),

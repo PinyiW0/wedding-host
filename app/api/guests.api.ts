@@ -7,6 +7,7 @@ import type {
   GuestCategoryRenamedEvent,
   GuestCreatedEvent,
   GuestLineBoundEvent,
+  GuestLineLoginInfo,
   GuestListItem,
   GuestRestoredEvent,
   GuestsImportedEvent,
@@ -62,6 +63,14 @@ export function importGuests(weddingId: string, body: ImportGuestsBody) {
   return useHttp().post<GuestsImportedEvent>(
     '/api/v1/weddings/{weddingId}/guests/import',
     { pathParams: { weddingId }, body },
+  )
+}
+
+// OAuth 起手：點擊「綁定 LINE」時抓一次，有 authorizeUrl 即整頁導向 LINE 授權
+export function getGuestLineLogin(weddingId: string, guestId: string) {
+  return useHttp().getOnce<GuestLineLoginInfo>(
+    '/api/v1/weddings/{weddingId}/guests/{guestId}/line-login',
+    { pathParams: { weddingId, guestId } },
   )
 }
 

@@ -39,6 +39,7 @@ export {
   bindGuestLine,
   createGuest,
   deleteGuest,
+  getGuestLineLogin,
   importGuests,
   listGuestCategories,
   listGuests,

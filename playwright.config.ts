@@ -57,7 +57,15 @@ export default defineConfig({
           // 凍結 spec 以裸 URL／無 token 直打 API，需 open 模式的簽名不強制與預設管理員 fallback
           // NUXT_PUBLIC_API_BASE 強制同源相對路徑：.env 若設了絕對 URL（固定 port）會讓瀏覽器打錯 server
           // （本專案 apiBase 是 ofetch baseURL、路徑自帶 /api 前綴，同源值為空字串而非 '/api'）
-          env: { NUXT_AUTH_MODE: 'open', NUXT_PUBLIC_API_BASE: '' },
+          // LINE 三項強制清空：開發者 .env 填了真金鑰時，e2e 仍須維持 mock
+          // （batch-send 不真發送、bind 頁不導向 LINE 授權）
+          env: {
+            NUXT_AUTH_MODE: 'open',
+            NUXT_PUBLIC_API_BASE: '',
+            NUXT_LINE_CHANNEL_ACCESS_TOKEN: '',
+            NUXT_LINE_LOGIN_CHANNEL_ID: '',
+            NUXT_LINE_LOGIN_CHANNEL_SECRET: '',
+          },
         },
       }),
 })
