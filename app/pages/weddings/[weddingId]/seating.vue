@@ -1769,7 +1769,7 @@ function guestMeta(g: GuestListItem): string {
                     draggable="true"
                     :data-testid="`${table.tableId}-seat-${slot.seatNumber}`"
                     :aria-label="`取消座位 ${slot.occupant.name}`"
-                    class="group/seat absolute z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 text-center text-[10px] font-medium leading-none shadow-sm transition-transform hover:z-50 hover:scale-110 active:cursor-grabbing"
+                    class="group/seat absolute z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 text-center text-micro font-medium leading-none shadow-sm transition-transform hover:z-50 hover:scale-110 active:cursor-grabbing"
                     :class="occupantColorClass(slot.occupant)"
                     :style="{ left: slot.pos.left, top: slot.pos.top }"
                     @click="openUnseat(table.tableId, slot.occupant.guestId)"
@@ -1781,7 +1781,7 @@ function guestMeta(g: GuestListItem): string {
                     <span class="line-clamp-2 px-0.5">{{ slot.occupant.label }}</span>
                     <!-- hover 提示：哪一方 · 關係 · 葷素（即時可見，取代不穩定的原生 title） -->
                     <span
-                      class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-[11px] font-normal leading-none text-paper shadow-lg group-hover/seat:block dark:bg-neutral-700"
+                      class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-caption font-normal leading-none text-paper shadow-lg group-hover/seat:block dark:bg-neutral-700"
                     >
                       {{ occupantMeta(slot.occupant.guestId) }}
                     </span>

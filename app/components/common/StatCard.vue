@@ -32,7 +32,7 @@ withDefaults(
     <div class="mt-3 flex items-baseline gap-1.5">
       <span
         class="font-display font-semibold leading-none"
-        :class="feature ? 'text-[64px] text-cream' : 'text-h1 text-ink dark:text-paper'"
+        :class="feature ? 'text-display-l text-cream' : 'text-h1 text-ink dark:text-paper'"
       >
         {{ value }}
       </span>

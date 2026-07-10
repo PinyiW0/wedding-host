@@ -469,7 +469,7 @@ function onSubmit() {
               />
               <output
                 data-testid="rsvp-plus-one-display"
-                class="w-14 text-center font-display text-5xl font-semibold tabular-nums leading-none text-ink"
+                class="w-14 text-center font-display text-h1 font-semibold tabular-nums leading-none text-ink"
               >{{ plusOneCount }}</output>
               <input
                 v-model.number="plusOneCount"
@@ -515,7 +515,7 @@ function onSubmit() {
               />
               <output
                 data-testid="rsvp-child-seat-display"
-                class="w-14 text-center font-display text-5xl font-semibold tabular-nums leading-none text-ink"
+                class="w-14 text-center font-display text-h1 font-semibold tabular-nums leading-none text-ink"
               >{{ childChairCount }}</output>
               <input
                 v-model.number="childChairCount"
@@ -583,7 +583,7 @@ function onSubmit() {
               />
               <output
                 data-testid="rsvp-shuttle-count"
-                class="w-14 text-center font-display text-5xl font-semibold tabular-nums leading-none text-ink"
+                class="w-14 text-center font-display text-h1 font-semibold tabular-nums leading-none text-ink"
               >{{ shuttleCount }}</output>
               <UButton
                 icon="i-heroicons-plus"
