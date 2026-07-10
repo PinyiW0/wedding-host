@@ -57,7 +57,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 - **vibe 完 commit 前必跑** `npx playwright test --config playwright.gate.config.ts`（綠燈 = vibe 安全，pre-push 跑同一份）
 - vibe spec（`test/e2e/vibe/`）不凍結，但刪改去留是使用者的決定——紅燈時列選項詢問，不可擅自刪改
 
-可以自由改：顏色、間距、字體、icon、layout、按鈕位置與形式（toolbar / icon-only / menu）、modal vs inline form、列表呈現（table / card / list）、折疊、動畫、新增 testid（建議 `vibe-*` 前綴）、新增頁面與互動。
+可以自由改：顏色、間距、字體、icon、layout、按鈕位置與形式（toolbar / icon-only / menu）、modal vs inline form、列表呈現（table / card / list）、折疊、動畫、新增 testid（建議 `vibe-*` 前綴）、新增頁面與互動。字級與按鈕尺寸預設值見 `.claude/rules/visual-hierarchy.md`——使用者未明確指示改動時維持預設。使用者要求「好看一點」「有質感」「換風格」時，先讀 `spec/ui-config/creative-direction.md` 確認風格方向再動手；加動畫時遵守其 §4 動效規範。
 
 如果你發現非破壞合約無法達成 vibe 目標，**停下來問使用者**，不要擅自改主 spec。
 
@@ -89,6 +89,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | 程式碼品質驗證 | [rules/code-quality.md](rules/code-quality.md) | 修改 app/、server/ 程式碼時 |
 | UI 實作規範 | [rules/ui-conventions.md](rules/ui-conventions.md) | 修改 pages/、components/、layouts/ 時 |
 | 視覺層級規範 | [rules/visual-hierarchy.md](rules/visual-hierarchy.md) | 修改 pages/、components/、layouts/ 時 |
+| 創意方向 | `spec/ui-config/creative-direction.md` | vibe 要求質感/風格/動畫、實作賓客公開頁時讀取 |
 | UI 設定 | `spec/ui-config/ui-config.yaml` | UI 實作時讀取 |
 | Business Invariants | `spec/e2e-flows/*.flow.md` 開頭段 | Vibe UI 前必讀 |
 
