@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* 手寫體：辰宇落雁體 2.0 Thin（SIL OFL 開源；賓客謝卡信箋用） */
+@font-face {
+  font-family: "ChenYuluoyan";
+  src: url("/fonts/ChenYuluoyan-Thin.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
 /* Tailwind v4 preflight 將 button cursor 設為 default，覆蓋回 pointer */
 @layer base {
   button, [role="button"] {
@@ -147,6 +155,15 @@
   --color-gold-deep: #9A7B43;
   --color-gold-light: #D8C39B;
 
+  /* 暗玫瑰（低飽和）：謝卡手寫文字用，避免鮮艷 rose 刺眼 */
+  --color-rose-ink: #A9737F;
+
+  /* 暖咖啡：信封手寫收件人 */
+  --color-coffee: #8A6A55;
+
+  /* 手寫字體家族（謝卡信箋） */
+  --font-hand: "ChenYuluoyan", "Noto Sans TC", cursive;
+
   /* ── 字體家族 ── */
   --font-display: "Cormorant", ui-serif, Georgia, serif;
   --font-sans: "Inter", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
@@ -171,6 +188,8 @@
   --text-overline--letter-spacing: 0.28em;
   --text-caption: 12px;
   --text-caption--line-height: 1.5;
+  --text-micro: 10px; /* 高密度視覺化標記（座位圓點等），內文禁用 */
+  --text-micro--line-height: 1.1;
 
   /* ── 圓角（編輯式偏小） ── */
   --radius-sm: 2px;
@@ -182,4 +201,50 @@
   --shadow-sm: 0 1px 2px rgba(17, 17, 17, 0.05);
   --shadow: 0 8px 30px rgba(17, 17, 17, 0.07);
   --shadow-lg: 0 20px 50px rgba(17, 17, 17, 0.1);
+}
+
+/* 全域 reduced-motion guard（a11y 恆定層，任何 preset／頁面不得繞過） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important; /* 不歸零則 stagger 進場在 reduce 模式逐個閃現 */
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* motion token（動效恆定層——creative-direction.md §4 硬原則強制引用） */
+@theme static {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+
+/* 精品喜帖工藝層（issue #34：公開賓客頁的質感語彙） */
+@layer components {
+  /* 紙紋：兩層極淡金暈，模擬手工紙——只給紋理，底色仍由 bg-* utility 決定 */
+  .craft-paper {
+    background-image:
+      radial-gradient(ellipse at 22% 12%, rgba(184, 150, 90, 0.06), transparent 52%),
+      radial-gradient(ellipse at 82% 90%, rgba(184, 150, 90, 0.05), transparent 46%);
+  }
+  /* 四角 L 形飾角（貼齊同 inset 的細線框四角使用；色由 text-* 的 currentColor 決定，預設金） */
+  .craft-corners {
+    color: var(--color-gold);
+    background-image:
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor),
+      linear-gradient(currentColor, currentColor);
+    background-repeat: no-repeat;
+    background-size: 14px 1.5px, 1.5px 14px, 14px 1.5px, 1.5px 14px, 14px 1.5px, 1.5px 14px, 14px 1.5px, 1.5px 14px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+  }
 }
