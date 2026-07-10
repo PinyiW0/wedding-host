@@ -9,7 +9,7 @@ import type {
 } from '~/types/api/rsvp'
 import { deleteGuest, getRsvpFormConfig, getWedding, listGuests, markInvitationSent, overrideRsvp, updateGuest } from '~/api'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
-import { createZip, dataUrlToBytes } from '~/utils/zip'
+import { createZip, dataUrlExt, dataUrlToBytes } from '~/utils/zip'
 
 definePageMeta({ layout: 'default' })
 
@@ -114,7 +114,7 @@ function downloadFlower(guest: GuestListItem) {
     return
   const a = document.createElement('a')
   a.href = guest.flowerDrawing
-  a.download = `flower-${guest.name}.png`
+  a.download = `flower-${guest.name}.${dataUrlExt(guest.flowerDrawing)}`
   a.click()
 }
 
@@ -127,9 +127,10 @@ const guestsWithFlower = computed(() =>
 function downloadAllFlowers() {
   const seen = new Set<string>()
   const entries = guestsWithFlower.value.map((g) => {
-    let name = `${g.name}.png`
+    const ext = dataUrlExt(g.flowerDrawing!)
+    let name = `${g.name}.${ext}`
     if (seen.has(name))
-      name = `${g.name}-${g.guestId}.png`
+      name = `${g.name}-${g.guestId}.${ext}`
     seen.add(name)
     return { name, data: dataUrlToBytes(g.flowerDrawing!) }
   })

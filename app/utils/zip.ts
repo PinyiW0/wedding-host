@@ -107,12 +107,27 @@ export function createZip(entries: ZipEntry[]): Blob {
   return new Blob([out.buffer], { type: 'application/zip' })
 }
 
-/** dataURL（base64）轉 Uint8Array */
+/** dataURL 轉 Uint8Array（支援 base64 與 percent-encoded 文字兩種編碼） */
 export function dataUrlToBytes(dataUrl: string): Uint8Array {
-  const base64 = dataUrl.split(',')[1] ?? ''
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++)
-    bytes[i] = binary.charCodeAt(i)
-  return bytes
+  const comma = dataUrl.indexOf(',')
+  const meta = dataUrl.slice(0, comma)
+  const payload = dataUrl.slice(comma + 1)
+  if (meta.includes(';base64')) {
+    const binary = atob(payload)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++)
+      bytes[i] = binary.charCodeAt(i)
+    return bytes
+  }
+  return new TextEncoder().encode(decodeURIComponent(payload))
+}
+
+const DATA_URL_MIME_RE = /^data:image\/(\w+)/
+
+/** 由 dataURL 的 mime 推導副檔名（canvas 手繪為 png；向量來源為 svg） */
+export function dataUrlExt(dataUrl: string): string {
+  if (dataUrl.startsWith('data:image/svg'))
+    return 'svg'
+  const m = dataUrl.match(DATA_URL_MIME_RE)
+  return m?.[1] ?? 'png'
 }
