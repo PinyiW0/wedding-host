@@ -5,7 +5,7 @@
 
 ## Background
 - 賓客在 RSVP 時可畫下手繪小花（存 flowerDrawing）
-- 花田 landing 公開呈現該婚禮所有非空手繪小花 + 賓客名
+- 花田 landing 公開呈現該婚禮所有非空手繪小花（賓客名不公開顯示——產品決策 2026-07-10，識別由圖片 alt 承擔）
 - 同一元件 FlowerField 亦用於謝卡裝飾（取樣少量、非互動）
 
 ---
@@ -28,11 +28,11 @@
 
 ### E2E 驗證流程
 1. 進入 `/flowers/wedding-001`
-2. 花田顯示所有手繪小花與賓客名
+2. 花田顯示所有手繪小花（不顯示賓客名）
 
 ### Verification 策略
 - API spy / 直接查詢：`GET .../weddings/wedding-001/flowers`，回應含 guestId=guest-003 / name=王志強 / 非空 flowerDrawing
-- UI：花田元件渲染（賓客名 / 花朵圖可見）
+- UI：花田元件渲染（花朵圖可見；賓客識別由 alt 承擔）
 
 ### 不再凍結
 - 花朵散佈方式、密度、互動（hover 放大 / 顯示名）、landing 視覺

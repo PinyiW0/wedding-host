@@ -24,9 +24,8 @@ test.describe('祝福花田（Guest 端，公開）', () => {
 
     test('花田 landing 顯示賓客的手繪小花', async ({ page }) => {
       await page.goto('/flowers/wedding-001', { waitUntil: 'networkidle' })
-      // 花田元件渲染、賓客名可見
+      // 花田元件渲染；賓客名不公開顯示（產品決策 2026-07-10，issue #34），識別由 alt 承擔
       await expect(page.getByTestId('flower-field')).toBeVisible()
-      await expect(page.getByText('王志強')).toBeVisible()
       await expect(page.getByAltText(/王志強.*手繪小花/)).toBeVisible()
     })
   })
