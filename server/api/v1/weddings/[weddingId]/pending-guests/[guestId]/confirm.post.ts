@@ -9,9 +9,11 @@ import { guests } from '../../../../../../db/schema'
 // 建為新賓客：將待確認賓客轉為正式名單
 export default defineEventHandler(async (event: H3Event): Promise<PendingGuestConfirmedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
 
   const db = useDb()
   const [pending] = await db.select().from(guests).where(and(
+    eq(guests.weddingId, weddingId),
     eq(guests.guestId, guestId),
     eq(guests.status, 'pending_review'),
     isNull(guests.deletedAt),

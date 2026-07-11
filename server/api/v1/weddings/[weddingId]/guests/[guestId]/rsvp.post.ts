@@ -8,10 +8,12 @@ import { guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<SubmitRsvpBody>(event)
+  assertValidRsvpInput(body)
 
   const db = useDb()
-  const [guest] = await db.select().from(guests).where(and(eq(guests.guestId, guestId), isNull(guests.deletedAt)))
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

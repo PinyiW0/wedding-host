@@ -1,17 +1,18 @@
 import type { H3Event } from 'h3'
 import type { BindGuestLineBody, GuestLineBoundEvent } from '../../../../../../../app/types/api/guests'
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
 import { guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestLineBoundEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<BindGuestLineBody>(event)
 
   const db = useDb()
-  const [guest] = await db.select().from(guests).where(eq(guests.guestId, guestId))
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

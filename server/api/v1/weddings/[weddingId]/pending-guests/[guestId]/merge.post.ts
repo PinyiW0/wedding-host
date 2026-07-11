@@ -9,10 +9,12 @@ import { guests } from '../../../../../../db/schema'
 // 併入既有賓客：把待確認回覆套到指定正式賓客，待確認筆移除
 export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMergedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<MergePendingGuestBody>(event)
 
   const db = useDb()
   const [pending] = await db.select().from(guests).where(and(
+    eq(guests.weddingId, weddingId),
     eq(guests.guestId, guestId),
     eq(guests.status, 'pending_review'),
     isNull(guests.deletedAt),
@@ -21,6 +23,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
     throw createError({ statusCode: 404, statusMessage: '待確認賓客不存在' })
   }
   const [target] = await db.select().from(guests).where(and(
+    eq(guests.weddingId, weddingId),
     eq(guests.guestId, body.targetGuestId),
     or(isNull(guests.status), ne(guests.status, 'pending_review')),
     isNull(guests.deletedAt),
