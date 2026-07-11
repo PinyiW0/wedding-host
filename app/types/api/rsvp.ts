@@ -3,7 +3,7 @@
 export type RsvpChannel = 'line' | 'email'
 export type AttendingStatus = 'attending' | 'declined' | 'absent'
 
-// 與新人的關係：groom = 振茗的親友、bride = 品儀的親友
+// 與新人的關係：groom = 新郎方親友、bride = 新娘方親友
 export type GuestRelationship = 'groom' | 'bride'
 // 喜帖需求：電子 / 實體 / 不需要
 export type InvitationPreference = 'e-card' | 'physical' | 'none'
