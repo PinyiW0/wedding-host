@@ -126,7 +126,34 @@ function tablePos(table: TableListItem): { x: number, y: number } {
   return localPos.value[table.tableId] ?? { x: table.positionX, y: table.positionY }
 }
 
-// 畫布尺寸：依最遠的桌位與標記推算，確保可容納並可捲動
+// === 舞台呈現（依 venueLayout 定位與尺寸；未設定時 fallback 置頂置中膠囊）===
+const localStagePos = ref<{ x: number, y: number } | null>(null)
+const isMovingStage = ref(false)
+let stageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
+const stageBox = computed(() => {
+  const layout = venueLayout.value
+  if (!layout)
+    return null
+  const pos = localStagePos.value ?? { x: layout.stagePositionX, y: layout.stagePositionY }
+  return { x: pos.x, y: pos.y, width: layout.stageWidth, height: layout.stageHeight }
+})
+
+// === 場地參考圖底圖（顯示寬度上限 1200 等比縮放；載入後 canvasSize 需納入其範圍）===
+const refImageUrl = computed(() => venueLayout.value?.referenceImageUrl ?? null)
+const refImageDims = ref<{ width: number, height: number } | null>(null)
+watch(refImageUrl, (url) => {
+  refImageDims.value = null
+  if (!url || import.meta.server)
+    return
+  const img = new Image()
+  img.onload = () => {
+    const w = Math.min(img.naturalWidth, 1200)
+    refImageDims.value = { width: w, height: Math.round(img.naturalHeight * (w / img.naturalWidth)) }
+  }
+  img.src = url
+}, { immediate: true })
+
+// 畫布尺寸：依最遠的桌位、標記、舞台與參考圖推算，確保可容納並可捲動
 const canvasSize = computed(() => {
   const BLOCK = 290
   const PAD = 48
@@ -141,6 +168,15 @@ const canvasSize = computed(() => {
     const p = markerPos(m)
     maxX = Math.max(maxX, p.x + m.width)
     maxY = Math.max(maxY, p.y + m.height)
+  }
+  const stage = stageBox.value
+  if (stage) {
+    maxX = Math.max(maxX, stage.x + stage.width)
+    maxY = Math.max(maxY, stage.y + stage.height)
+  }
+  if (refImageDims.value) {
+    maxX = Math.max(maxX, refImageDims.value.width)
+    maxY = Math.max(maxY, refImageDims.value.height)
   }
   return { width: Math.max(640, maxX + PAD), height: Math.max(420, maxY + PAD) }
 })
@@ -338,12 +374,63 @@ async function removeMarker() {
   }
 }
 
+// === 舞台拖曳（比照桌位／標記 pointer-drag；放開送 PUT venue-layout 持久化）===
+function onStagePointerDown(event: PointerEvent) {
+  if (event.button !== 0 || !stageBox.value)
+    return
+  isMovingStage.value = true
+  stageDragStart = { px: event.clientX, py: event.clientY, ox: stageBox.value.x, oy: stageBox.value.y }
+  window.addEventListener('pointermove', onStagePointerMove)
+  window.addEventListener('pointerup', onStagePointerUp, { once: true })
+  event.preventDefault()
+}
+function onStagePointerMove(event: PointerEvent) {
+  if (!isMovingStage.value)
+    return
+  localStagePos.value = {
+    x: Math.max(0, Math.round(stageDragStart.ox + (event.clientX - stageDragStart.px))),
+    y: Math.max(0, Math.round(stageDragStart.oy + (event.clientY - stageDragStart.py))),
+  }
+}
+async function onStagePointerUp() {
+  window.removeEventListener('pointermove', onStagePointerMove)
+  if (!isMovingStage.value)
+    return
+  isMovingStage.value = false
+  const layout = venueLayout.value
+  const pos = localStagePos.value
+  if (!layout || !pos)
+    return
+  if (pos.x === layout.stagePositionX && pos.y === layout.stagePositionY) {
+    localStagePos.value = null
+    return
+  }
+  try {
+    await configureVenueLayout(weddingId.value, {
+      stageWidth: layout.stageWidth,
+      stageHeight: layout.stageHeight,
+      stagePositionX: pos.x,
+      stagePositionY: pos.y,
+    })
+    await refreshVenue()
+    localStagePos.value = null
+    toast.add({ title: '舞台位置已更新', color: 'success', duration: 1200 })
+  }
+  catch (error: any) {
+    localStagePos.value = null
+    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
+    toast.add({ title: '移動失敗', description: message, color: 'error' })
+  }
+}
+
 // 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onTablePointerMove)
   window.removeEventListener('pointerup', onTablePointerUp)
   window.removeEventListener('pointermove', onMarkerPointerMove)
   window.removeEventListener('pointerup', onMarkerPointerUp)
+  window.removeEventListener('pointermove', onStagePointerMove)
+  window.removeEventListener('pointerup', onStagePointerUp)
 })
 
 // 環繞圓桌的座位座標（百分比，從正上方順時針排列）。
@@ -1167,6 +1254,8 @@ const tableSchema = z.object({
   capacity: z.number().int().min(1, '座位數至少 1'),
   positionX: z.number().int(),
   positionY: z.number().int(),
+  // 批次新增桌數（僅新增模式使用；編輯模式固定 1）
+  count: z.number().int().min(1, '至少 1 桌').max(20, '一次最多 20 桌'),
 })
 type TableSchema = z.output<typeof tableSchema>
 
@@ -1179,6 +1268,7 @@ const tableState = reactive<TableSchema>({
   capacity: 10,
   positionX: 0,
   positionY: 0,
+  count: 1,
 })
 
 function openCreateTable() {
@@ -1188,6 +1278,7 @@ function openCreateTable() {
   tableState.capacity = 10
   tableState.positionX = 0
   tableState.positionY = 0
+  tableState.count = 1
   isTableFormOpen.value = true
 }
 
@@ -1198,6 +1289,7 @@ function openEditTable(table: TableListItem) {
   tableState.capacity = table.capacity
   tableState.positionX = table.positionX
   tableState.positionY = table.positionY
+  tableState.count = 1
   isTableFormOpen.value = true
 }
 
@@ -1218,7 +1310,7 @@ async function onTableSubmit(event: FormSubmitEvent<TableSchema>) {
       await updateTable(weddingId.value, editingTableId.value, body)
       toast.add({ title: '桌次已更新', color: 'success' })
     }
-    else {
+    else if (data.count <= 1) {
       const body: CreateTableBody = {
         tableName: data.tableName,
         capacity: data.capacity,
@@ -1227,6 +1319,19 @@ async function onTableSubmit(event: FormSubmitEvent<TableSchema>) {
       }
       await createTable(weddingId.value, body)
       toast.add({ title: '桌次新增成功', color: 'success' })
+    }
+    else {
+      // 批次新增：名稱加流水號、位置以 3 欄格狀階梯展開（避免全疊在同一點）
+      for (let i = 0; i < data.count; i++) {
+        const body: CreateTableBody = {
+          tableName: `${data.tableName}${i + 1}`,
+          capacity: data.capacity,
+          positionX: data.positionX + (i % 3) * 200,
+          positionY: data.positionY + Math.floor(i / 3) * 310,
+        }
+        await createTable(weddingId.value, body)
+      }
+      toast.add({ title: `已新增 ${data.count} 桌`, color: 'success' })
     }
     isTableFormOpen.value = false
     await refreshAll()
@@ -1420,6 +1525,125 @@ async function onVenueSubmit(event: FormSubmitEvent<VenueSchema>) {
   }
 }
 
+// === 場地參考圖上傳（jpg / png / pdf ≤ 5MB；PDF 取第一頁轉 PNG 後上傳）===
+const { uploadImage } = useImageUpload()
+const refImageInput = ref<HTMLInputElement | null>(null)
+const isUploadingRefImage = ref(false)
+const REF_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+// PDF 第一頁 → PNG dataURL（pdfjs 動態載入，僅選 PDF 時才抓該 chunk）
+async function pdfToPngDataUrl(file: File): Promise<string> {
+  const pdfjs = await import('pdfjs-dist')
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+  const page = await doc.getPage(1)
+  const viewport = page.getViewport({ scale: 2 })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
+  return canvas.toDataURL('image/png')
+}
+
+// 寫回 venue-layout（尚無佈局時以預設舞台值一併建立）
+async function saveRefImage(url: string | null) {
+  const layout = venueLayout.value
+  await configureVenueLayout(weddingId.value, {
+    stageWidth: layout?.stageWidth ?? 360,
+    stageHeight: layout?.stageHeight ?? 70,
+    stagePositionX: layout?.stagePositionX ?? 270,
+    stagePositionY: layout?.stagePositionY ?? 20,
+    referenceImageUrl: url,
+  })
+  await refreshVenue()
+}
+
+async function onRefImageSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  // 清空 input 讓同一檔可重選
+  input.value = ''
+  if (!file || isUploadingRefImage.value)
+    return
+  const isPdf = file.type === 'application/pdf'
+  const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
+  if (!isPdf && !isImage) {
+    toast.add({ title: '格式不支援', description: '請上傳 JPG、PNG 或 PDF 檔', color: 'error' })
+    return
+  }
+  if (file.size > REF_IMAGE_MAX_BYTES) {
+    toast.add({ title: '檔案過大', description: '參考圖上限 5MB，請壓縮後再上傳', color: 'error' })
+    return
+  }
+  isUploadingRefImage.value = true
+  try {
+    const source = isPdf ? await pdfToPngDataUrl(file) : file
+    const url = await uploadImage(source, weddingId.value, 'venue')
+    await saveRefImage(url)
+    toast.add({ title: '參考圖已更新', color: 'success' })
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.message || '上傳失敗，請稍後再試'
+    toast.add({ title: '上傳失敗', description: message, color: 'error' })
+  }
+  finally {
+    isUploadingRefImage.value = false
+  }
+}
+
+async function removeRefImage() {
+  if (isUploadingRefImage.value)
+    return
+  isUploadingRefImage.value = true
+  try {
+    await saveRefImage(null)
+    toast.add({ title: '參考圖已移除', color: 'success' })
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '移除失敗，請稍後再試'
+    toast.add({ title: '移除失敗', description: message, color: 'error' })
+  }
+  finally {
+    isUploadingRefImage.value = false
+  }
+}
+
+// === 預設佈局：全新婚禮（無桌次、未設定舞台）自動帶入置中舞台＋五桌（每桌 10 席）===
+const DEFAULT_STAGE: VenueLayoutBody = { stageWidth: 360, stageHeight: 70, stagePositionX: 270, stagePositionY: 20 }
+const DEFAULT_TABLES: CreateTableBody[] = [
+  { tableName: '主桌', capacity: 10, positionX: 350, positionY: 140 },
+  { tableName: '第一桌', capacity: 10, positionX: 140, positionY: 460 },
+  { tableName: '第二桌', capacity: 10, positionX: 560, positionY: 460 },
+  { tableName: '第三桌', capacity: 10, positionX: 140, positionY: 770 },
+  { tableName: '第四桌', capacity: 10, positionX: 560, positionY: 770 },
+]
+const isSeedingDefault = ref(false)
+
+onMounted(async () => {
+  if ((tables.value ?? []).length > 0 || venueLayout.value || isSeedingDefault.value)
+    return
+  isSeedingDefault.value = true
+  try {
+    await configureVenueLayout(weddingId.value, DEFAULT_STAGE)
+    for (const t of DEFAULT_TABLES)
+      await createTable(weddingId.value, t)
+    await refreshVenue()
+    await refreshAll()
+    toast.add({
+      title: '已帶入預設佈局',
+      description: '置中舞台與五桌（每桌 10 席），可直接拖曳與編輯',
+      color: 'success',
+    })
+  }
+  catch {
+    // 帶入失敗不擋操作（仍可手動新增桌次）
+  }
+  finally {
+    isSeedingDefault.value = false
+  }
+})
+
 // === 禮俗設定 ===
 const isEtiquetteOpen = ref(false)
 const isEtiquetteSubmitting = ref(false)
@@ -1593,9 +1817,38 @@ function guestMeta(g: GuestListItem): string {
             variant="outline"
             @click="openVenue"
           >
-            設定場地佈局
+            設定舞台位置
           </UButton>
-          <!-- 命名避開凍結 strict regex（不可含「新增」「舞台」「佈局」「禮俗」） -->
+          <!-- 場地參考圖：上傳 jpg/png/pdf（≤5MB）作為畫布底圖 -->
+          <input
+            ref="refImageInput"
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            class="hidden"
+            @change="onRefImageSelected"
+          >
+          <UButton
+            data-testid="vibe-venue-ref-upload"
+            icon="i-heroicons-photo"
+            color="neutral"
+            variant="outline"
+            :loading="isUploadingRefImage"
+            @click="refImageInput?.click()"
+          >
+            上傳參考圖
+          </UButton>
+          <UButton
+            v-if="refImageUrl"
+            data-testid="vibe-venue-ref-remove"
+            icon="i-heroicons-x-mark"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="移除參考圖"
+            :disabled="isUploadingRefImage"
+            @click="removeRefImage"
+          />
+          <!-- 命名避開凍結 strict regex（不可含「新增」「佈局」「禮俗」；「舞台」保留給上方 spec 對應按鈕） -->
           <UButton
             data-testid="venue-marker-create"
             icon="i-heroicons-map-pin"
@@ -1689,8 +1942,34 @@ function guestMeta(g: GuestListItem): string {
             class="relative mx-auto select-none"
             :style="{ width: `${canvasSize.width}px`, height: `${canvasSize.height}px` }"
           >
-            <!-- 舞台標示（畫布頂端置中） -->
-            <span class="absolute left-1/2 top-0 z-0 -translate-x-1/2 rounded border border-dashed border-line px-10 py-2 text-overline tracking-wider text-ink-300">
+            <!-- 場地參考圖底圖（低透明度、不攔截指標事件，桌位直接疊在圖上調整） -->
+            <img
+              v-if="refImageUrl && refImageDims"
+              data-testid="vibe-venue-ref-image"
+              :src="refImageUrl"
+              alt="場地參考圖"
+              class="pointer-events-none absolute left-0 top-0 select-none rounded opacity-50 dark:opacity-40"
+              :style="{ width: `${refImageDims.width}px`, height: `${refImageDims.height}px` }"
+            >
+
+            <!-- 舞台標示：依 venueLayout 定位與尺寸（可拖曳，放開即存）；未設定時置頂置中 -->
+            <div
+              v-if="stageBox"
+              data-testid="vibe-stage"
+              class="absolute z-0 flex cursor-move touch-none select-none items-center justify-center rounded border border-dashed border-line bg-paper/70 text-overline tracking-wider text-ink-300 dark:border-neutral-700 dark:bg-neutral-900/60"
+              :class="isMovingStage && 'z-40 ring-2 ring-gold'"
+              :style="{
+                left: `${stageBox.x}px`,
+                top: `${stageBox.y}px`,
+                width: `${stageBox.width}px`,
+                height: `${stageBox.height}px`,
+              }"
+              title="按住可移動舞台"
+              @pointerdown="onStagePointerDown"
+            >
+              舞台
+            </div>
+            <span v-else class="absolute left-1/2 top-0 z-0 -translate-x-1/2 rounded border border-dashed border-line px-10 py-2 text-overline tracking-wider text-ink-300">
               舞台
             </span>
 
@@ -1988,6 +2267,26 @@ function guestMeta(g: GuestListItem): string {
               />
             </UFormField>
 
+            <UFormField
+              v-if="!editingTableId"
+              label="一次新增幾桌"
+              name="count"
+              class="relative mb-6"
+              :ui="{ error: 'absolute top-full left-0 mt-1' }"
+            >
+              <UInput
+                v-model.number="tableState.count"
+                data-testid="table-batch-count"
+                type="number"
+                min="1"
+                max="20"
+                class="w-full"
+              />
+              <p class="mt-1 text-caption text-ink-300">
+                超過 1 桌時，名稱自動加流水號、位置階梯展開
+              </p>
+            </UFormField>
+
             <div class="grid grid-cols-2 gap-4">
               <UFormField label="位置 X" name="positionX">
                 <UInput
@@ -2115,7 +2414,7 @@ function guestMeta(g: GuestListItem): string {
             場地
           </p>
           <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
-            設定場地佈局
+            設定舞台位置
           </h3>
 
           <UAlert
