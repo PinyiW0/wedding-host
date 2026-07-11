@@ -42,7 +42,7 @@ issue #N 自動關閉
 
 ### 2. 收集 issue 資訊
 
-依序備齊五項，缺的就問使用者：
+依序備齊六項，缺的就問使用者：
 
 1. **標題**：取自 `$ARGUMENTS`；沒有就問。一句話講清楚要做什麼。
 2. **內文 body**：問使用者，可留空。**不強塞模板**——有內容就寫，沒有就空著（本專案無 issue 模板）。
@@ -65,6 +65,8 @@ issue #N 自動關閉
 5. **分支描述**：把標題轉成 kebab-case（小寫、空白換 `-`、去掉 `#`/`:`/標點等特殊字元、取 3–5 個關鍵詞）。
    組出分支名 `<prefix>/#<N>-<kebab-desc>`，其中 `#<N>` **待 issue 建立後回填真實編號**（此刻先以 `#N` 佔位展示）。
 
+6. **assignee**（**預設 `@me`**）：開 issue 者即認領者，讓人一眼看出誰在做。單人 repo 不問，直接 `@me`；repo 有其他 collaborator（`gh api repos/<owner>/<repo>/collaborators --jq '.[].login'`）→ 用 AskUserQuestion 列出讓使用者選（預設選項 `@me`，含「不指派」；清單排除自己與 bot 帳號，自己已由 `@me` 代表）。
+
 #### label 存在性檢查（重要）
 
 `gh issue create --label <X>` 在 label 不存在時會直接失敗。建 issue 前先確認：
@@ -86,6 +88,7 @@ gh label list --json name -q '.[].name'
 擬建立 issue：
 標題：<標題>
 label：<label 或「略過」>
+assignee：<@me / 所選協作者 / 不指派>
 內文：
 <body，或「（空）」>
 
@@ -103,7 +106,7 @@ label：<label 或「略過」>
 
 ```
 # 1) 建 issue，從回傳 URL 取出真實編號
-url=$(gh issue create --title "<標題>" --body-file "<body 暫存檔>" --label "<label>")
+url=$(gh issue create --title "<標題>" --body-file "<body 暫存檔>" --label "<label>" --assignee "<assignee>")
 num=${url##*/}                       # URL 結尾即 issue 編號，如 .../issues/15 → 15
 
 # 2) 用真實編號回填分支名後，綁定 linked 分支（# 一律單引號包住，避免被 shell 當註解）
@@ -113,7 +116,7 @@ gh issue develop "$num" --name '<prefix>/#'"$num"'-<kebab-desc>' --base main
 - **不加 `--checkout`**：依設計只建立、不切換，當前工作區與分支不受影響。
 - `gh issue develop` 會在遠端建立分支並掛到 issue 的 **Development** 側欄（真 linked branch，雙向可追溯）。
 - body 含驗收標準等多行內容時，先把完整 body（含 `## 驗收標準` 段）寫入暫存檔再用 `--body-file`，避免引號、反引號、`#` 的 shell 逃逸問題；body 為空就兩者都不帶。
-- 略過 label 時，`gh issue create` 就不要帶 `--label`。
+- 略過 label 時，`gh issue create` 就不要帶 `--label`；不指派時同理不帶 `--assignee`。
 
 ### 5. 收尾
 
