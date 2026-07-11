@@ -101,7 +101,7 @@ async function selfCheckIn() {
               data-testid="checkin-name"
               placeholder="請輸入您的姓名"
               aria-label="姓名"
-              class="min-w-0 flex-1 bg-transparent font-display text-4xl font-medium text-ink caret-gold outline-none placeholder:text-ink-300"
+              class="min-w-0 flex-1 rounded bg-transparent font-display text-4xl font-medium text-ink caret-gold outline-none focus-visible:ring-2 focus-visible:ring-gold/40 placeholder:text-ink-300"
             >
           </div>
         </UFormField>

@@ -17,7 +17,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "prepare": "husky",
-    "eslint": "eslint .",
+    "eslint": "eslint . && node scripts/visual-hierarchy-check.mjs",
     "typelint": "nuxi typecheck",
     "customize": "node customize",
     "test:unit": "vitest run",

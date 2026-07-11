@@ -145,7 +145,7 @@ async function handleLogout() {
     <!-- Sidebar：lg 以上顯示，可收合 -->
     <aside
       data-testid="vibe-sidebar"
-      class="hidden shrink-0 border-r border-line bg-paper transition-all duration-300 lg:flex lg:flex-col dark:border-neutral-800 dark:bg-neutral-900"
+      class="sidebar-shell hidden shrink-0 border-r border-line bg-paper lg:flex lg:flex-col dark:border-neutral-800 dark:bg-neutral-900"
       :class="isCollapsed ? 'w-16' : 'w-64'"
     >
       <!-- 婚禮情境標頭 + 收合按鈕 -->
@@ -443,3 +443,11 @@ async function handleLogout() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* sidebar 收合需動 width（內容區要跟著推移，transform 無法替代）——
+   屬 creative-direction §4「禁 layout 動畫」的正當例外：一次性互動、非高頻、單一元素 */
+.sidebar-shell {
+  transition: width 250ms var(--ease-standard);
+}
+</style>

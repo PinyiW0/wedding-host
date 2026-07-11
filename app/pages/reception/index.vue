@@ -684,7 +684,8 @@ async function submitCake() {
           <!-- 總報到率 -->
           <div class="mt-2 flex items-center justify-end gap-2">
             <div class="h-1.5 w-32 overflow-hidden rounded-full bg-line dark:bg-neutral-700">
-              <div class="h-full rounded-full bg-gold transition-all duration-500" :style="{ width: `${checkInRate}%` }" />
+              <!-- 進度以 scaleX 呈現（只動 transform，creative-direction §4） -->
+              <div class="h-full w-full origin-left bg-gold transition-transform duration-400 ease-standard" :style="{ transform: `scaleX(${checkInRate / 100})` }" />
             </div>
             <span class="text-caption font-medium text-gold-deep">報到率 {{ checkInRate }}%</span>
           </div>
@@ -743,7 +744,7 @@ async function submitCake() {
               data-testid="vibe-reception-search"
               placeholder="王怡君"
               aria-label="輸入賓客姓名搜尋"
-              class="min-w-0 flex-1 bg-transparent font-display text-2xl font-medium text-ink caret-gold outline-none placeholder:text-ink-300 dark:text-paper"
+              class="min-w-0 flex-1 rounded bg-transparent font-display text-2xl font-medium text-ink caret-gold outline-none focus-visible:ring-2 focus-visible:ring-gold/40 placeholder:text-ink-300 dark:text-paper"
             >
           </div>
           <p class="mt-2 pl-1 text-caption text-ink-500 dark:text-neutral-400">
@@ -1116,7 +1117,7 @@ async function submitCake() {
                   min="0"
                   placeholder="0"
                   aria-label="禮金金額"
-                  class="min-w-0 flex-1 bg-transparent font-display text-5xl font-semibold text-ink caret-gold outline-none placeholder:text-ink-300 dark:text-paper"
+                  class="min-w-0 flex-1 rounded bg-transparent font-display text-h1 font-semibold text-ink caret-gold outline-none focus-visible:ring-2 focus-visible:ring-gold/40 placeholder:text-ink-300 dark:text-paper"
                 >
               </div>
             </UFormField>

@@ -33,3 +33,7 @@ paths:
 ## 設定來源
 
 所有 UI 設定從 `spec/ui-config/ui-config.yaml` 讀取，禁止自行決定。
+
+## 創意方向指讀
+
+創意方向（風格 preset、主題 token、公開頁解禁分界、動效規範、外部資源升級路徑）：使用者要求風格／質感／動畫或實作賓客公開頁時讀 `spec/ui-config/creative-direction.md`。
