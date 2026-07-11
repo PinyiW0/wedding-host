@@ -2,9 +2,9 @@
 
 > 一人 full-stack 打造的婚禮 SaaS：從籌備期的賓客名單、桌次排席、RSVP 邀請，到宴客當天的接待報到、祝福投影牆，再到婚後的謝卡群發——一站式管理。
 
-**線上站**：<https://everafter-iota.vercel.app>（正式環境需登入；賓客頁由簽名連結進入）
+**線上站**：<https://everafter-iota.vercel.app>（正式環境需登入；賓客頁由簽名連結進入）｜**想動手玩**：clone 後 `npm run dev` 零設定啟動完整系統（見[本機啟動](#本機啟動)）
 
-![桌次規劃——視覺化圓桌排席](docs/screenshots/seating.png)
+![桌次排席演示——推薦排序自動帶位](docs/demo/seating.gif)
 
 *桌次規劃：以圓桌呈現現場佈局，賓客從名單拖曳入座；「推薦排序」依主桌帶入新人與雙親、男左女右、長輩近主桌的禮俗自動帶位。*
 
@@ -15,6 +15,16 @@
 - **賓客免登入體驗**：HMAC-SHA256 簽名連結（婚禮層級 / 賓客專屬兩種格式），賓客點連結即可回覆出席、寫祝福、看謝卡，無需帳號
 - **零設定啟動**：所有外部依賴（DB、圖片儲存、LINE、監控）都有本機退路，`npm install && npm run dev` 就能跑起完整系統
 - **雙模式授權**：`enforced`（正式環境，JWT + 簽名驗證）與 `open`（開發 / E2E，自動退回預設身分）同一套 middleware 切換，測試不必造假登入流程
+
+## 操作演示
+
+**賓客回喜帖**——免登入簽名連結進入，填寫出席資訊並親手畫一朵小花，種進新人的祝福花田：
+
+<img src="docs/demo/rsvp.gif" width="390" alt="賓客 RSVP 演示：填寫出席資訊與手繪小花">
+
+**祝福審核與投影牆**——後台逐則通過賓客祝福，宴會現場投影牆即時以跑馬燈呈現：
+
+![祝福審核與投影牆演示](docs/demo/projection.gif)
 
 ## 產品導覽
 
@@ -99,6 +109,8 @@ app/pages（為通過 spec 而建）
 npm install
 npm run dev   # 自動拉起 Docker Postgres、migrate + seed，零設定
 ```
+
+啟動後以示範帳號 `couple`（密碼 `couple1122`）登入，即以「新人」視角操作含完整示範資料的婚禮。
 
 環境需求：Node.js >= 22.12、Docker。環境變數清單見 [docs/architecture.md](docs/architecture.md) §8（全部可留空，未設定時自動退回本機相容行為）。
 

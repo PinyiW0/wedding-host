@@ -27,14 +27,22 @@ DSN 未設定時 Sentry 完全停用（本機 dev / e2e 零影響），設定後
 
 ## 管理員密碼救援
 
-唯一管理員忘記密碼時（`/register` 在正式環境已收斂，系統有管理員後需管理員登入才能再建）：
+新人／接待帳號的密碼重設走管理端 UI（`/users`、婚禮內「帳號設定」）。**管理者自己的密碼 UI 改不到**（`/users` 只列新人帳號），忘記密碼或要換密碼時直接改 DB（2026-07 實測流程）：
 
 ```bash
-# 需要 Neon direct（非 pooled）連線字串，放本機 .env 的 NUXT_DATABASE_URL
-npm run db:create-admin
+# 1) 本機算新密碼的 scrypt 雜湊（與 server/utils/password.ts 同格式）
+read -s "PW?新密碼（至少 8 碼）: "; echo
+PW="$PW" node -e 'const {randomBytes,scryptSync}=require("node:crypto");const s=randomBytes(16);console.log(`scrypt$${s.toString("hex")}$${scryptSync(process.env.PW,s,64).toString("hex")}`)'
+unset PW
 ```
 
-互動式輸入帳號密碼（scrypt 雜湊與 server 同格式）。同 email 已存在時視腳本提示處理；新人／接待帳號的密碼重設走管理端 UI 即可（`/users`、婚禮內「帳號設定」）。
+```sql
+-- 2) Neon Console → SQL Editor，貼上整串 scrypt$...（username 大小寫敏感）
+update users set password_hash = '貼上雜湊' where username = 'andrea' and deleted_at is null;
+-- 顯示 UPDATE 1 = 成功；UPDATE 0 = 沒對到帳號，先 select username from users 確認
+```
+
+> `npm run db:create-admin` 只能**新建**管理員（同 username / email 會直接退出，不會覆蓋密碼），適用於全新部署開通或增加第二位管理員；需要 Neon direct（非 pooled）連線字串。`/register` 在正式環境已收斂，系統有管理員後需管理員登入才能再建。
 
 > 登入頁已不提供註冊入口（issue #38，防止誤導）：全新部署的首次開通請直接輸入 `/register` 網址建立第一個管理員——系統無任何管理員時該端點開放，之後自動收斂。
 
