@@ -1,7 +1,7 @@
 ---
 name: pr
 description: 把當前 feature 分支發成對 main 的 PR — push + 產繁中標題/內文草案 + gh pr create。一律先出草案待確認才開 PR；偵測未 commit 改動或人在 main 上會停下來引導，不越界。Use when 使用者要發 PR、開 PR、送出 pull request、或說「幫我發 PR」「開個 PR」時。
-argument-hint: "[reviewer / label / 補充說明(選填)]"
+argument-hint: "[reviewer / assignee / label / 補充說明(選填)]"
 ---
 
 # PR
@@ -128,6 +128,7 @@ Closes #2
 擬發 PR：
 標題：<繁中標題>
 base：main  ←  <當前分支>
+assignee：<"@me" / 指定者 / 不指派>
 
 內文：
 <完整 markdown 內文>
@@ -139,10 +140,11 @@ base：main  ←  <當前分支>
 
 ```
 git push -u origin <branch>        # 沒 upstream 才需 -u；已有就 git push
-gh pr create --base main --title "<標題>" --body "<內文>"
+gh pr create --base main --title "<標題>" --body "<內文>" --assignee "<assignee>"
 gh pr view --web                   # 開瀏覽器
 ```
 
+- assignee **預設 `"@me"`**（發 PR 者即負責人；預設值與 `/new-issue` 相同）；使用者透過 `$ARGUMENTS` 指定其他人則改帶指定者，明說不指派則整個 `--assignee` 旗標拿掉。指定他人須為 repo collaborator，否則 `gh pr create` 會整個失敗——失敗時改不帶 assignee 先建 PR，成功後再 `gh pr edit <N> --add-assignee <人>` 補。
 - 使用者透過 `$ARGUMENTS` 指定了 reviewer / label 才加 `--reviewer <人>` / `--label <標籤>`（預設不帶；label 須 repo 已存在）。
 - **不預設 Copilot 做 code review**：絕不主動帶 `--reviewer` 指派 Copilot。建 PR 後檢查是否被 GitHub 帳號層級設定自動掛上 Copilot review request，有就移除：
 
@@ -162,5 +164,5 @@ gh pr view --web                   # 開瀏覽器
 
 - base 固定 `main`（本專案 PR 一律 target main）。
 - 絕不在 main / master 上發 PR 或代 commit —— 該停就停，列選項問使用者。
-- `$ARGUMENTS` 有值 → 視為 reviewer / label / 內文補充提示，納入判斷。
+- `$ARGUMENTS` 有值 → 視為 reviewer / assignee / label / 內文補充提示，納入判斷。
 - 不確定（標題怎麼下、要不要拆 PR）→ 照樣列草案問使用者，不擅自決定。
