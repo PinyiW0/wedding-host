@@ -6,6 +6,7 @@ import type {
   GuestCategoriesSavedEvent,
   GuestCategoryRenamedEvent,
   GuestCreatedEvent,
+  GuestDisplayName,
   GuestLineBoundEvent,
   GuestLineLoginInfo,
   GuestListItem,
@@ -27,6 +28,17 @@ export function listGuests(
 ) {
   return useHttp().get<GuestListItem[]>(
     () => `/api/v1/weddings/${toValue(weddingId)}/guests`,
+    options,
+  )
+}
+
+// 公開投影牆用：只取賓客 id→顯示名對照（無 PII），與管理端 listGuests 分流
+export function listGuestDisplayNames(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<GuestDisplayName[]>,
+) {
+  return useHttp().get<GuestDisplayName[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/guests/display-names`,
     options,
   )
 }

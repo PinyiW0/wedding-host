@@ -42,6 +42,7 @@ export {
   getGuestLineLogin,
   importGuests,
   listGuestCategories,
+  listGuestDisplayNames,
   listGuests,
   markInvitationSent,
   renameGuestCategory,
