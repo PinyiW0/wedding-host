@@ -8,10 +8,11 @@ import { guests, seatingTables, seats } from '../../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEvent> => {
   const tableId = getRouterParam(event, 'tableId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<SeatGuestBody>(event)
 
   const db = useDb()
-  const [table] = await db.select().from(seatingTables).where(eq(seatingTables.tableId, tableId))
+  const [table] = await db.select().from(seatingTables).where(and(eq(seatingTables.weddingId, weddingId), eq(seatingTables.tableId, tableId)))
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
@@ -21,9 +22,12 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
   }
   // 容量規則（人頭）：正常席人頭 = partySize − childChairCount，至多坐滿 capacity；
   // 兒童椅嬰兒不佔正常席、該桌額外加位（不受 capacity 限制）
-  const [guest] = await db.select().from(guests).where(eq(guests.guestId, body.guestId))
-  const partySize = guest?.partySize ?? 1
-  const childChairCount = guest?.childChairCount ?? 0
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
+  if (!guest) {
+    throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
+  }
+  const partySize = guest.partySize
+  const childChairCount = guest.childChairCount
   const normalHeads = Math.max(0, partySize - childChairCount)
   const existingNormalRows = await db.select().from(seats).where(and(eq(seats.tableId, tableId), eq(seats.seatType, 'normal')))
   if (existingNormalRows.length + normalHeads > table.capacity) {

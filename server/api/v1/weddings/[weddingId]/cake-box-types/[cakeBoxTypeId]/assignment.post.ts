@@ -1,19 +1,24 @@
 import type { H3Event } from 'h3'
 import type { CakeBoxAssignmentConfiguredEvent, ConfigureCakeBoxAssignmentBody } from '../../../../../../../app/types/api/cakebox'
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { cakeBoxAssignments, cakeBoxTypes } from '../../../../../../db/schema'
+import { cakeBoxAssignments, cakeBoxTypes, guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<CakeBoxAssignmentConfiguredEvent> => {
   const cakeBoxTypeId = getRouterParam(event, 'cakeBoxTypeId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<ConfigureCakeBoxAssignmentBody>(event)
 
   const db = useDb()
-  const [existingType] = await db.select().from(cakeBoxTypes).where(eq(cakeBoxTypes.cakeBoxTypeId, cakeBoxTypeId))
+  const [existingType] = await db.select().from(cakeBoxTypes).where(and(eq(cakeBoxTypes.weddingId, weddingId), eq(cakeBoxTypes.cakeBoxTypeId, cakeBoxTypeId)))
   if (!existingType) {
     throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
+  }
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
+  if (!guest) {
+    throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
 
   // 一位賓客只保留一筆指派（upsert）：先移除同賓客的舊指派，再寫入新的。

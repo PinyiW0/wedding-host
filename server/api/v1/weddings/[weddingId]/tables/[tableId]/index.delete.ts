@@ -1,15 +1,16 @@
 import type { H3Event } from 'h3'
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
 import { seatingTables, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<void> => {
   const tableId = getRouterParam(event, 'tableId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
 
   const db = useDb()
-  const [table] = await db.select().from(seatingTables).where(eq(seatingTables.tableId, tableId))
+  const [table] = await db.select().from(seatingTables).where(and(eq(seatingTables.weddingId, weddingId), eq(seatingTables.tableId, tableId)))
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }

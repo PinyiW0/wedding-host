@@ -8,10 +8,11 @@ import { cakeBoxTypes } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpdatedEvent> => {
   const cakeBoxTypeId = getRouterParam(event, 'cakeBoxTypeId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<UpdateCakeBoxTypeBody>(event)
 
   const db = useDb()
-  const [existing] = await db.select().from(cakeBoxTypes).where(eq(cakeBoxTypes.cakeBoxTypeId, cakeBoxTypeId))
+  const [existing] = await db.select().from(cakeBoxTypes).where(and(eq(cakeBoxTypes.weddingId, weddingId), eq(cakeBoxTypes.cakeBoxTypeId, cakeBoxTypeId)))
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
   }

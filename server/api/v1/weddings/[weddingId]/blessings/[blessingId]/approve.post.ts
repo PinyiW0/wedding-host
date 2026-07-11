@@ -1,15 +1,16 @@
 import type { H3Event } from 'h3'
 import type { BlessingApprovedEvent } from '../../../../../../../app/types/api/blessings'
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
 import { blessings } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<BlessingApprovedEvent> => {
   const blessingId = getRouterParam(event, 'blessingId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
-  const [blessing] = await db.select().from(blessings).where(eq(blessings.blessingId, blessingId))
+  const [blessing] = await db.select().from(blessings).where(and(eq(blessings.weddingId, weddingId), eq(blessings.blessingId, blessingId)))
   if (!blessing) {
     throw createError({ statusCode: 404, statusMessage: '祝福不存在' })
   }

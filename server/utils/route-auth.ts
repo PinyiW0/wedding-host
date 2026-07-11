@@ -19,12 +19,13 @@ const SHARE_GET = new Set([
   'projection-settings',
   'rundown-items',
   'rundown-roles',
-  'blessings', // 投影牆讀取（含賓客名單：僅簽名連結持有者可達，讀取模型瘦身列 M9）
-  'guests',
+  'blessings', // 投影牆讀取（僅簽名連結持有者可達）
+  'guests/display-names', // 投影牆賓客名對照：僅 id+name，無 PII（完整賓客資料收回管理端 auth）
 ])
 
 // 接待端白名單 GET（報到／禮金／喜餅發放所需讀取）
 const RECEPTION_GET = new Set([
+  'guests', // 接待台報到需讀賓客名單（完整資料限已登入管理端／接待員，公開頁走 guests/display-names）
   'reception-status',
   'cake-box-types',
   'cake-box-types/assignments',

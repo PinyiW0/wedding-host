@@ -14,11 +14,11 @@ test.describe('vibe：婚禮資訊新人姓名區', () => {
     await login(page, TestUsers.admin.account, TestUsers.admin.password)
   })
 
-  test('顯示新人姓名區（振茗 & 品儀，單一節點）', async ({ page }) => {
+  test('顯示新人姓名區（志明 & 春嬌，單一節點）', async ({ page }) => {
     await page.goto(WEDDING_URL, { waitUntil: 'networkidle' })
     // 「新人姓名」標籤存在
     await expect(page.getByText('新人姓名')).toBeVisible()
-    // 顯示區以單一節點呈現「{groom} & {bride}」（seed：振茗 & 品儀）
-    await expect(page.getByText(/振茗[^\n\r&\u2028\u2029]*&.*品儀/).first()).toBeVisible()
+    // 顯示區以單一節點呈現「{groom} & {bride}」（seed：志明 & 春嬌）
+    await expect(page.getByText(/志明[^\n\r&\u2028\u2029]*&.*春嬌/).first()).toBeVisible()
   })
 })

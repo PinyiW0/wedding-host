@@ -1,6 +1,6 @@
 <!-- app/pages/projection/[weddingId].vue — 投影即時牆：上方最多三列祝福跑馬燈 + 中央新人照片/影片 + 花朵裝飾動畫 -->
 <script setup lang="ts">
-import { getProjectionSettings, getWedding, listBlessings, listFlowers, listGuests } from '~/api'
+import { getProjectionSettings, getWedding, listBlessings, listFlowers, listGuestDisplayNames } from '~/api'
 import { toYouTubeEmbed } from '~/utils/videoEmbed'
 
 definePageMeta({ layout: false })
@@ -18,7 +18,7 @@ const coupleName = computed(() => {
 const { data: blessings, refresh: refreshBlessings } = await listBlessings(weddingId, {
   default: () => [],
 })
-const { data: guests } = await listGuests(weddingId, { default: () => [] })
+const { data: guests } = await listGuestDisplayNames(weddingId, { default: () => [] })
 const { data: flowers } = await listFlowers(weddingId, { default: () => [] })
 const flowerList = computed(() => flowers.value ?? [])
 

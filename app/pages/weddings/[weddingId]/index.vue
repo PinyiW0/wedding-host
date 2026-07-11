@@ -382,7 +382,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                 <UInput
                   v-model="state.groomName"
                   data-testid="wedding-groom-name"
-                  placeholder="例：振茗"
+                  placeholder="請輸入新郎姓名"
                   class="w-full"
                 />
               </UFormField>
@@ -396,7 +396,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                 <UInput
                   v-model="state.brideName"
                   data-testid="wedding-bride-name"
-                  placeholder="例：品儀"
+                  placeholder="請輸入新娘姓名"
                   class="w-full"
                 />
               </UFormField>

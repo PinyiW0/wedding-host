@@ -9,10 +9,11 @@ import { guests } from '../../../../../../db/schema'
 // 標記喜帖已寄送：PUT 冪等設值（重複送同值不報錯，可勾選可取消）
 export default defineEventHandler(async (event: H3Event): Promise<InvitationSentMarkedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
+  const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<MarkInvitationSentBody>(event)
 
   const db = useDb()
-  const [guest] = await db.select().from(guests).where(and(eq(guests.guestId, guestId), isNull(guests.deletedAt)))
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

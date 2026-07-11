@@ -44,6 +44,12 @@ export interface GuestListItem {
   deletedAt: string | null
 }
 
+// 公開投影牆專用：賓客 id → 顯示名對照，不含任何 PII（電話/地址/備註/LINE userId 等）
+export interface GuestDisplayName {
+  guestId: string
+  name: string
+}
+
 export interface CreateGuestBody {
   name: string
   side: GuestSide

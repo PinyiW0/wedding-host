@@ -10,6 +10,7 @@ import { guests, weddings } from '../../../../../db/schema'
 export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubmittedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<SubmitPublicRsvpBody>(event)
+  assertValidRsvpInput(body)
 
   const db = useDb()
   const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))

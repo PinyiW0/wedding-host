@@ -19,7 +19,7 @@ const weddingId = computed(() => String(route.params.weddingId))
 
 // 賓客名單（僅未移除者參與 RSVP 管理）
 const { data: guests, refresh } = await listGuests(weddingId, { default: () => [] })
-// 新人姓名（顯示「新郎振茗 · 家人」這類關係描述）
+// 新人姓名（顯示「新郎〔姓名〕· 家人」這類關係描述）
 const { data: wedding } = await getWedding(weddingId)
 
 // RSVP 表單設定：用於把自訂題答案的 id 對應回題目標籤
@@ -67,7 +67,7 @@ function openDetail(guest: GuestListItem) {
   isDetailOpen.value = true
 }
 
-// 關係描述：新郎振茗 · 家人
+// 關係描述：新郎〔姓名〕· 家人
 function relationshipText(guest: GuestListItem) {
   const role = guest.side === 'groom' ? '新郎' : '新娘'
   const name = guest.side === 'groom'

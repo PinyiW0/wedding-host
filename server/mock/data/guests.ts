@@ -93,7 +93,7 @@ function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 's
 export const mockGuests: MockGuest[] = [
   g({ guestId: 'guest-001', name: '陳大明', side: 'groom', diet: 'meat', category: '同事', contact: '0912345678', notes: '需要靠近舞台', partySize: 2, tableName: '主桌' }),
   g({ guestId: 'guest-002', name: '林美麗', side: 'bride', diet: 'vegetarian', category: '朋友', contact: '0922222222', partySize: 1, tableName: '女方家屬桌', flowerDrawing: FLOWER_BLUSH }),
-  g({ guestId: 'guest-003', name: '王志強', side: 'groom', diet: 'meat', category: '家人', contact: '0933333333', lineUserId: 'line-u-003', rsvpAttending: 'attending', partySize: 4, tableName: '主桌', needsShuttle: true, shuttleCount: 2, invitationPreference: 'e-card', blessing: '新婚快樂，永浴愛河！祝振茗與品儀白頭偕老。', flowerDrawing: SAMPLE_FLOWER }),
+  g({ guestId: 'guest-003', name: '王志強', side: 'groom', diet: 'meat', category: '家人', contact: '0933333333', lineUserId: 'line-u-003', rsvpAttending: 'attending', partySize: 4, tableName: '主桌', needsShuttle: true, shuttleCount: 2, invitationPreference: 'e-card', blessing: '新婚快樂，永浴愛河！祝志明與春嬌白頭偕老。', flowerDrawing: SAMPLE_FLOWER }),
   g({ guestId: 'guest-004', name: '李淑芬', side: 'bride', diet: 'meat', category: '同學', contact: '0944444444', partySize: 2, tableName: '女方家屬桌', flowerDrawing: FLOWER_LAVENDER }),
   g({ guestId: 'guest-005', name: '張文彬', side: 'groom', diet: 'vegetarian', category: '同事', contact: '0955555555', partySize: 1, tableName: null, flowerDrawing: FLOWER_PEACH }),
   g({ guestId: 'guest-006', name: '黃雅婷', side: 'bride', diet: 'meat', category: '朋友', contact: '0966666666', partySize: 3, tableName: '女方家屬桌', flowerDrawing: FLOWER_ROSE }),
