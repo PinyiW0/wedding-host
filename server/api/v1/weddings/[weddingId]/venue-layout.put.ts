@@ -24,11 +24,21 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutCon
       stageHeight: body.stageHeight,
       stagePositionX: body.stagePositionX,
       stagePositionY: body.stagePositionY,
+      // 參考圖：body 未帶＝維持既有（舞台表單只送舞台欄位）、帶 null＝移除
+      ...(body.referenceImageUrl !== undefined ? { referenceImageUrl: body.referenceImageUrl } : {}),
     }).where(eq(venueLayouts.weddingId, weddingId))
   }
   else {
-    await db.insert(venueLayouts).values({ weddingId, ...body })
+    await db.insert(venueLayouts).values({ weddingId, ...body, referenceImageUrl: body.referenceImageUrl ?? null })
   }
 
-  return { weddingId, ...body }
+  const [saved] = await db.select().from(venueLayouts).where(eq(venueLayouts.weddingId, weddingId))
+  return {
+    weddingId,
+    stageWidth: saved!.stageWidth,
+    stageHeight: saved!.stageHeight,
+    stagePositionX: saved!.stagePositionX,
+    stagePositionY: saved!.stagePositionY,
+    referenceImageUrl: saved!.referenceImageUrl,
+  }
 })

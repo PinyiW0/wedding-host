@@ -20,5 +20,6 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutDet
     stageHeight: layout.stageHeight,
     stagePositionX: layout.stagePositionX,
     stagePositionY: layout.stagePositionY,
+    referenceImageUrl: layout.referenceImageUrl,
   }
 })

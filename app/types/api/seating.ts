@@ -66,6 +66,8 @@ export interface VenueLayoutBody {
   stageHeight: number
   stagePositionX: number
   stagePositionY: number
+  // 場地參考圖 URL（R2 公開 URL 或 dataURL）；不帶＝維持既有、null＝移除
+  referenceImageUrl?: string | null
 }
 
 export interface VenueLayoutConfiguredEvent {
@@ -74,6 +76,7 @@ export interface VenueLayoutConfiguredEvent {
   stageHeight: number
   stagePositionX: number
   stagePositionY: number
+  referenceImageUrl: string | null
 }
 
 // GET 讀回的場地佈局（重整後還原 modal 既有值）

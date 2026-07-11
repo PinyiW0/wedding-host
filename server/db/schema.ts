@@ -179,6 +179,8 @@ export const venueLayouts = pgTable('venue_layouts', {
   stageHeight: doublePrecision().notNull(),
   stagePositionX: doublePrecision().notNull(),
   stagePositionY: doublePrecision().notNull(),
+  // 場地參考圖（R2 公開 URL 或 dataURL fallback）；未上傳為 null
+  referenceImageUrl: text(),
 })
 
 export const venueMarkers = pgTable('venue_markers', {
