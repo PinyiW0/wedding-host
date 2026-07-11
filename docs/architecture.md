@@ -1,6 +1,6 @@
 # 系統架構總覽
 
-EverAfter 婚禮管理系統——一人 full-stack 的婚禮 SaaS。本文件描述**目前實際運行的系統架構**（以程式碼為準），開發流程（SDD）另見 `doc/frontend/frontend-workflow.md`，日常維運見 [ops.md](ops.md)。
+EverAfter 婚禮管理系統——一人 full-stack 的婚禮 SaaS。本文件描述**目前實際運行的系統架構**（以程式碼為準），開發流程（SDD）另見 `doc/frontend/frontend-workflow.md`，日常維運見 [ops.md](ops.md)，產品化評估與 roadmap 見 [production-readiness.md](production-readiness.md)。
 
 > 最後更新：2026-07-09。repo 名 `nuxt4-template` 為模板出身，產品名為 EverAfter。
 
