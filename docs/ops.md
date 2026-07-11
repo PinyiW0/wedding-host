@@ -46,6 +46,12 @@ update users set password_hash = '貼上雜湊' where username = 'andrea' and de
 
 > 登入頁已不提供註冊入口（issue #38，防止誤導）：全新部署的首次開通請直接輸入 `/register` 網址建立第一個管理員——系統無任何管理員時該端點開放，之後自動收斂。
 
+## R2 圖片直傳 CORS
+
+瀏覽器從前端站直傳圖片到 R2 是**跨來源**請求，bucket 必須設 CORS policy 允許來源的 PUT，否則 Console 報 `No 'Access-Control-Allow-Origin'`、圖片一律上傳失敗（issue #50，非程式碼問題）。
+
+設定：Cloudflare → R2 → `wedding-host` → Settings → CORS Policy，貼上 [`r2-cors.json`](r2-cors.json)。**新增前端部署網址（如 Vercel preview）時，把該 origin 加進 `AllowedOrigins` 再重貼。**
+
 ## 常見故障排查
 
 | 症狀 | 原因 | 處置 |
@@ -55,4 +61,5 @@ update users set password_hash = '貼上雜湊' where username = 'andrea' and de
 | 上線後 API 全 500 | secrets 環境變數缺漏或 `.env` 留空值覆蓋預設（如 `NUXT_JWT_SECRET=` 空字串） | 檢查 Vercel env：`NUXT_JWT_SECRET`／`NUXT_GUEST_LINK_SECRET`／`NUXT_DATABASE_URL`；`.env` 範本未填的 secret 必須註解掉不能留空值 |
 | DB 連線錯誤 | pooled / direct 用途混用 | runtime 用 Neon pooled URL；migration 與腳本（db:migrate、db:create-admin）用 direct URL |
 | 圖片上傳失敗 | R2 四項環境變數不全 | `NUXT_R2_*` 四項 + `NUXT_PUBLIC_R2_PUBLIC_URL` 全填才啟用 presigned 直傳，否則退回 dataURL |
+| 圖片上傳失敗、Console 報 CORS（`No 'Access-Control-Allow-Origin'`、`net::ERR_FAILED`） | R2 bucket 未設 CORS policy，跨來源 PUT 被 preflight 擋 | 見上節「R2 圖片直傳 CORS」，套用 [`r2-cors.json`](r2-cors.json) |
 | 本機 push 卡 6 分鐘後失敗 | pre-push Docker gate 期間 SSH 閒置被 GitHub 斷線 | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |

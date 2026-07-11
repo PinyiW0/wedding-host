@@ -1,0 +1,16 @@
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "https://everafter-iota.vercel.app"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "PUT"
+    ],
+    "AllowedHeaders": [
+      "Content-Type"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]
