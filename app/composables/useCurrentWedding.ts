@@ -14,8 +14,17 @@ export function useCurrentWedding() {
 
   const { data: wedding, execute } = useHttp().get<WeddingListItem>(
     () => `/api/v1/weddings/${weddingId.value}`,
-    { immediate: false, watch: false },
+    // 專屬 key：避免與頁面層抓同一 URL 的 useFetch 共用 asyncData——
+    // 頁面的 await 在 hydration 中途 resolve 會連帶改寫側欄標頭而 mismatch（#52）
+    { immediate: false, watch: false, server: false, key: 'current-wedding-header' },
   )
+
+  // 首次抓取延後至 hydration 完成後（onMounted）：token 存 localStorage、SSR 拿不到，
+  // 若在 hydration 期間就發出，client 會在 hydration 結束前 resolve 並重渲染 → mismatch（#52）
+  onMounted(() => {
+    if (weddingId.value)
+      execute()
+  })
 
   watch(
     weddingId,
@@ -26,7 +35,6 @@ export function useCurrentWedding() {
       else
         wedding.value = undefined
     },
-    { immediate: true },
   )
 
   return { wedding, weddingId }
