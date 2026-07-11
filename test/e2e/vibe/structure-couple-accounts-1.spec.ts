@@ -77,11 +77,11 @@ test.describe('vibe：新人帳號管理（管理員視角）', () => {
     // 業務狀態可被識別：已停用
     await expect(findEntity(page, /couple/).getByText('已停用')).toBeVisible()
 
-    // 停用後 login 拒絕（deletedAt 過濾）
+    // 停用後 login 拒絕（deletedAt 過濾）；回 401 與不存在帳號一致（issue #38 防枚舉）
     const res = await page.request.post('/api/v1/auth/login', {
       data: { username: COUPLE.account, password: COUPLE.password },
     })
-    expect(res.status()).toBe(404)
+    expect(res.status()).toBe(401)
   })
 
   test('business guards：不得停用最後一個管理者（409）、不可停用自己（403）', async ({ page }) => {

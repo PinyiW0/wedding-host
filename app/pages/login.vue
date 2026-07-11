@@ -149,17 +149,5 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         登入
       </UButton>
     </UForm>
-
-    <div class="mt-7 border-t border-line pt-5">
-      <p class="text-center text-body text-ink-500">
-        還沒有帳號？
-        <NuxtLink
-          to="/register"
-          class="font-medium text-gold-deep hover:text-gold"
-        >
-          前往註冊
-        </NuxtLink>
-      </p>
-    </div>
   </div>
 </template>
