@@ -6,6 +6,10 @@ import { and, eq, isNull, ne } from 'drizzle-orm'
 import { useDb } from '../../../db'
 import { receptionAccounts, users } from '../../../db/schema'
 
+// 防帳號枚舉：查無帳號與密碼錯誤的回應必須完全一致（同 401、同訊息），
+// 且查無帳號時仍執行一次同成本的 scrypt 驗證，抹平可被量測的回應時間差
+const dummyHash = hashPassword(crypto.randomUUID())
+
 export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEvent> => {
   const body = await readBody<LoginBody>(event)
 
@@ -32,7 +36,8 @@ export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEv
   // 接待帳號（新人建立、已設密碼者）：登入後取得限定該婚禮的接待員身分
   const [account] = await db.select().from(receptionAccounts).where(and(eq(receptionAccounts.username, body.username), ne(receptionAccounts.passwordHash, '')))
   if (!account) {
-    throw createError({ statusCode: 404, statusMessage: '帳號不存在' })
+    verifyPassword(body.password, dummyHash)
+    throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
   }
   if (!verifyPassword(body.password, account.passwordHash)) {
     throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
