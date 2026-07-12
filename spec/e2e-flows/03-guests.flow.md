@@ -14,7 +14,7 @@
 
 1. 管理員能手動新增賓客（姓名、男女方、飲食、同行人數、兒童椅嬰兒數、聯絡方式、分類、備註）
 2. 管理員能更新既有賓客資料
-3. 管理員能軟刪除賓客並能恢復已軟刪除的賓客
+3. 管理員能軟刪除賓客並能恢復已軟刪除的賓客；已移除賓客預設不顯示於畫面（經展開「已移除」分區才可見、可恢復）
 4. 管理員能透過 Excel 檔批次匯入賓客，並感知匯入結果（筆數）
 5. 賓客能透過專屬連結綁定 LINE
 6. 賓客的識別欄位（name）與關鍵屬性（side / diet / category）可被使用者讀到
@@ -110,7 +110,7 @@ API 邊界保護。
 3. 若有 confirm dialog，完成確認
 4. 期待：
    - API spy：`DELETE /api/v1/weddings/wedding-001/guests/guest-001`
-   - guest-001 從未移除清單消失（或標示為已移除可恢復）
+   - guest-001 自畫面消失（已移除賓客預設不顯示，收於「已移除」分區）
 
 ### Verification 策略（destructive）
 - 主要靠 API spy（DELETE / 軟刪端點）
@@ -155,18 +155,20 @@ API 邊界保護。
 - guest-001 已新增且已移除
 
 ### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/guests`（含已移除分區 / 篩選）
-2. 在已移除的 guest-001 範圍內觸發「恢復」
-3. 期待：
+1. 進入 `/weddings/wedding-001/guests`（已移除賓客預設不顯示於畫面）
+2. 展開「已移除」分區
+3. 在已移除的 guest-001 範圍內觸發「恢復」
+4. 期待：
    - API spy：`POST /api/v1/weddings/wedding-001/guests/guest-001/restore`
    - guest-001 回到未移除清單
 
 ### Verification 策略
+- UI：已移除賓客預設不可見（不干擾正式名單）
 - API spy（restore 端點）
 - UI：恢復後「陳大明」重新出現於預設清單
 
 ### 不再凍結
-- 已移除分區進入方式（tab / filter）
+- 已移除分區進入方式（tab / filter / 折疊）
 
 ---
 
