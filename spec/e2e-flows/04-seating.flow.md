@@ -1,12 +1,12 @@
 # Flow: 座位與場地佈局
 
-> 對應規格：spec/gherkin-feature/AddTable.feature, UpdateTable.feature, RemoveTable.feature, ConfigureVenueLayout.feature, SeatGuest.feature, UnseatGuest.feature, UpdateEtiquetteSettings.feature, DismissEtiquetteWarning.feature
-> 涵蓋頁面：/weddings/[weddingId]/seating（場地平面圖：桌次 CRUD + 場地佈局 + 座位安排 + 禮俗設定 / 警告）
+> 對應規格：spec/gherkin-feature/AddTable.feature, UpdateTable.feature, RemoveTable.feature, ConfigureVenueLayout.feature, SeatGuest.feature, UnseatGuest.feature
+> 涵蓋頁面：/weddings/[weddingId]/seating（場地平面圖：桌次 CRUD + 場地佈局 + 座位安排）
 
 ## Background
 - 已登入為管理員（Admin）
 - 已選定一場婚禮（wedding-001）
-- 桌次以事件源管理；座位安排記錄賓客入座狀態；禮俗引擎依設定產生警告
+- 桌次以事件源管理；座位安排記錄賓客入座狀態
 
 ---
 
@@ -17,8 +17,7 @@
 3. 管理員能設定場地佈局（舞台位置與大小）
 4. 管理員能將賓客（含同行與兒童椅嬰兒）安排至桌次、也能取消座位；一個賓客組依人數展開為多個席位（正常席「名字N」、兒童椅「名字-兒童N」）
 5. 容量以「人頭」計：一桌正常席人頭（partySize − 兒童椅嬰兒數）不可超過 capacity（兒童椅額外加位、不佔正常席）；正常席已滿 / 賓客已有座位時不可重複安排；賓客不在此桌時不可取消
-6. 管理員能更新禮俗建議引擎開關設定，並能覆寫（忽略）特定禮俗警告
-7. 桌次的識別欄位（tableName）與正常席容量（capacity）可被使用者讀到
+6. 桌次的識別欄位（tableName）與正常席容量（capacity）可被使用者讀到
 
 ---
 
@@ -300,86 +299,12 @@ API 邊界保護。
 
 ---
 
-## Flow: 成功更新禮俗設定（happy-path）
-
-> 對應 Feature: 更新禮俗設定 → Scenario: 成功更新禮俗設定
-
-### 業務脈絡
-- wedding-001 已建立
-
-### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/seating` 的禮俗設定入口
-2. 切換禮俗開關（三開關，每個對應一條實際規則）：
-   - 長輩靠近主桌（elderNearMain）→ 開（警告：長輩被排在一般賓客後方時提醒）
-   - 主桌坐滿（mainTableFull）→ 開（警告：主桌未坐滿時提醒）
-   - 同分類同桌（sameCategoryTogether）→ 關（推薦排序偏好）
-3. 儲存設定
-
-### Verification 策略
-- API spy：`PUT/PATCH .../etiquette-settings`，payload 含三個布林開關
-- UI：開關狀態反映已儲存（成功反饋 / 開關保持新狀態）
-
-### 不再凍結
-- 開關元件（toggle / checkbox / switch）、排版
-
----
-
-## Flow: 更新禮俗設定時婚禮不存在（not-found）
-
-> 對應 Feature: 更新禮俗設定 → Scenario: 婚禮不存在
-
-### 性質
-API 邊界保護。
-
-### 驗證流程
-- `PUT /api/v1/weddings/wedding-999/etiquette-settings` 帶開關 payload
-- 期待：4xx，訊息含「婚禮不存在」
-
----
-
-## Flow: 成功覆寫禮俗警告（happy-path）
-
-> 對應 Feature: 覆寫禮俗警告 → Scenario: 成功覆寫禮俗警告
-
-### 業務脈絡
-- wedding-001 已建立；禮俗警告改由前端依「設定 + 當前座位」即時計算（違反才跳）。
-- 進站時主桌尚未坐滿（mainTableFull 開啟），故出現「主桌尚未坐滿」警告（warning-main-table-full / main-table-not-full）。
-
-### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/seating`，禮俗警告區顯示「主桌尚未坐滿」警告
-2. 在該警告範圍內觸發「忽略 / 覆寫此警告」
-3. 期待：
-   - API spy：`POST .../etiquette-warnings/warning-main-table-full/dismiss`，payload 含 warningType（main-table-not-full）
-   - 該警告不再以未處理狀態顯示（前端即時隱藏）
-
-### Verification 策略
-- API spy（dismiss 端點）
-- UI：該警告從未處理清單消失
-
-### 不再凍結
-- 警告呈現（banner / list / inline）、忽略觸發形式
-
----
-
-## Flow: 覆寫禮俗警告時婚禮不存在（not-found）
-
-> 對應 Feature: 覆寫禮俗警告 → Scenario: 婚禮不存在
-
-### 性質
-API 邊界保護。
-
-### 驗證流程
-- `POST /api/v1/weddings/wedding-999/etiquette-warnings/warning-main-table-full/dismiss` 帶 warningType
-- 期待：4xx，訊息含「婚禮不存在」
-
----
-
 ## Selector 策略（v2 通則）
 
 1. role + name regex 找桌次 / 賓客實體：`getByRole('row', { name: /主桌/ })`、`getByText(/陳大明/)`
-2. 動作按鈕：`getByRole('button', { name: /新增桌次|編輯|移除|安排|取消座位|設定佈局|忽略/ })`
+2. 動作按鈕：`getByRole('button', { name: /新增桌次|編輯|移除|安排|取消座位|設定佈局/ })`
 3. 反饋 / 錯誤：`getByRole('alert')` 或 `getByText(/桌次不存在|桌次上還有賓客|桌次已滿|賓客已有座位|賓客不在此桌|婚禮不存在/)`
-4. seat / unseat / dismiss outcome：`page.waitForRequest`
+4. seat / unseat outcome：`page.waitForRequest`
 5. testid（fallback）：畫布節點若無可見名稱可用 `table-row-table-001`；座位定位用 `table-001-seat-1`（僅在純畫布無語意角色時）
 
 ---
@@ -390,5 +315,4 @@ API 邊界保護。
 - `DELETE .../tables/{id}`：有人入座回 409「桌次上還有賓客，無法移除」；不存在回 404
 - seat 端點：依賓客 partySize / childChairCount 展開為多筆座位（正常席 normal + 兒童椅 childChair）；正常席人頭超過 capacity 回 409「桌次已滿，無法再安排座位」；重複回 409「賓客已有座位」；桌次不存在回 404
 - unseat 端點：一次清除該賓客在該桌的所有座位；桌次不存在回 404「桌次不存在」；賓客不在桌回 404「賓客不在此桌」
-- venue-layout / etiquette-settings：婚禮不存在回 404「婚禮不存在」
-- etiquette-warnings dismiss：婚禮不存在回 404「婚禮不存在」
+- venue-layout：婚禮不存在回 404「婚禮不存在」
