@@ -86,6 +86,7 @@ export {
   updateRundownRole,
 } from './rundown.api'
 export {
+  analyzeVenueLayout,
   configureVenueLayout,
   createTable,
   createVenueMarker,

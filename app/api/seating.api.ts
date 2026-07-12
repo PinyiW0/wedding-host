@@ -17,6 +17,7 @@ import type {
   TableUpdatedEvent,
   UpdateTableBody,
   UpdateVenueMarkerBody,
+  VenueAnalysisResult,
   VenueLayoutBody,
   VenueLayoutConfiguredEvent,
   VenueLayoutDetail,
@@ -93,6 +94,15 @@ export function configureVenueLayout(weddingId: string, body: VenueLayoutBody) {
   return useHttp().put<VenueLayoutConfiguredEvent>(
     '/api/v1/weddings/{weddingId}/venue-layout',
     { pathParams: { weddingId }, body },
+  )
+}
+
+// 場地參考圖 AI 分析（Claude vision）：回傳相對座標，前端映射到畫布後批次建桌
+// 視覺分析可能耗時（模型推理數十秒），timeout 放寬到 2 分鐘
+export function analyzeVenueLayout(weddingId: string) {
+  return useHttp().post<VenueAnalysisResult>(
+    '/api/v1/weddings/{weddingId}/venue-layout/analyze',
+    { pathParams: { weddingId }, timeout: 120_000 },
   )
 }
 

@@ -138,6 +138,15 @@ api_contract:
     VenueLayoutConfiguredEvent:
       file: seating.ts
       fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number, referenceImageUrl: 'string | null' }
+    VenueAnalysisStage:
+      file: seating.ts
+      fields: { x: number, y: number, width: number, height: number }
+    VenueAnalysisTable:
+      file: seating.ts
+      fields: { x: number, y: number }
+    VenueAnalysisResult:
+      file: seating.ts
+      fields: { stage: 'VenueAnalysisStage | null', tables: 'VenueAnalysisTable[]' }
     EtiquetteSettings:
       file: seating.ts
       fields: { elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }
@@ -390,6 +399,7 @@ api_contract:
     - { method: DELETE, path: /api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}, request: '{}', response: void }
     # --- seating: venue layout / etiquette ---
     - { method: PUT, path: /api/v1/weddings/{weddingId}/venue-layout, request: VenueLayoutBody, response: VenueLayoutConfiguredEvent }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/venue-layout/analyze, request: '{}', response: VenueAnalysisResult }
     - { method: PUT, path: /api/v1/weddings/{weddingId}/etiquette-settings, request: EtiquetteSettingsBody, response: EtiquetteSettingsUpdatedEvent }
     - { method: GET, path: /api/v1/weddings/{weddingId}/etiquette-warnings, request: '{}', response: 'EtiquetteWarningListItem[]' }
     - { method: POST, path: /api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss, request: DismissEtiquetteWarningBody, response: EtiquetteWarningDismissedEvent }

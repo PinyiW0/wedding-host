@@ -82,6 +82,26 @@ export interface VenueLayoutConfiguredEvent {
 // GET 讀回的場地佈局（重整後還原 modal 既有值）
 export type VenueLayoutDetail = VenueLayoutConfiguredEvent
 
+// 場地參考圖 AI 分析（Claude vision）：座標一律為相對比例 0~1（x 向右、y 向下），前端映射到畫布
+export interface VenueAnalysisStage {
+  // 舞台左上角與寬高（相對比例）
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface VenueAnalysisTable {
+  // 桌位圓心（相對比例）
+  x: number
+  y: number
+}
+
+export interface VenueAnalysisResult {
+  stage: VenueAnalysisStage | null
+  tables: VenueAnalysisTable[]
+}
+
 export interface EtiquetteSettings {
   // 長輩靠近主桌（警告開關：長輩／家屬被排在一般賓客後方時提醒）
   elderNearMain: boolean
