@@ -83,12 +83,6 @@ export type {
 } from './rsvp'
 export type {
   CreateTableBody,
-  DismissEtiquetteWarningBody,
-  EtiquetteSettings,
-  EtiquetteSettingsBody,
-  EtiquetteSettingsUpdatedEvent,
-  EtiquetteWarningDismissedEvent,
-  EtiquetteWarningListItem,
   GuestSeatedEvent,
   SeatGuestBody,
   SeatListItem,

@@ -12,15 +12,12 @@ import {
 } from '../helpers'
 
 // 對應 spec/e2e-flows/04-seating.flow.md
-// （桌次 CRUD + 場地佈局 + 座位安排 + 禮俗設定 / 警告）
+// （桌次 CRUD + 場地佈局 + 座位安排）
 // Feature Background：已登入為管理員（Admin）；已選定 wedding-001
 // mock seed：
 //   tables：table-001(主桌/12座/100,200，由後台設定)、table-002(男方家屬桌)、table-003(女方家屬桌)
 //   seats：預設無人入座
 //   venueLayout：wedding-001 已有舞台設定
-//   etiquetteSettings：wedding-001 三開關（elderNearMain/mainTableFull 開、sameCategoryTogether 關）
-//   etiquetteWarnings：改由前端依「設定 + 當前座位」即時計算（違反才跳），無靜態 seed；
-//     進站主桌未坐滿 → 出現「主桌尚未坐滿」警告（warning-main-table-full / main-table-not-full）
 
 const SEATING_URL = '/weddings/wedding-001/seating'
 
@@ -335,96 +332,6 @@ test.describe('場地佈局（Admin 端）', () => {
       const res = await page.request.put(
         '/api/v1/weddings/wedding-999/venue-layout',
         { data: { stageWidth: 300, stageHeight: 150, stagePositionX: 500, stagePositionY: 100 } },
-      )
-      expect(res.status()).toBe(404)
-      expect(JSON.stringify(await res.json())).toContain('婚禮不存在')
-    })
-  })
-})
-
-// =====================================================================
-// 禮俗設定
-// =====================================================================
-test.describe('禮俗設定（Admin 端）', () => {
-  test.describe('規則：成功更新禮俗設定', () => {
-    test('成功更新禮俗設定', async ({ page }) => {
-      // Given：wedding-001 已建立
-      await page.goto(SEATING_URL, { waitUntil: 'networkidle' })
-
-      // When：進入禮俗設定入口並切換開關
-      await page.getByRole('button', { name: /禮俗設定|禮俗建議|設定禮俗/ }).click()
-
-      // 主要 outcome：API spy 驗證 PUT .../etiquette-settings，payload 含三個布林開關
-      const apiCall = waitForApiCall(page, /\/etiquette-settings(\?|$)/, 'PUT')
-      await page.getByRole('button', { name: /儲存|送出|確定|更新/ }).click()
-      const request = await apiCall
-      const payload = request.postDataJSON()
-      expect(payload).toMatchObject({
-        elderNearMain: expect.any(Boolean),
-        mainTableFull: expect.any(Boolean),
-        sameCategoryTogether: expect.any(Boolean),
-      })
-
-      // Then：使用者能感知設定已儲存
-      await expect(getFeedbackElement(page)).toBeVisible()
-    })
-  })
-
-  test.describe('規則：更新禮俗設定時婚禮不存在', () => {
-    test('婚禮不存在', async ({ page }) => {
-      // 性質：API 邊界保護
-      const res = await page.request.put(
-        '/api/v1/weddings/wedding-999/etiquette-settings',
-        {
-          data: {
-            elderNearMain: true,
-            mainTableFull: true,
-            sameCategoryTogether: false,
-          },
-        },
-      )
-      expect(res.status()).toBe(404)
-      expect(JSON.stringify(await res.json())).toContain('婚禮不存在')
-    })
-  })
-})
-
-// =====================================================================
-// 禮俗警告覆寫
-// =====================================================================
-test.describe('禮俗警告（Admin 端）', () => {
-  test.describe('規則：成功覆寫禮俗警告', () => {
-    test('成功覆寫禮俗警告', async ({ page }) => {
-      // Given：wedding-001 已建立；進站時主桌尚未坐滿，故出現「主桌坐滿」禮俗警告（違反才跳）
-      await page.goto(SEATING_URL, { waitUntil: 'networkidle' })
-
-      // When：在「主桌尚未坐滿」警告範圍觸發忽略 / 覆寫此警告
-      const warningEntity = page.getByRole('alert', { name: /主桌尚未坐滿/ })
-      await expect(warningEntity).toBeVisible()
-      const apiCall = waitForApiCall(
-        page,
-        /\/etiquette-warnings\/warning-main-table-full\/dismiss(\?|$)/,
-        'POST',
-      )
-      await warningEntity.getByRole('button', { name: /忽略|覆寫/ }).click()
-      await maybeConfirm(page)
-      const request = await apiCall
-      expect(request.postDataJSON()).toMatchObject({
-        warningType: 'main-table-not-full',
-      })
-
-      // Then：該警告不再以未處理狀態顯示
-      await apiCall
-      await expect(getFeedbackElement(page)).toBeVisible()
-    })
-  })
-
-  test.describe('規則：覆寫禮俗警告時婚禮不存在', () => {
-    test('婚禮不存在', async ({ page }) => {
-      // 性質：API 邊界保護
-      const res = await page.request.post(
-        '/api/v1/weddings/wedding-999/etiquette-warnings/warning-main-table-full/dismiss',
-        { data: { warningType: 'main-table-not-full' } },
       )
       expect(res.status()).toBe(404)
       expect(JSON.stringify(await res.json())).toContain('婚禮不存在')

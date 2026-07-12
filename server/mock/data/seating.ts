@@ -1,8 +1,5 @@
-// 座位與場地佈局 mock 資料：桌次 / 座位 / 場地佈局 / 禮俗設定與警告
+// 座位與場地佈局 mock 資料：桌次 / 座位 / 場地佈局
 // seed：table-001（主桌 / 12 座 / 100,200，由後台設定）。
-// 禮俗警告改由前端依「設定 + 當前座位」即時計算（違反才跳），故不再 seed 靜態警告。
-
-import type { EtiquetteSettings } from '../../../app/types/api/seating'
 
 export interface MockTable {
   tableId: string
@@ -41,18 +38,6 @@ export interface MockVenueMarker {
   height: number
 }
 
-export interface MockEtiquetteSettings extends EtiquetteSettings {
-  weddingId: string
-}
-
-export interface MockEtiquetteWarning {
-  warningId: string
-  weddingId: string
-  warningType: string
-  message: string
-  dismissed: boolean
-}
-
 // 預設佈局：主桌置於頂端中央（正對舞台），其餘各桌「兩桌一列」往下排到結束。
 // 欄距 360 / 列距 300 的寬鬆間距，使各桌「圓桌＋環繞座位＋下方按鈕」不致重疊。
 // 註：位置存於記憶體 mock，現場拖曳調整後重整仍在，但開發伺服器重啟會回到此預設。
@@ -86,15 +71,3 @@ export const mockVenueLayouts: MockVenueLayout[] = [
 
 // 場地標記（seed 空陣列：凍結測試期間畫布零差異）
 export const mockVenueMarkers: MockVenueMarker[] = []
-
-export const mockEtiquetteSettings: MockEtiquetteSettings[] = [
-  {
-    weddingId: 'wedding-001',
-    elderNearMain: true,
-    mainTableFull: true,
-    sameCategoryTogether: false,
-  },
-]
-
-// 警告改由前端即時計算，這裡只保留空陣列供 dismiss 端點查找與 reset 還原（不再有靜態警告）
-export const mockEtiquetteWarnings: MockEtiquetteWarning[] = []

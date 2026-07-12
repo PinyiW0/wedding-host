@@ -10,6 +10,7 @@ import {
 } from '../helpers'
 
 // 桌次規劃頁改版（issue #53）：批次新增、舞台位置反映、預設佈局、場地參考圖上傳。
+// 底圖調整（issue #58）：調整模式中可拖曳對位與縮放，墊底排完即刪。
 // 主 spec 未凍結這些新行為，以 vibe spec 固化避免後續 vibe 誤破。
 
 const SEATING_001 = '/weddings/wedding-001/seating'
@@ -18,6 +19,11 @@ const SEATING_002 = '/weddings/wedding-002/seating' // seed 無桌次、無場�
 // 1x1 透明 PNG
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
+)
+// 200x100 純色 PNG（底圖調整測試需要有實際尺寸的圖）
+const PNG_200X100 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAA4UlEQVR42u3TMQ0AAAjAMLSjCRG4AgO8fD1qYMmiKwe4hQhgEDAIGAQMAgYBg4BBwCBgEMAgYBAwCBgEDAIGAYOAQcAgYBAhwCBgEDAIGAQMAgYBg4BBwCCAQcAgYBAwCBgEDAIGAYOAQcAggEHAIGAQMAgYBAwCBgGDgEEAg4BBwCBgEDAIGAQMAgYBg4BBAIOAQcAgYBAwCBgEDAIGAYMABgGDgEHAIGAQMAgYBAwCBgGDAAYBg4BBwCBgEDAIGAQMAgYBg4gABgGDgEHAIGAQMAgYBAwCBgEMAgYBg8CnBRkEg0hrFIVYAAAAAElFTkSuQmCC',
   'base64',
 )
 // 極小合法單頁 PDF（驗證 PDF 轉第一頁 PNG 流程）
@@ -161,6 +167,57 @@ test.describe('vibe：場地參考圖上傳', () => {
     await page.getByTestId('vibe-venue-ref-remove').click()
     await removeCall
     await expect(page.getByTestId('vibe-venue-ref-image')).not.toBeVisible()
+  })
+
+  test('調整模式可拖曳底圖對位，完成後恢復墊底不擋桌次', async ({ page }) => {
+    // Given：已上傳 200x100 參考圖
+    await page.goto(SEATING_001, { waitUntil: 'networkidle' })
+    const putCall = waitForApiCall(page, /\/venue-layout(\?|$)/, 'PUT')
+    await page.locator('input[type=file]').setInputFiles({ name: 'venue.png', mimeType: 'image/png', buffer: PNG_200X100 })
+    await putCall
+    const img = page.getByTestId('vibe-venue-ref-image')
+    await expect(img).toBeVisible()
+    await expect(img).toHaveCSS('width', '200px')
+
+    // When：進入調整模式，拖曳底圖到新位置
+    await page.getByTestId('vibe-venue-ref-adjust').click()
+    await expect(page.getByTestId('vibe-venue-ref-adjust-bar')).toBeVisible()
+    const box = (await img.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 80, { steps: 5 })
+    await page.mouse.up()
+
+    // Then：底圖移到新位置
+    await expect(img).toHaveCSS('left', '120px')
+    await expect(img).toHaveCSS('top', '80px')
+
+    // When：完成調整 → Then：調整列收起、底圖恢復不攔截指標事件（桌子照常可拖）
+    await page.getByTestId('vibe-venue-ref-done').click()
+    await expect(page.getByTestId('vibe-venue-ref-adjust-bar')).not.toBeVisible()
+    await expect(img).toHaveClass(/pointer-events-none/)
+  })
+
+  test('縮放按鈕改變底圖大小，重設回 100% 與原位', async ({ page }) => {
+    // Given：已上傳參考圖並進入調整模式
+    await page.goto(SEATING_001, { waitUntil: 'networkidle' })
+    const putCall = waitForApiCall(page, /\/venue-layout(\?|$)/, 'PUT')
+    await page.locator('input[type=file]').setInputFiles({ name: 'venue.png', mimeType: 'image/png', buffer: PNG_200X100 })
+    await putCall
+    const img = page.getByTestId('vibe-venue-ref-image')
+    await expect(img).toBeVisible()
+    await page.getByTestId('vibe-venue-ref-adjust').click()
+
+    // When：放大兩段 → Then：顯示 120%、寬度等比放大
+    await page.getByTestId('vibe-venue-ref-zoom-in').click()
+    await page.getByTestId('vibe-venue-ref-zoom-in').click()
+    await expect(page.getByTestId('vibe-venue-ref-adjust-bar')).toContainText('120%')
+    await expect(img).toHaveCSS('width', '240px')
+
+    // When：重設 → Then：回 100% 原尺寸
+    await page.getByTestId('vibe-venue-ref-reset').click()
+    await expect(page.getByTestId('vibe-venue-ref-adjust-bar')).toContainText('100%')
+    await expect(img).toHaveCSS('width', '200px')
   })
 
   test('上傳 PDF → 轉第一頁為 PNG 後作為底圖', async ({ page }) => {
