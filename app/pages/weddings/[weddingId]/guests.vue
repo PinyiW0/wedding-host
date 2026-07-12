@@ -47,6 +47,8 @@ const { data: guests, refresh } = await listGuests(weddingId, {
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
 )
+// 已移除賓客預設不顯示（避免干擾正式名單），展開折疊區才可見、可恢復
+const showDeletedGuests = ref(false)
 const deletedGuests = computed(() =>
   (guests.value ?? []).filter(g => g.deletedAt),
 )
@@ -73,6 +75,8 @@ const { data: categories, refresh: refreshCategories } = await listGuestCategori
   default: () => [],
 })
 const categoryList = computed(() => categories.value ?? [])
+// 分類下拉選項（分類多時 badge 快選會擠爆表單，改下拉選擇帶入）
+const categorySelectItems = computed(() => categoryList.value.map(c => ({ label: c, value: c })))
 
 // 各分類使用數（僅計未刪除賓客；刪除分類的守門依據）
 const categoryUsage = computed(() => {
@@ -772,6 +776,9 @@ async function confirmImport() {
               <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
                 餐點
               </th>
+              <th class="hidden border-b border-line px-3 py-3.5 font-medium sm:table-cell">
+                人數
+              </th>
               <th class="hidden border-b border-line px-3 py-3.5 font-medium md:table-cell">
                 分類
               </th>
@@ -808,6 +815,10 @@ async function confirmImport() {
               </td>
               <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
                 <span>{{ dietLabel(guest.diet) }}</span>
+              </td>
+              <!-- 人數 = 含本人與兒童椅嬰兒的總人頭（partySize）；兒童椅另計 -->
+              <td class="hidden border-b border-line px-3 py-4 text-ink-500 sm:table-cell dark:border-neutral-800 dark:text-neutral-300">
+                <span>{{ guest.partySize }} 人</span>
                 <span v-if="guest.childChairCount > 0" class="text-ink-300"> · 兒童椅 ×{{ guest.childChairCount }}</span>
               </td>
               <td class="hidden border-b border-line px-3 py-4 text-ink-500 md:table-cell dark:border-neutral-800 dark:text-neutral-300">
@@ -867,13 +878,23 @@ async function confirmImport() {
           </tbody>
         </table>
 
-        <!-- 回收區（已移除，常駐渲染供恢復操作可達） -->
+        <!-- 回收區（已移除）：預設收合不佔畫面，展開後才可見、可恢復 -->
         <div v-if="deletedGuests.length > 0">
           <div class="mb-3 flex items-center gap-3">
-            <span class="text-overline uppercase text-gold-deep">已移除的賓客</span>
+            <button
+              type="button"
+              data-testid="vibe-toggle-deleted-guests"
+              class="flex items-center gap-1.5 text-overline uppercase text-gold-deep transition-colors hover:text-gold"
+              :aria-expanded="showDeletedGuests"
+              @click="showDeletedGuests = !showDeletedGuests"
+            >
+              已移除的賓客（{{ deletedGuests.length }}）
+              <UIcon :name="showDeletedGuests ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="size-3.5" />
+            </button>
             <span class="h-px flex-1 bg-line" />
           </div>
           <table
+            v-if="showDeletedGuests"
             data-testid="guest-deleted-list"
             class="w-full border-collapse"
           >
@@ -962,27 +983,22 @@ async function confirmImport() {
                   class="relative mb-6"
                   :ui="{ error: 'absolute top-full left-0 mt-1' }"
                 >
-                  <!-- 保持可 fill 的 UInput（凍結 getByLabel(/分類/).fill 依賴）；下方 badge 快選帶入值 -->
+                  <!-- 保持可 fill 的 UInput（凍結 getByLabel(/分類/).fill 依賴）；下方下拉選擇既有分類帶入 -->
                   <UInput
                     v-model="state.category"
                     data-testid="guest-category"
                     placeholder="如：同事、家人、朋友"
                     class="w-full"
                   />
-                  <div v-if="categoryList.length" class="mt-2 flex flex-wrap gap-1.5">
-                    <button
-                      v-for="c in categoryList"
-                      :key="c"
-                      type="button"
-                      class="rounded-full border px-2.5 py-0.5 text-caption transition-colors"
-                      :class="state.category === c
-                        ? 'border-gold bg-gold-light/40 text-gold-deep'
-                        : 'border-line text-ink-500 hover:border-gold-deep hover:text-gold-deep'"
-                      @click="state.category = c"
-                    >
-                      {{ c }}
-                    </button>
-                  </div>
+                  <USelectMenu
+                    v-if="categoryList.length"
+                    v-model="state.category"
+                    data-testid="vibe-guest-category-select"
+                    :items="categorySelectItems"
+                    value-key="value"
+                    placeholder="從既有分類選擇"
+                    class="mt-2 w-full"
+                  />
                 </UFormField>
               </div>
 

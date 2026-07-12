@@ -26,6 +26,7 @@ import {
   listGuests,
   listTables,
   listVenueMarkers,
+  moveSeat,
   seatGuest,
   unseatGuest,
   updateTable,
@@ -132,13 +133,14 @@ const stageBox = computed(() => {
 // === 場地參考圖底圖（顯示寬度上限 1200 等比縮放；載入後 canvasSize 需納入其範圍）===
 const refImageUrl = computed(() => venueLayout.value?.referenceImageUrl ?? null)
 const refImageDims = ref<{ width: number, height: number } | null>(null)
-// 底圖調整模式：拖曳移動、按鈕縮放。位置與縮放僅本頁暫存（墊底對位用，排完即刪），重整還原
+// 底圖調整模式：拖曳移動、按鈕縮放。對位結果持久化於 venue-layout，跨進出頁面保留
 const isAdjustingRefImage = ref(false)
 const refImageTransform = ref({ x: 0, y: 0, scale: 1 })
 watch(refImageUrl, (url) => {
   refImageDims.value = null
   isAdjustingRefImage.value = false
-  refImageTransform.value = { x: 0, y: 0, scale: 1 }
+  const layout = venueLayout.value
+  refImageTransform.value = { x: layout?.refImageX ?? 0, y: layout?.refImageY ?? 0, scale: layout?.refImageScale ?? 1 }
   if (!url || import.meta.server)
     return
   const img = new Image()
@@ -149,11 +151,53 @@ watch(refImageUrl, (url) => {
   img.src = url
 }, { immediate: true })
 
+// 對位結果寫回 venue-layout：連續拖放／縮放合併為一次 PUT，靜默儲存（失敗才提示）
+let refTransformSaveTimer: ReturnType<typeof setTimeout> | undefined
+async function saveRefImageTransform() {
+  clearTimeout(refTransformSaveTimer)
+  refTransformSaveTimer = undefined
+  const layout = venueLayout.value
+  if (!layout?.referenceImageUrl)
+    return
+  const t = refImageTransform.value
+  if (t.x === layout.refImageX && t.y === layout.refImageY && t.scale === layout.refImageScale)
+    return
+  try {
+    await configureVenueLayout(weddingId.value, {
+      stageWidth: layout.stageWidth,
+      stageHeight: layout.stageHeight,
+      stagePositionX: layout.stagePositionX,
+      stagePositionY: layout.stagePositionY,
+      refImageX: t.x,
+      refImageY: t.y,
+      refImageScale: t.scale,
+    })
+    await refreshVenue()
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '請稍後再試'
+    toast.add({ title: '參考圖位置儲存失敗', description: message, color: 'error' })
+  }
+}
+function scheduleSaveRefImageTransform() {
+  clearTimeout(refTransformSaveTimer)
+  refTransformSaveTimer = setTimeout(saveRefImageTransform, 400)
+}
+function resetRefImageTransform() {
+  refImageTransform.value = { x: 0, y: 0, scale: 1 }
+  scheduleSaveRefImageTransform()
+}
+function finishRefImageAdjust() {
+  isAdjustingRefImage.value = false
+  void saveRefImageTransform()
+}
+
 const REF_SCALE_MIN = 0.25
 const REF_SCALE_MAX = 3
 function zoomRefImage(delta: number) {
   const next = Math.round((refImageTransform.value.scale + delta) * 100) / 100
   refImageTransform.value.scale = Math.min(REF_SCALE_MAX, Math.max(REF_SCALE_MIN, next))
+  scheduleSaveRefImageTransform()
 }
 
 // 底圖實際渲染框（位置 + 縮放後尺寸），畫布尺寸與 template 共用
@@ -188,6 +232,8 @@ function onRefImagePointerMove(event: PointerEvent) {
 }
 function onRefImagePointerUp() {
   window.removeEventListener('pointermove', onRefImagePointerMove)
+  if (isMovingRefImage.value)
+    scheduleSaveRefImageTransform()
   isMovingRefImage.value = false
 }
 
@@ -259,9 +305,8 @@ async function onTablePointerUp() {
     await updateTable(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
     await refreshTables()
     // 儲存成功後清掉本地暫存覆寫，改由伺服器回傳值呈現（避免本地與後端不同步）
+    // 拖曳頻繁，成功靜默（位置畫面直接可見），失敗才提示
     delete localPos.value[id]
-    // 拖曳頻繁，提示只要短暫一閃即可（縮短秒數、不帶描述），免得擾民
-    toast.add({ title: '桌位已更新', color: 'success', duration: 1200 })
   }
   catch (error: any) {
     // 失敗則還原本地覆寫
@@ -315,7 +360,6 @@ async function onMarkerPointerUp() {
     await updateVenueMarker(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
     await refreshMarkers()
     delete localMarkerPos.value[id]
-    toast.add({ title: '標記已更新', color: 'success', duration: 1200 })
   }
   catch (error: any) {
     delete localMarkerPos.value[id]
@@ -453,7 +497,6 @@ async function onStagePointerUp() {
     })
     await refreshVenue()
     localStagePos.value = null
-    toast.add({ title: '舞台位置已更新', color: 'success', duration: 1200 })
   }
   catch (error: any) {
     localStagePos.value = null
@@ -462,7 +505,7 @@ async function onStagePointerUp() {
   }
 }
 
-// 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）
+// 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）；參考圖對位有未寫回的變更則立即送出
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onTablePointerMove)
   window.removeEventListener('pointerup', onTablePointerUp)
@@ -470,6 +513,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onMarkerPointerUp)
   window.removeEventListener('pointermove', onStagePointerMove)
   window.removeEventListener('pointerup', onStagePointerUp)
+  if (refTransformSaveTimer !== undefined)
+    void saveRefImageTransform()
 })
 
 // 環繞圓桌的座位座標（百分比，從正上方順時針排列）。
@@ -525,10 +570,13 @@ function canSeatGuest(table: TableListItem, guestId: string): boolean {
   return tableNormalHeads(table.tableId) + guestNormalHeads(guestId) <= table.capacity
 }
 
-// 下一個建議起始座號（後端實際會接續該桌現有最大座號 append）
+// 下一個空號（該桌最小未占用座號；後端亦以此起點往上填空號）
 function nextFreeSeat(table: TableListItem): number {
-  const maxSeat = tableSeats(table.tableId).reduce((m, s) => Math.max(m, s.seatNumber), 0)
-  return maxSeat + 1
+  const occupied = new Set(tableSeats(table.tableId).map(s => s.seatNumber))
+  let n = 1
+  while (occupied.has(n))
+    n++
+  return n
 }
 
 // 該賓客可入座則回起始座號；正常席不足回 null。
@@ -595,8 +643,8 @@ function seatSlots(table: TableListItem) {
     idx,
     pos,
     occupant: occupants[idx],
-    // 已入座用實際座號（供交換／取消反查）；空位用接續座號（後端會 append，避免撞到主桌重排後的他席座號）
-    seatNumber: occupants[idx]?.seatNumber ?? nextFreeSeat(table),
+    // 已入座用實際座號（供交換／取消反查）；空位：一般桌用該視覺位置的座號（拖入即落位），主桌座號與視覺位置脫鉤、用最小空號
+    seatNumber: occupants[idx]?.seatNumber ?? (isMain ? nextFreeSeat(table) : idx + 1),
   }))
 }
 
@@ -1135,6 +1183,44 @@ async function confirmClearAll() {
   }
 }
 
+// === 整桌重置排位：該桌所有賓客退回待排 ===
+const isResetTableOpen = ref(false)
+const resetTableTarget = ref<TableListItem | null>(null)
+const isResettingTable = ref(false)
+
+function openResetTable(table: TableListItem) {
+  if (tableSeats(table.tableId).length === 0) {
+    toast.add({ title: '此桌沒有已排席的賓客', color: 'info' })
+    return
+  }
+  resetTableTarget.value = table
+  isResetTableOpen.value = true
+}
+
+async function confirmResetTable() {
+  const table = resetTableTarget.value
+  if (!table || isResettingTable.value)
+    return
+  isResettingTable.value = true
+  try {
+    // 取消端點一次清掉該賓客在該桌的所有席位，同一賓客只送一次
+    const guestIds = [...new Set(tableSeats(table.tableId).map(s => s.guestId))]
+    for (const guestId of guestIds)
+      await unseatGuest(weddingId.value, table.tableId, guestId)
+    await refreshAll()
+    toast.add({ title: `已重置 ${table.tableName} 排位`, color: 'success' })
+    isResetTableOpen.value = false
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '請稍後再試'
+    toast.add({ title: '重置排位失敗', description: message, color: 'error' })
+    await refreshAll()
+  }
+  finally {
+    isResettingTable.value = false
+  }
+}
+
 // === 拖曳排位 ===
 // 拖曳來源：側欄賓客無 from* 欄位；座位上的賓客帶 fromTableId / fromSeatNumber（供移動 / 互換）
 interface DragSource { guestId: string, fromTableId?: string, fromSeatNumber?: number }
@@ -1148,11 +1234,11 @@ function endDrag() {
   dragOverTableId.value = null
 }
 
+// 拖曳操作成功不彈 toast（結果畫面直接可見），僅失敗提示
 async function assignSeat(tableId: string, guestId: string, seatNumber: number) {
   try {
     const body: SeatGuestBody = { guestId, seatNumber }
     await seatGuest(weddingId.value, tableId, body)
-    toast.add({ title: `已安排 ${guestName(guestId)} 入座`, color: 'success' })
     await refreshAll()
   }
   catch (error: any) {
@@ -1161,37 +1247,15 @@ async function assignSeat(tableId: string, guestId: string, seatNumber: number) 
   }
 }
 
-// 移動：先取消原座位，再入座新座位
-async function moveSeat(guestId: string, fromTableId: string, toTableId: string, toSeat: number) {
+// 單席移動／互換：以「席位」為粒度，一組賓客的大人、兒童椅席可各自移動；目標有人＝互換
+async function moveSingleSeat(fromTableId: string, fromSeatNumber: number, toTableId: string, toSeatNumber?: number) {
   try {
-    await unseatGuest(weddingId.value, fromTableId, guestId)
-    await seatGuest(weddingId.value, toTableId, { guestId, seatNumber: toSeat })
-    toast.add({ title: `已移動 ${guestName(guestId)} 座位`, color: 'success' })
+    await moveSeat(weddingId.value, { fromTableId, fromSeatNumber, toTableId, toSeatNumber })
     await refreshAll()
   }
   catch (error: any) {
     const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
     toast.add({ title: '移動失敗', description: message, color: 'error' })
-    await refreshAll()
-  }
-}
-
-// 互換：兩位皆先取消座位，再交叉入座
-async function swapSeats(
-  a: { guestId: string, tableId: string, seatNumber: number },
-  b: { guestId: string, tableId: string, seatNumber: number },
-) {
-  try {
-    await unseatGuest(weddingId.value, a.tableId, a.guestId)
-    await unseatGuest(weddingId.value, b.tableId, b.guestId)
-    await seatGuest(weddingId.value, b.tableId, { guestId: a.guestId, seatNumber: b.seatNumber })
-    await seatGuest(weddingId.value, a.tableId, { guestId: b.guestId, seatNumber: a.seatNumber })
-    toast.add({ title: `已互換 ${guestName(a.guestId)} 與 ${guestName(b.guestId)} 座位`, color: 'success' })
-    await refreshAll()
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '互換失敗，請稍後再試'
-    toast.add({ title: '互換失敗', description: message, color: 'error' })
     await refreshAll()
   }
 }
@@ -1228,7 +1292,7 @@ function onTableDragLeave(tableId: string) {
     dragOverTableId.value = null
 }
 
-// 拖到整桌：座位上的人→該桌下一個空位；側欄賓客→下一個空位（含兒童加位）
+// 拖到整桌：座位上的席位→單席移到該桌下一個空號；側欄賓客→整組帶入（含兒童加位）
 async function onDropToTable(event: DragEvent, table: TableListItem) {
   event.preventDefault()
   const src = dragSource.value
@@ -1237,18 +1301,19 @@ async function onDropToTable(event: DragEvent, table: TableListItem) {
     return
   if (src.fromTableId === table.tableId)
     return
+  if (src.fromTableId && src.fromSeatNumber != null) {
+    await moveSingleSeat(src.fromTableId, src.fromSeatNumber, table.tableId)
+    return
+  }
   const seat = nextSeatFor(table, src.guestId)
   if (seat == null) {
     toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
     return
   }
-  if (src.fromTableId && src.fromSeatNumber != null)
-    await moveSeat(src.guestId, src.fromTableId, table.tableId, seat)
-  else
-    await assignSeat(table.tableId, src.guestId, seat)
+  await assignSeat(table.tableId, src.guestId, seat)
 }
 
-// 拖到某座位：空位→入座 / 移動；已佔位→互換（來源為座位）或改放下一個空位（來源為側欄）
+// 拖到某座位：席位來源→單席移動（目標有人＝互換）；側欄賓客→整組帶入（已佔位改放下一個空位）
 async function onDropToSeat(event: DragEvent, table: TableListItem, seatNumber: number) {
   event.preventDefault()
   event.stopPropagation()
@@ -1256,32 +1321,25 @@ async function onDropToSeat(event: DragEvent, table: TableListItem, seatNumber: 
   endDrag()
   if (!src)
     return
-  const occupant = occupantAt(table.tableId, seatNumber)
-  if (occupant && occupant.guestId === src.guestId)
+  if (src.fromTableId && src.fromSeatNumber != null) {
+    // 拖回自己原位不動
+    if (src.fromTableId === table.tableId && src.fromSeatNumber === seatNumber)
+      return
+    await moveSingleSeat(src.fromTableId, src.fromSeatNumber, table.tableId, seatNumber)
     return
+  }
+  const occupant = occupantAt(table.tableId, seatNumber)
   if (occupant) {
-    if (src.fromTableId && src.fromSeatNumber != null) {
-      await swapSeats(
-        { guestId: src.guestId, tableId: src.fromTableId, seatNumber: src.fromSeatNumber },
-        { guestId: occupant.guestId, tableId: table.tableId, seatNumber },
-      )
+    // 側欄賓客拖到已佔位 → 改放該桌下一個空位（含兒童加位）
+    const seat = nextSeatFor(table, src.guestId)
+    if (seat == null) {
+      toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
+      return
     }
-    else {
-      // 側欄賓客拖到已佔位 → 改放該桌下一個空位（含兒童加位）
-      const seat = nextSeatFor(table, src.guestId)
-      if (seat == null) {
-        toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
-        return
-      }
-      await assignSeat(table.tableId, src.guestId, seat)
-    }
+    await assignSeat(table.tableId, src.guestId, seat)
+    return
   }
-  else if (src.fromTableId && src.fromSeatNumber != null) {
-    await moveSeat(src.guestId, src.fromTableId, table.tableId, seatNumber)
-  }
-  else {
-    await assignSeat(table.tableId, src.guestId, seatNumber)
-  }
+  await assignSeat(table.tableId, src.guestId, seatNumber)
 }
 
 // === 新增 / 編輯桌次 ===
@@ -1582,7 +1640,7 @@ async function pdfToPngDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/png')
 }
 
-// 寫回 venue-layout（尚無佈局時以預設舞台值一併建立）
+// 寫回 venue-layout（尚無佈局時以預設舞台值一併建立）；換圖／移除時對位一併歸零
 async function saveRefImage(url: string | null) {
   const layout = venueLayout.value
   await configureVenueLayout(weddingId.value, {
@@ -1591,6 +1649,9 @@ async function saveRefImage(url: string | null) {
     stagePositionX: layout?.stagePositionX ?? 270,
     stagePositionY: layout?.stagePositionY ?? 20,
     referenceImageUrl: url,
+    refImageX: 0,
+    refImageY: 0,
+    refImageScale: 1,
   })
   await refreshVenue()
 }
@@ -1856,7 +1917,7 @@ function guestMeta(g: GuestListItem): string {
               color="neutral"
               variant="ghost"
               size="xs"
-              @click="refImageTransform = { x: 0, y: 0, scale: 1 }"
+              @click="resetRefImageTransform"
             >
               重設
             </UButton>
@@ -1865,7 +1926,7 @@ function guestMeta(g: GuestListItem): string {
               color="neutral"
               variant="solid"
               size="xs"
-              @click="isAdjustingRefImage = false"
+              @click="finishRefImageAdjust"
             >
               完成
             </UButton>
@@ -1956,7 +2017,7 @@ function guestMeta(g: GuestListItem): string {
               :key="table.tableId"
               :data-testid="`table-row-${table.tableId}`"
               :aria-label="table.tableName"
-              class="absolute hover:z-50"
+              class="group/table absolute hover:z-50"
               :class="[
                 isMainTable(table) ? 'w-[200px]' : 'w-[168px]',
                 movingTableId === table.tableId ? 'z-40' : (dragOverTableId === table.tableId ? 'z-30' : 'z-10'),
@@ -2033,8 +2094,11 @@ function guestMeta(g: GuestListItem): string {
                 </template>
               </div>
 
-              <!-- 編輯 / 移除（置於圓桌下方，不遮住座位） -->
-              <div class="mt-6 flex justify-center gap-1" @pointerdown.stop>
+              <!-- 編輯 / 重置排位 / 移除（置於圓桌下方，hover 或聚焦才浮現，避免干擾視覺） -->
+              <div
+                class="mt-6 flex justify-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/table:opacity-100"
+                @pointerdown.stop
+              >
                 <UButton
                   data-testid="table-edit"
                   icon="i-heroicons-pencil"
@@ -2045,6 +2109,17 @@ function guestMeta(g: GuestListItem): string {
                   @click="openEditTable(table)"
                 >
                   編輯
+                </UButton>
+                <UButton
+                  data-testid="vibe-table-reset"
+                  icon="i-heroicons-arrow-uturn-left"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  :aria-label="`重置排位 ${table.tableName}`"
+                  @click="openResetTable(table)"
+                >
+                  重置
                 </UButton>
                 <UButton
                   data-testid="table-remove"
@@ -2506,6 +2581,17 @@ function guestMeta(g: GuestListItem): string {
       confirm-color="error"
       :loading="isClearing"
       @confirm="confirmClearAll"
+    />
+
+    <!-- 整桌重置排位確認 -->
+    <ConfirmModal
+      v-model:open="isResetTableOpen"
+      title="重置整桌排位"
+      :description="`確定要重置「${resetTableTarget?.tableName ?? ''}」的排位嗎？此桌賓客會全部移回待排席。`"
+      confirm-label="重置排位"
+      confirm-color="error"
+      :loading="isResettingTable"
+      @confirm="confirmResetTable"
     />
 
     <!-- 加入 / 編輯場地標記 Modal -->
