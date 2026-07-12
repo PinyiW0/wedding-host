@@ -11,6 +11,7 @@ import type {
   SeatListItem,
   TableListItem,
   UpdateTableBody,
+  VenueAnalysisResult,
   VenueLayoutBody,
   VenueMarkerListItem,
 } from '~/types/api/seating'
@@ -18,6 +19,7 @@ import type {
 import { z } from 'zod'
 
 import {
+  analyzeVenueLayout,
   configureVenueLayout,
   createTable,
   createVenueMarker,
@@ -1609,6 +1611,92 @@ async function removeRefImage() {
   }
 }
 
+// === 依參考圖帶入（AI 分析）：Claude vision 偵測桌位與舞台 → 確認後映射到畫布批次建桌 ===
+const isAnalyzing = ref(false)
+const isApplyingAnalysis = ref(false)
+const isAnalysisConfirmOpen = ref(false)
+const analysisResult = ref<VenueAnalysisResult | null>(null)
+
+const analysisSummary = computed(() => {
+  const result = analysisResult.value
+  if (!result)
+    return ''
+  const parts = [`${result.tables.length} 桌`]
+  if (result.stage)
+    parts.push('舞台位置')
+  return `AI 從參考圖偵測到 ${parts.join('與')}，確定帶入嗎？既有桌次會保留不受影響。`
+})
+
+async function analyzeRefImage() {
+  if (isAnalyzing.value)
+    return
+  isAnalyzing.value = true
+  try {
+    const result = await analyzeVenueLayout(weddingId.value)
+    if (!result.stage && result.tables.length === 0) {
+      toast.add({ title: '未能從參考圖辨識出桌位', description: '可改用「新增桌子」手動建立', color: 'warning' })
+      return
+    }
+    analysisResult.value = result
+    isAnalysisConfirmOpen.value = true
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '分析失敗，請稍後再試'
+    toast.add({ title: 'AI 分析失敗', description: message, color: 'error' })
+  }
+  finally {
+    isAnalyzing.value = false
+  }
+}
+
+async function confirmApplyAnalysis() {
+  const result = analysisResult.value
+  const dims = refImageDims.value
+  if (!result || !dims || isApplyingAnalysis.value)
+    return
+  isApplyingAnalysis.value = true
+  try {
+    // 舞台：相對比例 × 底圖顯示尺寸（與底圖同座標系，直接對位）
+    if (result.stage) {
+      const layout = venueLayout.value
+      await configureVenueLayout(weddingId.value, {
+        stageWidth: Math.max(40, Math.round(result.stage.width * dims.width)),
+        stageHeight: Math.max(24, Math.round(result.stage.height * dims.height)),
+        stagePositionX: Math.max(0, Math.round(result.stage.x * dims.width)),
+        stagePositionY: Math.max(0, Math.round(result.stage.y * dims.height)),
+        referenceImageUrl: layout?.referenceImageUrl,
+      })
+      await refreshVenue()
+    }
+    // 桌位：AI 回傳圓心 → 換算桌塊左上角（圓心位於區塊中心 84px 處），沿用 seed 的「第N桌」命名
+    const startIndex = (tables.value ?? []).length
+    for (let i = 0; i < result.tables.length; i++) {
+      const t = result.tables[i]!
+      await createTable(weddingId.value, {
+        tableName: `第${startIndex + i + 1}桌`,
+        capacity: 10,
+        positionX: Math.max(0, Math.round(t.x * dims.width) - 84),
+        positionY: Math.max(0, Math.round(t.y * dims.height) - 84),
+      })
+    }
+    await refreshAll()
+    toast.add({
+      title: `已依參考圖帶入 ${result.tables.length} 桌`,
+      description: '桌位已對齊底圖，可直接拖曳微調',
+      color: 'success',
+    })
+    isAnalysisConfirmOpen.value = false
+    analysisResult.value = null
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '帶入失敗，請稍後再試'
+    toast.add({ title: '帶入失敗', description: message, color: 'error' })
+  }
+  finally {
+    isApplyingAnalysis.value = false
+  }
+}
+
 // === 預設佈局：全新婚禮（無桌次、未設定舞台）自動帶入置中舞台＋五桌（每桌 10 席）===
 const DEFAULT_STAGE: VenueLayoutBody = { stageWidth: 360, stageHeight: 70, stagePositionX: 270, stagePositionY: 20 }
 const DEFAULT_TABLES: CreateTableBody[] = [
@@ -1848,6 +1936,19 @@ function guestMeta(g: GuestListItem): string {
             :disabled="isUploadingRefImage"
             @click="removeRefImage"
           />
+          <!-- AI 依參考圖偵測桌位與舞台（有參考圖才顯示；等底圖尺寸載入完成才可按） -->
+          <UButton
+            v-if="refImageUrl"
+            data-testid="vibe-venue-analyze"
+            icon="i-heroicons-sparkles"
+            color="neutral"
+            variant="outline"
+            :loading="isAnalyzing"
+            :disabled="!refImageDims"
+            @click="analyzeRefImage"
+          >
+            依參考圖帶入
+          </UButton>
           <!-- 命名避開凍結 strict regex（不可含「新增」「佈局」「禮俗」；「舞台」保留給上方 spec 對應按鈕） -->
           <UButton
             data-testid="venue-marker-create"
@@ -2622,6 +2723,16 @@ function guestMeta(g: GuestListItem): string {
       confirm-color="error"
       :loading="isClearing"
       @confirm="confirmClearAll"
+    />
+
+    <!-- 依參考圖帶入：AI 偵測結果確認 -->
+    <ConfirmModal
+      v-model:open="isAnalysisConfirmOpen"
+      title="依參考圖帶入"
+      :description="analysisSummary"
+      confirm-label="帶入"
+      :loading="isApplyingAnalysis"
+      @confirm="confirmApplyAnalysis"
     />
 
     <!-- 加入 / 編輯場地標記 Modal -->
