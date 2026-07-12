@@ -3,12 +3,6 @@ import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CreateTableBody,
   CreateVenueMarkerBody,
-  DismissEtiquetteWarningBody,
-  EtiquetteSettingsBody,
-  EtiquetteSettingsDetail,
-  EtiquetteSettingsUpdatedEvent,
-  EtiquetteWarningDismissedEvent,
-  EtiquetteWarningListItem,
   GuestSeatedEvent,
   SeatGuestBody,
   SeatListItem,
@@ -125,43 +119,5 @@ export function deleteVenueMarker(weddingId: string, markerId: string) {
   return useHttp().delete<void>(
     '/api/v1/weddings/{weddingId}/venue-markers/{markerId}',
     { pathParams: { weddingId, markerId } },
-  )
-}
-
-export function getEtiquetteSettings(
-  weddingId: MaybeRefOrGetter<string>,
-  options?: HttpGetOptions<EtiquetteSettingsDetail>,
-) {
-  return useHttp().get<EtiquetteSettingsDetail>(
-    () => `/api/v1/weddings/${toValue(weddingId)}/etiquette-settings`,
-    options,
-  )
-}
-
-export function updateEtiquetteSettings(weddingId: string, body: EtiquetteSettingsBody) {
-  return useHttp().put<EtiquetteSettingsUpdatedEvent>(
-    '/api/v1/weddings/{weddingId}/etiquette-settings',
-    { pathParams: { weddingId }, body },
-  )
-}
-
-export function listEtiquetteWarnings(
-  weddingId: MaybeRefOrGetter<string>,
-  options?: HttpGetOptions<EtiquetteWarningListItem[]>,
-) {
-  return useHttp().get<EtiquetteWarningListItem[]>(
-    () => `/api/v1/weddings/${toValue(weddingId)}/etiquette-warnings`,
-    options,
-  )
-}
-
-export function dismissEtiquetteWarning(
-  weddingId: string,
-  warningId: string,
-  body: DismissEtiquetteWarningBody,
-) {
-  return useHttp().post<EtiquetteWarningDismissedEvent>(
-    '/api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss',
-    { pathParams: { weddingId, warningId }, body },
   )
 }

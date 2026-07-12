@@ -12,8 +12,6 @@ export { mockProjectionSettings } from './projection'
 export { mockRsvpFormConfigs } from './rsvp-config'
 export { mockRundownItems, mockRundownRoles } from './rundown'
 export {
-  mockEtiquetteSettings,
-  mockEtiquetteWarnings,
   mockSeats,
   mockTables,
   mockVenueLayouts,

@@ -6,8 +6,6 @@ import {
   mockCakeBoxExclusions,
   mockCakeBoxExtraOrders,
   mockCakeBoxTypes,
-  mockEtiquetteSettings,
-  mockEtiquetteWarnings,
   mockGiftItems,
   mockGuestCategories,
   mockGuests,
@@ -46,8 +44,6 @@ const ALL_TABLES = [
   schema.seats,
   schema.venueLayouts,
   schema.venueMarkers,
-  schema.etiquetteSettings,
-  schema.etiquetteWarnings,
   schema.rundownRoles,
   schema.rundownItems,
   schema.rsvpFormConfigs,
@@ -90,10 +86,6 @@ export async function seedDb(db: Db): Promise<void> {
     jobs.push(db.insert(schema.venueLayouts).values(mockVenueLayouts))
   if (mockVenueMarkers.length)
     jobs.push(db.insert(schema.venueMarkers).values(mockVenueMarkers))
-  if (mockEtiquetteSettings.length)
-    jobs.push(db.insert(schema.etiquetteSettings).values(mockEtiquetteSettings))
-  if (mockEtiquetteWarnings.length)
-    jobs.push(db.insert(schema.etiquetteWarnings).values(mockEtiquetteWarnings))
   if (mockRundownRoles.length)
     jobs.push(db.insert(schema.rundownRoles).values(mockRundownRoles))
   if (mockRundownItems.length)
