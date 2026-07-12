@@ -23,8 +23,10 @@ const props = withDefaults(
     errorMessage?: string
     // 後台即時預覽：隱藏送出鈕、反饋與 LINE 區塊，純呈現
     preview?: boolean
+    // 公開 RSVP（無 guestId）需姓名識別回覆者；已知賓客模式不傳（spec 凍結：送出可不填姓名）
+    requireName?: boolean
   }>(),
-  { lineAddUrl: '', submitting: false, submitted: false, errorMessage: '', preview: false },
+  { lineAddUrl: '', submitting: false, submitted: false, errorMessage: '', preview: false, requireName: false },
 )
 
 const emit = defineEmits<{ submit: [body: SubmitRsvpBody] }>()
@@ -69,6 +71,10 @@ const MAX_COUNT = 10
 
 // === 表單狀態 ===
 const guestName = ref('')
+const nameError = ref('')
+watch(guestName, () => {
+  nameError.value = ''
+})
 const relationship = ref<GuestRelationship | ''>('')
 const RELATION_CATEGORIES = ['家人', '朋友', '同事', '其他']
 const relationCategory = ref('')
@@ -235,6 +241,11 @@ function buildCustomAnswers(): Record<string, string | string[]> | undefined {
 function onSubmit() {
   if (props.preview || props.submitting || props.submitted)
     return
+  if (props.requireName && !guestName.value.trim()) {
+    nameError.value = '請輸入您的姓名'
+    document.getElementById('rsvp-name')?.scrollIntoView({ block: 'center' })
+    return
+  }
   const body: SubmitRsvpBody = {
     attending: attending.value,
     diet: diet.value,
@@ -314,7 +325,7 @@ function onSubmit() {
       <section class="space-y-5">
         <div>
           <label for="rsvp-name" class="mb-2 block text-overline uppercase text-gold-deep">
-            請問您的大名？
+            請問您的大名？<span v-if="requireName" class="ml-1 text-error">＊必填</span>
           </label>
           <UInput
             id="rsvp-name"
@@ -323,7 +334,11 @@ function onSubmit() {
             placeholder="您的姓名"
             size="xl"
             class="w-full"
+            :aria-required="requireName || undefined"
           />
+          <p v-if="nameError" data-testid="rsvp-name-error" class="mt-2 text-body text-error">
+            {{ nameError }}
+          </p>
         </div>
 
         <!-- 與新人的關係 -->

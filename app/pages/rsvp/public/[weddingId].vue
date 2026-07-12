@@ -52,6 +52,7 @@ async function handleSubmit(body: SubmitRsvpBody) {
     :submitting="isSubmitting"
     :submitted="isSubmitted"
     :error-message="submitError"
+    require-name
     @submit="handleSubmit"
   />
 </template>
