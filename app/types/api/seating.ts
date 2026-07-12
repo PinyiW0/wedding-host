@@ -1,4 +1,4 @@
-// 座位與場地佈局：桌次 CRUD / 座位安排 / 場地佈局 / 禮俗設定與警告
+// 座位與場地佈局：桌次 CRUD / 座位安排 / 場地佈局
 
 export interface TableListItem {
   tableId: string
@@ -82,27 +82,6 @@ export interface VenueLayoutConfiguredEvent {
 // GET 讀回的場地佈局（重整後還原 modal 既有值）
 export type VenueLayoutDetail = VenueLayoutConfiguredEvent
 
-export interface EtiquetteSettings {
-  // 長輩靠近主桌（警告開關：長輩／家屬被排在一般賓客後方時提醒）
-  elderNearMain: boolean
-  // 主桌坐滿（警告開關：主桌未坐滿時提醒，求圓滿）
-  mainTableFull: boolean
-  // 同分類同桌（推薦排序偏好：開啟時盡量把同類別賓客排同桌）
-  sameCategoryTogether: boolean
-}
-
-export type EtiquetteSettingsBody = EtiquetteSettings
-
-export interface EtiquetteSettingsUpdatedEvent {
-  weddingId: string
-  elderNearMain: boolean
-  mainTableFull: boolean
-  sameCategoryTogether: boolean
-}
-
-// GET 讀回的禮俗設定（重整後還原 modal 既有值）
-export type EtiquetteSettingsDetail = EtiquetteSettingsUpdatedEvent
-
 // === 場地標記（門口、送客區、進場入口等長方形文字標示；與桌次同畫布 px 座標系）===
 export interface VenueMarkerListItem {
   markerId: string
@@ -133,19 +112,3 @@ export interface UpdateVenueMarkerBody {
 }
 
 export type VenueMarkerUpdatedEvent = VenueMarkerListItem
-
-export interface EtiquetteWarningListItem {
-  warningId: string
-  warningType: string
-  message: string
-  dismissed: boolean
-}
-
-export interface DismissEtiquetteWarningBody {
-  warningType: string
-}
-
-export interface EtiquetteWarningDismissedEvent {
-  warningId: string
-  warningType: string
-}

@@ -138,21 +138,6 @@ api_contract:
     VenueLayoutConfiguredEvent:
       file: seating.ts
       fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number, referenceImageUrl: 'string | null' }
-    EtiquetteSettings:
-      file: seating.ts
-      fields: { elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }
-    EtiquetteSettingsUpdatedEvent:
-      file: seating.ts
-      fields: { weddingId: string, elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }
-    EtiquetteWarningListItem:
-      file: seating.ts
-      fields: { warningId: string, warningType: string, message: string, dismissed: boolean }
-    DismissEtiquetteWarningBody:
-      file: seating.ts
-      fields: { warningType: string }
-    EtiquetteWarningDismissedEvent:
-      file: seating.ts
-      fields: { warningId: string, warningType: string }
     # --- rsvp.ts ---
     SendRsvpInvitationBody:
       file: rsvp.ts
@@ -388,11 +373,8 @@ api_contract:
     - { method: DELETE, path: /api/v1/weddings/{weddingId}/tables/{tableId}, request: '{}', response: void }
     - { method: POST, path: /api/v1/weddings/{weddingId}/tables/{tableId}/seats, request: SeatGuestBody, response: GuestSeatedEvent }
     - { method: DELETE, path: /api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}, request: '{}', response: void }
-    # --- seating: venue layout / etiquette ---
+    # --- seating: venue layout ---
     - { method: PUT, path: /api/v1/weddings/{weddingId}/venue-layout, request: VenueLayoutBody, response: VenueLayoutConfiguredEvent }
-    - { method: PUT, path: /api/v1/weddings/{weddingId}/etiquette-settings, request: EtiquetteSettingsBody, response: EtiquetteSettingsUpdatedEvent }
-    - { method: GET, path: /api/v1/weddings/{weddingId}/etiquette-warnings, request: '{}', response: 'EtiquetteWarningListItem[]' }
-    - { method: POST, path: /api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss, request: DismissEtiquetteWarningBody, response: EtiquetteWarningDismissedEvent }
     # --- rsvp ---
     - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp-invitation, request: SendRsvpInvitationBody, response: RsvpInvitationSentEvent }
     - { method: POST, path: /api/v1/weddings/{weddingId}/guests/{guestId}/rsvp, request: SubmitRsvpBody, response: RsvpSubmittedEvent }
@@ -559,8 +541,6 @@ routes:
       - { file: ConfigureVenueLayout.feature, content_hash: 89475785bde7 }
       - { file: SeatGuest.feature, content_hash: eeb9df721667 }
       - { file: UnseatGuest.feature, content_hash: ded80b2ef05a }
-      - { file: UpdateEtiquetteSettings.feature, content_hash: 8c9ffc6e0cb3 }
-      - { file: DismissEtiquetteWarning.feature, content_hash: f65c04f6df21 }
     api_endpoints:
       - GET /api/v1/weddings/{weddingId}/tables
       - POST /api/v1/weddings/{weddingId}/tables
@@ -569,9 +549,6 @@ routes:
       - POST /api/v1/weddings/{weddingId}/tables/{tableId}/seats
       - DELETE /api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}
       - PUT /api/v1/weddings/{weddingId}/venue-layout
-      - PUT /api/v1/weddings/{weddingId}/etiquette-settings
-      - GET /api/v1/weddings/{weddingId}/etiquette-warnings
-      - POST /api/v1/weddings/{weddingId}/etiquette-warnings/{warningId}/dismiss
     components: [PageHeader, ConfirmModal]
     store: null
 

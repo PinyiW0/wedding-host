@@ -194,22 +194,6 @@ export const venueMarkers = pgTable('venue_markers', {
   height: doublePrecision().notNull(),
 }, t => [index().on(t.weddingId)])
 
-export const etiquetteSettings = pgTable('etiquette_settings', {
-  weddingId: text().primaryKey(),
-  elderNearMain: boolean().notNull(),
-  mainTableFull: boolean().notNull(),
-  sameCategoryTogether: boolean().notNull(),
-})
-
-export const etiquetteWarnings = pgTable('etiquette_warnings', {
-  seq: integer().generatedByDefaultAsIdentity(),
-  warningId: text().primaryKey(),
-  weddingId: text().notNull(),
-  warningType: text().notNull(),
-  message: text().notNull(),
-  dismissed: boolean().notNull(),
-}, t => [index().on(t.weddingId)])
-
 export const rundownRoles = pgTable('rundown_roles', {
   seq: integer().generatedByDefaultAsIdentity(),
   roleId: text().primaryKey(),
