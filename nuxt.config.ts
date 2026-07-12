@@ -28,6 +28,8 @@ export default defineNuxtConfig({
     r2AccessKeyId: '',
     r2SecretAccessKey: '',
     r2Bucket: '',
+    // Anthropic API（issue #56 場地參考圖 AI 帶位）：留空＝分析端點回 501、前端優雅降級
+    anthropicApiKey: '',
     public: {
       // R2 公開讀取前綴（NUXT_PUBLIC_R2_PUBLIC_URL）：有值＝前端上傳走 R2、圖片存公開 URL
       r2PublicUrl: '',
