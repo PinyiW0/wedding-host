@@ -178,3 +178,27 @@ test.describe('vibe：場地參考圖上傳', () => {
     await expect(img).toHaveAttribute('src', /^data:image\/png|^https?:/)
   })
 })
+
+test.describe('vibe：依參考圖帶入（AI 分析，issue #56）', () => {
+  test('未設定 API key 時優雅降級：入口存在、觸發後顯示明確提示', async ({ page }) => {
+    // Given：進入桌次規劃頁（尚無參考圖 → 入口不存在）
+    await page.goto(SEATING_001, { waitUntil: 'networkidle' })
+    await expect(page.getByTestId('vibe-venue-analyze')).not.toBeVisible()
+
+    // When：上傳參考圖 → 入口出現
+    const putCall = waitForApiCall(page, /\/venue-layout(\?|$)/, 'PUT')
+    await page.locator('input[type=file]').setInputFiles({ name: 'venue.png', mimeType: 'image/png', buffer: PNG_1PX })
+    await putCall
+    const analyzeBtn = page.getByTestId('vibe-venue-analyze')
+    await expect(analyzeBtn).toBeVisible()
+
+    // Then：e2e 環境無 NUXT_ANTHROPIC_API_KEY → 顯示明確未設定提示（非未處理錯誤）
+    await analyzeBtn.click()
+    await expect(page.getByText(/尚未設定 AI 分析功能/).first()).toBeVisible()
+  })
+
+  test('無參考圖的婚禮直打 analyze 端點回 4xx／501（邊界保護）', async ({ page }) => {
+    const res = await page.request.post('/api/v1/weddings/wedding-003/venue-layout/analyze')
+    expect([400, 501]).toContain(res.status())
+  })
+})
