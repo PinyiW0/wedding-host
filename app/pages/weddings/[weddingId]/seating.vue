@@ -5,8 +5,6 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 import type { GuestDiet, GuestListItem, GuestSide } from '~/types/api/guests'
 import type {
   CreateTableBody,
-  EtiquetteSettings,
-  EtiquetteSettingsBody,
   SeatGuestBody,
   SeatListItem,
   TableListItem,
@@ -23,8 +21,6 @@ import {
   createVenueMarker,
   deleteTable,
   deleteVenueMarker,
-  dismissEtiquetteWarning,
-  getEtiquetteSettings,
   getTableSeats,
   getVenueLayout,
   listGuests,
@@ -32,7 +28,6 @@ import {
   listVenueMarkers,
   seatGuest,
   unseatGuest,
-  updateEtiquetteSettings,
   updateTable,
   updateVenueMarker,
 } from '~/api'
@@ -51,7 +46,7 @@ const { data: tables, refresh: refreshTables } = await listTables(weddingId, {
   default: () => [],
 })
 const { data: guests } = await listGuests(weddingId, { default: () => [] })
-// 場地佈局與禮俗設定：由 GET 讀回，重整後 modal 仍能還原既有值
+// 場地佈局：由 GET 讀回，重整後 modal 仍能還原既有值
 const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddingId, {
   default: () => null,
 })
@@ -59,12 +54,8 @@ const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddin
 const { data: venueMarkers, refresh: refreshMarkers } = await listVenueMarkers(weddingId, {
   default: () => [],
 })
-const { data: etiquetteSettings, refresh: refreshEtiquette } = await getEtiquetteSettings(weddingId)
 
 const activeGuests = computed(() => (guests.value ?? []).filter(g => !g.deletedAt))
-
-// 已被「忽略」的禮俗警告類型（本次階段隱藏；reset / 重整後重新計算）
-const dismissedWarningTypes = ref<string[]>([])
 
 // 每張桌的座位（key = tableId）
 const seatsByTable = ref<Record<string, SeatListItem[]>>({})
@@ -141,8 +132,13 @@ const stageBox = computed(() => {
 // === 場地參考圖底圖（顯示寬度上限 1200 等比縮放；載入後 canvasSize 需納入其範圍）===
 const refImageUrl = computed(() => venueLayout.value?.referenceImageUrl ?? null)
 const refImageDims = ref<{ width: number, height: number } | null>(null)
+// 底圖調整模式：拖曳移動、按鈕縮放。位置與縮放僅本頁暫存（墊底對位用，排完即刪），重整還原
+const isAdjustingRefImage = ref(false)
+const refImageTransform = ref({ x: 0, y: 0, scale: 1 })
 watch(refImageUrl, (url) => {
   refImageDims.value = null
+  isAdjustingRefImage.value = false
+  refImageTransform.value = { x: 0, y: 0, scale: 1 }
   if (!url || import.meta.server)
     return
   const img = new Image()
@@ -152,6 +148,48 @@ watch(refImageUrl, (url) => {
   }
   img.src = url
 }, { immediate: true })
+
+const REF_SCALE_MIN = 0.25
+const REF_SCALE_MAX = 3
+function zoomRefImage(delta: number) {
+  const next = Math.round((refImageTransform.value.scale + delta) * 100) / 100
+  refImageTransform.value.scale = Math.min(REF_SCALE_MAX, Math.max(REF_SCALE_MIN, next))
+}
+
+// 底圖實際渲染框（位置 + 縮放後尺寸），畫布尺寸與 template 共用
+const refImageBox = computed(() => {
+  if (!refImageDims.value)
+    return null
+  const t = refImageTransform.value
+  return {
+    x: t.x,
+    y: t.y,
+    width: Math.round(refImageDims.value.width * t.scale),
+    height: Math.round(refImageDims.value.height * t.scale),
+  }
+})
+
+const isMovingRefImage = ref(false)
+let refImageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
+function onRefImagePointerDown(event: PointerEvent) {
+  if (!isAdjustingRefImage.value || event.button !== 0)
+    return
+  isMovingRefImage.value = true
+  refImageDragStart = { px: event.clientX, py: event.clientY, ox: refImageTransform.value.x, oy: refImageTransform.value.y }
+  window.addEventListener('pointermove', onRefImagePointerMove)
+  window.addEventListener('pointerup', onRefImagePointerUp, { once: true })
+  event.preventDefault()
+}
+function onRefImagePointerMove(event: PointerEvent) {
+  if (!isMovingRefImage.value)
+    return
+  refImageTransform.value.x = Math.round(refImageDragStart.ox + (event.clientX - refImageDragStart.px))
+  refImageTransform.value.y = Math.round(refImageDragStart.oy + (event.clientY - refImageDragStart.py))
+}
+function onRefImagePointerUp() {
+  window.removeEventListener('pointermove', onRefImagePointerMove)
+  isMovingRefImage.value = false
+}
 
 // 畫布尺寸：依最遠的桌位、標記、舞台與參考圖推算，確保可容納並可捲動
 const canvasSize = computed(() => {
@@ -174,9 +212,10 @@ const canvasSize = computed(() => {
     maxX = Math.max(maxX, stage.x + stage.width)
     maxY = Math.max(maxY, stage.y + stage.height)
   }
-  if (refImageDims.value) {
-    maxX = Math.max(maxX, refImageDims.value.width)
-    maxY = Math.max(maxY, refImageDims.value.height)
+  const refBox = refImageBox.value
+  if (refBox) {
+    maxX = Math.max(maxX, refBox.x + refBox.width)
+    maxY = Math.max(maxY, refBox.y + refBox.height)
   }
   return { width: Math.max(640, maxX + PAD), height: Math.max(420, maxY + PAD) }
 })
@@ -992,13 +1031,10 @@ async function autoSeat() {
     }
 
     // ② 其餘賓客：左右分流 + 縱向尊卑（已排進主桌者排除）
-    // 「同分類同桌」開啟時才以分類聚桌；關閉則不強制同類別相鄰（讓開關真正影響排序）
-    const clusterByCategory = etiquetteSettings.value?.sameCategoryTogether ?? false
     const restSort = (a: GuestListItem, b: GuestListItem) =>
       SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
       || seniorityTier(a.category) - seniorityTier(b.category)
       || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
-      || (clusterByCategory ? a.category.localeCompare(b.category, 'zh-Hant') : 0)
       || a.name.localeCompare(b.name, 'zh-Hant')
     const planned = new Set(plan.map(p => p.guestId))
     const rest = pending.filter(g => !planned.has(g.guestId)).sort(restSort)
@@ -1644,132 +1680,6 @@ onMounted(async () => {
   }
 })
 
-// === 禮俗設定 ===
-const isEtiquetteOpen = ref(false)
-const isEtiquetteSubmitting = ref(false)
-const etiquetteError = ref('')
-const etiquetteState = reactive<EtiquetteSettings>({
-  elderNearMain: true,
-  mainTableFull: true,
-  sameCategoryTogether: false,
-})
-
-function openEtiquette() {
-  etiquetteError.value = ''
-  // 用 GET 讀回的既有設定填入三開關
-  const settings = etiquetteSettings.value
-  if (settings) {
-    etiquetteState.elderNearMain = settings.elderNearMain
-    etiquetteState.mainTableFull = settings.mainTableFull
-    etiquetteState.sameCategoryTogether = settings.sameCategoryTogether
-  }
-  isEtiquetteOpen.value = true
-}
-
-async function confirmEtiquette() {
-  if (isEtiquetteSubmitting.value)
-    return
-  isEtiquetteSubmitting.value = true
-  etiquetteError.value = ''
-  try {
-    const body: EtiquetteSettingsBody = { ...etiquetteState }
-    await updateEtiquetteSettings(weddingId.value, body)
-    // 以 GET 為呈現真實來源（重整也靠 GET）
-    await refreshEtiquette()
-    toast.add({ title: '禮俗設定已儲存', color: 'success' })
-    isEtiquetteOpen.value = false
-  }
-  catch (error: any) {
-    etiquetteError.value
-      = error?.data?.message || error?.statusMessage || '儲存失敗，請稍後再試'
-  }
-  finally {
-    isEtiquetteSubmitting.value = false
-  }
-}
-
-// === 禮俗警告（依設定 + 當前座位即時計算，違反才跳；可忽略） ===
-interface SeatingWarning {
-  warningId: string
-  warningType: string
-  message: string
-}
-
-// 某桌入座賓客的輩份分層集合（去重賓客後取 seniorityTier）
-function tableTierSet(tableId: string): number[] {
-  const ids = new Set(tableSeats(tableId).map(s => s.guestId))
-  return Array.from(ids, id => seniorityTier(guestById(id)?.category ?? ''))
-}
-
-const computedWarnings = computed<SeatingWarning[]>(() => {
-  const settings = etiquetteSettings.value
-  if (!settings)
-    return []
-  const list: SeatingWarning[] = []
-
-  // 主桌坐滿：主桌正常席人頭 < capacity 時提醒（求圓滿）
-  const main = mainTable.value
-  if (settings.mainTableFull && main) {
-    const seated = tableNormalHeads(main.tableId)
-    if (seated < main.capacity) {
-      list.push({
-        warningId: 'warning-main-table-full',
-        warningType: 'main-table-not-full',
-        message: `主桌尚未坐滿（${seated}/${main.capacity} 席），建議坐滿以求圓滿`,
-      })
-    }
-  }
-
-  // 長輩靠近主桌：有長輩／家屬被排在比一般賓客更後方的客桌時提醒
-  if (settings.elderNearMain) {
-    const fill = (tables.value ?? []).filter(t => !isMainTable(t))
-    const elderTables = fill.filter(t => tableTierSet(t.tableId).includes(1)) // tier 1 = 家人／雙親／長輩
-    const casualTables = fill.filter(t => tableTierSet(t.tableId).some(tr => tr >= 2)) // tier ≥2 = 一般賓客
-    if (elderTables.length && casualTables.length) {
-      const maxElderY = Math.max(...elderTables.map(t => t.positionY))
-      const minCasualY = Math.min(...casualTables.map(t => t.positionY))
-      if (maxElderY > minCasualY) {
-        list.push({
-          warningId: 'warning-elder-near-main',
-          warningType: 'elder-near-main',
-          message: '長輩靠近主桌：偵測到長輩／家屬被排在一般賓客後方，建議移到較前排',
-        })
-      }
-    }
-  }
-
-  return list
-})
-
-const activeWarnings = computed(() =>
-  computedWarnings.value.filter(w => !dismissedWarningTypes.value.includes(w.warningType)),
-)
-
-const dismissingId = ref<string | null>(null)
-
-async function dismissWarning(warning: SeatingWarning) {
-  if (dismissingId.value)
-    return
-  dismissingId.value = warning.warningId
-  try {
-    // 仍呼叫 dismiss API（保留覆寫警告合約），並於前端即時隱藏該類型警告
-    await dismissEtiquetteWarning(weddingId.value, warning.warningId, {
-      warningType: warning.warningType,
-    })
-    if (!dismissedWarningTypes.value.includes(warning.warningType))
-      dismissedWarningTypes.value.push(warning.warningType)
-    toast.add({ title: '已忽略警告', color: 'success', duration: 1500 })
-  }
-  catch (error: any) {
-    const message
-      = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
-    toast.add({ title: '操作失敗', description: message, color: 'error' })
-  }
-  finally {
-    dismissingId.value = null
-  }
-}
-
 // 賓客側欄顯示用：哪一方 · 關係 · 葷素（接在姓名後同一排）
 function guestMeta(g: GuestListItem): string {
   const parts = [sideLabel(g.side)]
@@ -1801,63 +1711,6 @@ function guestMeta(g: GuestListItem): string {
               <span class="size-2.5 rounded-full bg-success-600" />兒童椅
             </span>
           </div>
-          <UButton
-            data-testid="etiquette-settings"
-            icon="i-heroicons-cog-6-tooth"
-            color="neutral"
-            variant="outline"
-            @click="openEtiquette"
-          >
-            禮俗設定
-          </UButton>
-          <UButton
-            data-testid="venue-layout"
-            icon="i-heroicons-squares-2x2"
-            color="neutral"
-            variant="outline"
-            @click="openVenue"
-          >
-            設定舞台位置
-          </UButton>
-          <!-- 場地參考圖：上傳 jpg/png/pdf（≤5MB）作為畫布底圖 -->
-          <input
-            ref="refImageInput"
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            class="hidden"
-            @change="onRefImageSelected"
-          >
-          <UButton
-            data-testid="vibe-venue-ref-upload"
-            icon="i-heroicons-photo"
-            color="neutral"
-            variant="outline"
-            :loading="isUploadingRefImage"
-            @click="refImageInput?.click()"
-          >
-            上傳參考圖
-          </UButton>
-          <UButton
-            v-if="refImageUrl"
-            data-testid="vibe-venue-ref-remove"
-            icon="i-heroicons-x-mark"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            aria-label="移除參考圖"
-            :disabled="isUploadingRefImage"
-            @click="removeRefImage"
-          />
-          <!-- 命名避開凍結 strict regex（不可含「新增」「佈局」「禮俗」；「舞台」保留給上方 spec 對應按鈕） -->
-          <UButton
-            data-testid="venue-marker-create"
-            icon="i-heroicons-map-pin"
-            color="neutral"
-            variant="outline"
-            @click="openCreateMarker"
-          >
-            加入標記
-          </UButton>
           <!-- 下載桌次圖：餐廳備餐用地圖（含餐點分類）；點開下拉選 JPEG / PDF -->
           <UDropdownMenu :items="downloadItems" :content="{ align: 'end' }">
             <UButton
@@ -1883,40 +1736,76 @@ function guestMeta(g: GuestListItem): string {
       </template>
     </PageHeader>
 
-    <!-- 禮俗警告區（精簡：小字、低高度，不擋操作視覺） -->
-    <section v-if="activeWarnings.length > 0" data-testid="warning-list" class="mb-3 shrink-0 space-y-1.5">
-      <div
-        v-for="warning in activeWarnings"
-        :key="warning.warningId"
-        role="alert"
-        :data-testid="`warning-row-${warning.warningId}`"
-        :aria-label="warning.message"
-        class="flex items-center justify-between gap-3 rounded-md border border-l-[3px] border-line border-l-warning-500 bg-warning-50/60 px-3 py-1.5 dark:border-neutral-800 dark:border-l-warning-500 dark:bg-warning-900/10"
-      >
-        <div class="flex min-w-0 items-center gap-2">
-          <UIcon name="i-heroicons-exclamation-triangle" class="size-4 shrink-0 text-warning-600" />
-          <p class="truncate text-caption text-ink-600 dark:text-neutral-300">
-            {{ warning.message }}
-          </p>
-        </div>
-        <UButton
-          data-testid="warning-dismiss"
-          color="warning"
-          variant="ghost"
-          size="xs"
-          :loading="dismissingId === warning.warningId"
-          :aria-label="`忽略 ${warning.message}`"
-          @click="dismissWarning(warning)"
-        >
-          忽略
-        </UButton>
-      </div>
-    </section>
-
     <!-- 兩欄：左 圓桌平面（寬） / 右 賓客名單（窄） -->
     <div class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
       <!-- 左欄：圓桌現場平面圖（min-w-0 讓寬畫布於內部捲動，不把右側名單推出邊界） -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <!-- 畫布工具列：操控下方桌次圖的工具（舞台、參考圖、標記）；主要動作（新增桌子、下載）留在頁首 -->
+        <!-- 命名避開凍結 strict regex（不可含「新增」「佈局」；「舞台」保留給 spec 對應按鈕） -->
+        <div class="mb-2 flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-950">
+          <span class="mr-1.5 text-overline uppercase tracking-wider text-gold-deep">畫布工具</span>
+          <UButton
+            data-testid="venue-layout"
+            icon="i-heroicons-squares-2x2"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            @click="openVenue"
+          >
+            設定舞台位置
+          </UButton>
+          <!-- 場地參考圖：上傳 jpg/png/pdf（≤5MB）作為畫布底圖 -->
+          <input
+            ref="refImageInput"
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            class="hidden"
+            @change="onRefImageSelected"
+          >
+          <UButton
+            data-testid="vibe-venue-ref-upload"
+            icon="i-heroicons-photo"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :loading="isUploadingRefImage"
+            @click="refImageInput?.click()"
+          >
+            上傳參考圖
+          </UButton>
+          <UButton
+            v-if="refImageUrl"
+            data-testid="vibe-venue-ref-adjust"
+            icon="i-heroicons-arrows-pointing-out"
+            color="neutral"
+            :variant="isAdjustingRefImage ? 'solid' : 'ghost'"
+            size="sm"
+            @click="isAdjustingRefImage = !isAdjustingRefImage"
+          >
+            調整底圖
+          </UButton>
+          <UButton
+            v-if="refImageUrl"
+            data-testid="vibe-venue-ref-remove"
+            icon="i-heroicons-x-mark"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="移除參考圖"
+            :disabled="isUploadingRefImage"
+            @click="removeRefImage"
+          />
+          <UButton
+            data-testid="venue-marker-create"
+            icon="i-heroicons-map-pin"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            @click="openCreateMarker"
+          >
+            加入標記
+          </UButton>
+        </div>
         <div
           v-if="(tables ?? []).length === 0"
           data-testid="table-list-empty"
@@ -1936,20 +1825,75 @@ function guestMeta(g: GuestListItem): string {
           class="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-paper p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
           :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '26px 26px' }"
         >
+          <!-- 底圖調整列：拖曳對位、按鈕縮放；sticky 讓長畫布捲動時仍可操作 -->
+          <div
+            v-if="isAdjustingRefImage && refImageBox"
+            data-testid="vibe-venue-ref-adjust-bar"
+            class="sticky left-0 top-0 z-50 mb-3 flex w-fit items-center gap-2 rounded-md border border-line bg-paper/95 px-3 py-1.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/95"
+          >
+            <span class="text-caption text-ink-500 dark:text-neutral-400">拖曳底圖對位</span>
+            <UButton
+              data-testid="vibe-venue-ref-zoom-out"
+              icon="i-heroicons-minus"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              aria-label="縮小底圖"
+              @click="zoomRefImage(-0.1)"
+            />
+            <span class="w-11 text-center text-caption tabular-nums text-ink-500 dark:text-neutral-400">{{ Math.round(refImageTransform.scale * 100) }}%</span>
+            <UButton
+              data-testid="vibe-venue-ref-zoom-in"
+              icon="i-heroicons-plus"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              aria-label="放大底圖"
+              @click="zoomRefImage(0.1)"
+            />
+            <UButton
+              data-testid="vibe-venue-ref-reset"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="refImageTransform = { x: 0, y: 0, scale: 1 }"
+            >
+              重設
+            </UButton>
+            <UButton
+              data-testid="vibe-venue-ref-done"
+              color="neutral"
+              variant="solid"
+              size="xs"
+              @click="isAdjustingRefImage = false"
+            >
+              完成
+            </UButton>
+          </div>
           <!-- 自由佈局畫布：圓桌可拖曳調整位置以因應現場空間 -->
           <div
             data-testid="table-list"
             class="relative mx-auto select-none"
             :style="{ width: `${canvasSize.width}px`, height: `${canvasSize.height}px` }"
           >
-            <!-- 場地參考圖底圖（低透明度、不攔截指標事件，桌位直接疊在圖上調整） -->
+            <!-- 場地參考圖底圖：平時低透明度、不攔截指標事件；調整模式中可拖曳移動與縮放 -->
             <img
-              v-if="refImageUrl && refImageDims"
+              v-if="refImageUrl && refImageBox"
               data-testid="vibe-venue-ref-image"
               :src="refImageUrl"
               alt="場地參考圖"
-              class="pointer-events-none absolute left-0 top-0 select-none rounded opacity-50 dark:opacity-40"
-              :style="{ width: `${refImageDims.width}px`, height: `${refImageDims.height}px` }"
+              draggable="false"
+              class="absolute select-none rounded"
+              :class="isAdjustingRefImage
+                ? 'z-40 cursor-move touch-none opacity-70 ring-2 ring-gold'
+                : 'pointer-events-none opacity-50 dark:opacity-40'"
+              :style="{
+                left: `${refImageBox.x}px`,
+                top: `${refImageBox.y}px`,
+                width: `${refImageBox.width}px`,
+                height: `${refImageBox.height}px`,
+              }"
+              @pointerdown="onRefImagePointerDown"
             >
 
             <!-- 舞台標示：依 venueLayout 定位與尺寸（可拖曳，放開即存）；未設定時置頂置中 -->
@@ -1957,7 +1901,10 @@ function guestMeta(g: GuestListItem): string {
               v-if="stageBox"
               data-testid="vibe-stage"
               class="absolute z-0 flex cursor-move touch-none select-none items-center justify-center rounded border border-dashed border-line bg-paper/70 text-overline tracking-wider text-ink-300 dark:border-neutral-700 dark:bg-neutral-900/60"
-              :class="isMovingStage && 'z-40 ring-2 ring-gold'"
+              :class="[
+                isMovingStage && 'z-40 ring-2 ring-gold',
+                isAdjustingRefImage && 'pointer-events-none',
+              ]"
               :style="{
                 left: `${stageBox.x}px`,
                 top: `${stageBox.y}px`,
@@ -1979,7 +1926,10 @@ function guestMeta(g: GuestListItem): string {
               :key="marker.markerId"
               :data-testid="`venue-marker-${marker.markerId}`"
               class="group absolute flex cursor-move touch-none select-none items-center justify-center rounded border border-dashed border-ink-300 bg-paper/90 px-2 text-center text-caption text-ink-500 shadow-sm dark:border-neutral-600 dark:bg-neutral-900/90 dark:text-neutral-300"
-              :class="movingMarkerId === marker.markerId ? 'z-40 ring-2 ring-gold' : 'z-20'"
+              :class="[
+                movingMarkerId === marker.markerId ? 'z-40 ring-2 ring-gold' : 'z-20',
+                isAdjustingRefImage && 'pointer-events-none',
+              ]"
               :style="{
                 left: `${markerPos(marker).x}px`,
                 top: `${markerPos(marker).y}px`,
@@ -2010,6 +1960,7 @@ function guestMeta(g: GuestListItem): string {
               :class="[
                 isMainTable(table) ? 'w-[200px]' : 'w-[168px]',
                 movingTableId === table.tableId ? 'z-40' : (dragOverTableId === table.tableId ? 'z-30' : 'z-10'),
+                isAdjustingRefImage && 'pointer-events-none',
               ]"
               :style="{ left: `${tablePos(table).x}px`, top: `${tablePos(table).y}px` }"
               @dragover="onTableDragOver($event, table.tableId)"
@@ -2487,73 +2438,6 @@ function guestMeta(g: GuestListItem): string {
               </UButton>
             </div>
           </UForm>
-        </div>
-      </template>
-    </UModal>
-
-    <!-- 禮俗設定 Modal -->
-    <UModal v-model:open="isEtiquetteOpen">
-      <template #content>
-        <div data-testid="etiquette-form-modal" class="p-6">
-          <p class="text-overline uppercase text-gold-deep">
-            禮俗
-          </p>
-          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
-            禮俗建議設定
-          </h3>
-
-          <UAlert
-            v-if="etiquetteError"
-            data-testid="etiquette-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="etiquetteError"
-            class="mb-4"
-          />
-
-          <div class="space-y-1">
-            <p class="mb-2 text-caption text-ink-500 dark:text-neutral-400">
-              開關啟用後，只有座位實際違反時才會在上方跳出提醒
-            </p>
-            <USwitch
-              v-model="etiquetteState.elderNearMain"
-              data-testid="etiquette-elder-near-main"
-              label="長輩靠近主桌"
-              description="長輩／家屬被排在一般賓客後方時提醒"
-            />
-            <USwitch
-              v-model="etiquetteState.mainTableFull"
-              data-testid="etiquette-main-table-full"
-              label="主桌坐滿"
-              description="主桌尚未坐滿時提醒（求圓滿）"
-            />
-            <USwitch
-              v-model="etiquetteState.sameCategoryTogether"
-              data-testid="etiquette-same-category-together"
-              label="同分類同桌"
-              description="推薦排序時盡量把同類別賓客排同桌"
-            />
-
-            <div class="flex justify-end gap-3 pt-4">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isEtiquetteSubmitting"
-                @click="isEtiquetteOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                data-testid="etiquette-submit"
-                color="primary"
-                :loading="isEtiquetteSubmitting"
-                @click="confirmEtiquette"
-              >
-                儲存
-              </UButton>
-            </div>
-          </div>
         </div>
       </template>
     </UModal>
