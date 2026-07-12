@@ -160,7 +160,11 @@ test.describe('賓客名單（Admin 端）', () => {
       await page.request.delete('/api/v1/weddings/wedding-001/guests/guest-001')
       await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
 
-      // When：在已移除的 guest-001 範圍觸發恢復
+      // 已移除賓客預設不顯示於畫面
+      await expect(findEntity(page, /陳大明/)).not.toBeVisible()
+
+      // When：展開「已移除」分區，在 guest-001 範圍觸發恢復
+      await page.getByRole('button', { name: /已移除/ }).click()
       const apiCall = waitForApiCall(
         page,
         /\/guests\/guest-001\/restore(\?|$)/,
