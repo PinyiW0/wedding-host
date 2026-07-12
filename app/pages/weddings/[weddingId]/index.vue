@@ -330,6 +330,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                   :key="i"
                   :src="url"
                   :alt="`交通參考圖片 ${i + 1}`"
+                  loading="lazy"
                   class="max-h-40 rounded border border-line"
                 >
               </div>
@@ -514,6 +515,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
                     <img
                       :src="url"
                       :alt="`交通參考圖片預覽 ${i + 1}`"
+                      loading="lazy"
                       class="max-h-32 rounded border border-line"
                     >
                     <UButton

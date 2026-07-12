@@ -99,12 +99,6 @@ function guestDetail(g: GuestListItem) {
 
 // === 報到搜尋（畫面1）===
 const searchTerm = ref('')
-const filteredGuests = computed(() => {
-  const t = searchTerm.value.trim()
-  if (!t)
-    return activeGuests.value
-  return activeGuests.value.filter(g => g.name.includes(t))
-})
 
 // 禮金快速金額（接待確認用）
 const quickAmounts = [1200, 3600, 6000, 12000]
@@ -131,6 +125,18 @@ function ensureStatus(guestId: string): ReceptionStatus {
     status[guestId] = { checkedIn: false, giftAmount: null, cakeBoxTypeId: null }
   return status[guestId]!
 }
+
+// 搜尋比對不分大小寫；「只看未報到」供現場尖峰把已報到者濾掉（依 status 判斷，故置於其後）
+const showOnlyUnchecked = ref(false)
+const filteredGuests = computed(() => {
+  const t = searchTerm.value.trim().toLowerCase()
+  const list = showOnlyUnchecked.value
+    ? activeGuests.value.filter(g => !status[g.guestId]?.checkedIn)
+    : activeGuests.value
+  if (!t)
+    return list
+  return list.filter(g => g.name.toLowerCase().includes(t))
+})
 
 // 已報到人數 + 總報到率（供頂部計數）
 const checkedInCount = computed(
@@ -747,9 +753,17 @@ async function submitCake() {
               class="min-w-0 flex-1 rounded bg-transparent font-display text-2xl font-medium text-ink caret-gold outline-none focus-visible:ring-2 focus-visible:ring-gold/40 placeholder:text-ink-300 dark:text-paper"
             >
           </div>
-          <p class="mt-2 pl-1 text-caption text-ink-500 dark:text-neutral-400">
-            {{ filteredGuests.length }} 位相符
-          </p>
+          <div class="mt-2 flex items-center justify-between pl-1">
+            <p class="text-caption text-ink-500 dark:text-neutral-400">
+              {{ filteredGuests.length }} 位相符
+            </p>
+            <USwitch
+              v-model="showOnlyUnchecked"
+              data-testid="vibe-reception-unchecked-toggle"
+              label="只看未報到"
+              size="sm"
+            />
+          </div>
         </div>
 
         <!-- 批量報到工具列（多選模式限定） -->

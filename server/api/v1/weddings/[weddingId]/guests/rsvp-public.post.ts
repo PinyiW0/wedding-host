@@ -11,6 +11,10 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
   const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<SubmitPublicRsvpBody>(event)
   assertValidRsvpInput(body)
+  // 公開回覆需姓名識別（防繞過 UI 直打產生無名待確認賓客）；已知賓客端點共用的 assertValidRsvpInput 不驗此欄
+  if (!body.guestName?.trim()) {
+    throw createError({ statusCode: 400, statusMessage: '請提供姓名' })
+  }
 
   const db = useDb()
   const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))
@@ -22,7 +26,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
   await db.insert(guests).values({
     guestId,
     weddingId,
-    name: body.guestName || '未具名賓客',
+    name: body.guestName.trim(),
     side: body.relationship ?? 'groom',
     diet: body.diet,
     category: body.relationCategory || '其他',

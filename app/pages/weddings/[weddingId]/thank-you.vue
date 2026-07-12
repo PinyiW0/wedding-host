@@ -423,6 +423,7 @@ async function submitFallback() {
                     <img
                       :src="templateImageUrl"
                       alt="目前謝卡圖片"
+                      loading="lazy"
                       class="h-16 w-24 shrink-0 rounded border border-line object-cover"
                     >
                     <span class="flex-1 text-caption text-ink-500">

@@ -14,6 +14,7 @@ const name = ref('')
 const isSubmitting = ref(false)
 const isCheckedIn = ref(false)
 const checkedInName = ref('')
+const checkedInTable = ref<string | null>(null)
 const submitError = ref('')
 
 async function selfCheckIn() {
@@ -29,6 +30,7 @@ async function selfCheckIn() {
     const body: SelfCheckInBody = { name: name.value.trim() }
     const res = await selfCheckInGuest(weddingId.value, guestId.value, body)
     checkedInName.value = res?.name ?? name.value.trim()
+    checkedInTable.value = res?.tableName ?? null
     isCheckedIn.value = true
   }
   catch (error: any) {
@@ -64,6 +66,19 @@ async function selfCheckIn() {
       <p class="mt-5 text-body-l text-cream/80">
         歡迎 <span class="font-display text-2xl text-gold-light">{{ checkedInName }}</span>，感謝您的蒞臨。
       </p>
+      <!-- 桌次是資料展示（比照接待端桌次橫幅），無桌次時不顯示 -->
+      <div
+        v-if="checkedInTable"
+        data-testid="vibe-checkin-table"
+        class="mx-auto mt-6 max-w-xs rounded-lg bg-cream/10 px-6 py-4"
+      >
+        <p class="text-overline uppercase text-gold-light">
+          您的桌次
+        </p>
+        <p class="mt-1 font-display text-4xl font-semibold text-gold-light">
+          {{ checkedInTable }}
+        </p>
+      </div>
     </div>
 
     <template v-else>

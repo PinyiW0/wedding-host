@@ -67,7 +67,8 @@ test.describe('vibe：多租戶授權邊界（issue #48）', () => {
   })
 
   test.describe('規則：公開自助 RSVP 需驗證輸入', () => {
-    const base = { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 }
+    // 公開回覆需姓名識別（issue #63）：合法輸入必含 guestName
+    const base = { guestName: '對照賓客', attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 }
 
     test('同行人數非數字 → 400', async ({ page }) => {
       const res = await page.request.post(`/api/v1/weddings/${OWN}/guests/rsvp-public`, { data: { ...base, plusOneCount: 'x' } })
@@ -81,6 +82,11 @@ test.describe('vibe：多租戶授權邊界（issue #48）', () => {
 
     test('出席狀態非法 → 400', async ({ page }) => {
       const res = await page.request.post(`/api/v1/weddings/${OWN}/guests/rsvp-public`, { data: { ...base, attending: 'maybe' } })
+      expect(res.status()).toBe(400)
+    })
+
+    test('缺姓名 → 400', async ({ page }) => {
+      const res = await page.request.post(`/api/v1/weddings/${OWN}/guests/rsvp-public`, { data: { ...base, guestName: '  ' } })
       expect(res.status()).toBe(400)
     })
 

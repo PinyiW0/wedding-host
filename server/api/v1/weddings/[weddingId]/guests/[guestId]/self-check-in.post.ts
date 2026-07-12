@@ -4,7 +4,7 @@ import type { GuestSelfCheckedInEvent, SelfCheckInBody } from '../../../../../..
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { guests } from '../../../../../../db/schema'
+import { guests, seatingTables, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestSelfCheckedInEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
@@ -22,6 +22,18 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSelfCheck
   const checkedInAt = new Date().toISOString()
   await db.update(guests).set({ checkedInAt }).where(eq(guests.guestId, guest.guestId))
 
+  // 桌次：實際入座（seats）優先，退回名單上的預排桌名，讓賓客報到後知道坐哪
+  const [seat] = await db.select({ tableName: seatingTables.tableName })
+    .from(seats)
+    .innerJoin(seatingTables, eq(seats.tableId, seatingTables.tableId))
+    .where(and(eq(seats.guestId, guestId), eq(seatingTables.weddingId, weddingId)))
+    .limit(1)
+
   setResponseStatus(event, 201)
-  return { guestId: guest.guestId, name: body?.name ?? guest.name, checkedInAt }
+  return {
+    guestId: guest.guestId,
+    name: body?.name ?? guest.name,
+    checkedInAt,
+    tableName: seat?.tableName ?? guest.tableName ?? null,
+  }
 })

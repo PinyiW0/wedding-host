@@ -109,6 +109,7 @@ async function copyLink(entry: LinkEntry) {
               <img
                 :src="entry.qr"
                 :alt="`${entry.label} QR code`"
+                loading="lazy"
                 class="size-24 shrink-0 rounded border border-line dark:border-neutral-800"
               >
               <div class="min-w-0 flex-1">
