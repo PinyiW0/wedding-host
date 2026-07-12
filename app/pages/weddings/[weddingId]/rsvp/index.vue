@@ -17,8 +17,8 @@ const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
-// 賓客名單（僅未移除者參與 RSVP 管理）
-const { data: guests, refresh } = await listGuests(weddingId, { default: () => [] })
+// 賓客名單（僅未移除者參與 RSVP 管理）：CSV 匯出與花圖下載需要 blessing / flowerDrawing 完整欄位
+const { data: guests, refresh } = await listGuests(weddingId, { default: () => [], query: { fields: 'full' } })
 // 新人姓名（顯示「新郎〔姓名〕· 家人」這類關係描述）
 const { data: wedding } = await getWedding(weddingId)
 
