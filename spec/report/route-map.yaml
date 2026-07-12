@@ -134,10 +134,10 @@ api_contract:
       fields: { tableId: string, guestId: string, seatNumber: number }
     VenueLayoutBody:
       file: seating.ts
-      fields: { stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number }
+      fields: { stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number, 'referenceImageUrl?': 'string | null' }
     VenueLayoutConfiguredEvent:
       file: seating.ts
-      fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number }
+      fields: { weddingId: string, stageWidth: number, stageHeight: number, stagePositionX: number, stagePositionY: number, referenceImageUrl: 'string | null' }
     EtiquetteSettings:
       file: seating.ts
       fields: { elderNearMain: boolean, mainTableFull: boolean, sameCategoryTogether: boolean }

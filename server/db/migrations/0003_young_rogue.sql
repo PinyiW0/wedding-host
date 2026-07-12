@@ -1,0 +1,1 @@
+ALTER TABLE "venue_layouts" ADD COLUMN "reference_image_url" text;
