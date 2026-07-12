@@ -87,6 +87,7 @@ const placed = computed<PlacedFlower[]>(() => {
         <img
           :src="flower.flowerDrawing"
           :alt="`${flower.name} 的手繪小花`"
+          loading="lazy"
           :style="{
             'width': `${flower.size}px`,
             'height': `${flower.size}px`,

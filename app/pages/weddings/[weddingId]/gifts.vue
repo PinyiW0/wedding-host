@@ -378,6 +378,7 @@ async function confirmRemove() {
                   v-if="item.imageUrl"
                   :src="item.imageUrl"
                   :alt="item.description"
+                  loading="lazy"
                   class="size-full object-cover"
                 >
                 <div v-else class="flex size-full items-center justify-center text-ink-300">
@@ -615,6 +616,7 @@ async function confirmRemove() {
                     v-if="draft.imageUrl"
                     :src="draft.imageUrl"
                     alt="縮圖預覽"
+                    loading="lazy"
                     class="size-full object-cover"
                   >
                   <div v-else class="flex size-full items-center justify-center text-ink-300">

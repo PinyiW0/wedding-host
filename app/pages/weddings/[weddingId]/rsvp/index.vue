@@ -1031,6 +1031,7 @@ async function confirmRemove() {
                 <img
                   :src="detailTarget.flowerDrawing"
                   alt="賓客手繪小花"
+                  loading="lazy"
                   class="max-h-48 rounded-lg border border-line bg-paper-soft"
                 >
                 <UButton

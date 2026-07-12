@@ -366,6 +366,7 @@ async function submitReject() {
                 v-if="blessing.photoUrl"
                 :src="blessing.photoUrl"
                 alt="祝福照片"
+                loading="lazy"
                 class="mt-3 max-h-32 rounded-lg border border-line object-cover"
               >
               <p
@@ -595,6 +596,7 @@ async function submitReject() {
                   <img
                     :src="src"
                     :alt="`自訂花朵 ${i + 1}`"
+                    loading="lazy"
                     class="size-16 rounded border border-line object-contain"
                   >
                   <UButton
