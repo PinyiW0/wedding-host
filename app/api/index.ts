@@ -95,6 +95,7 @@ export {
   getVenueLayout,
   listTables,
   listVenueMarkers,
+  moveSeat,
   seatGuest,
   unseatGuest,
   updateTable,

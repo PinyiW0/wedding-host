@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { guests } from '../../../../../../db/schema'
+import { guests, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<void> => {
   const guestId = getRouterParam(event, 'guestId')!
@@ -17,6 +17,8 @@ export default defineEventHandler(async (event: H3Event): Promise<void> => {
     throw createError({ statusCode: 409, statusMessage: '賓客已移除' })
   }
   await db.update(guests).set({ deletedAt: new Date().toISOString() }).where(eq(guests.guestId, guestId))
+  // 移除賓客同步清除其席位（桌次圖同步消失；日後恢復賓客時回到待排）
+  await db.delete(seats).where(eq(seats.guestId, guestId))
 
   setResponseStatus(event, 204)
 })

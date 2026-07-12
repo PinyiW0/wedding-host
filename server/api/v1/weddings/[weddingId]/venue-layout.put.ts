@@ -26,6 +26,10 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutCon
       stagePositionY: body.stagePositionY,
       // 參考圖：body 未帶＝維持既有（舞台表單只送舞台欄位）、帶 null＝移除
       ...(body.referenceImageUrl !== undefined ? { referenceImageUrl: body.referenceImageUrl } : {}),
+      // 參考圖對位：未帶＝維持既有
+      ...(body.refImageX !== undefined ? { refImageX: body.refImageX } : {}),
+      ...(body.refImageY !== undefined ? { refImageY: body.refImageY } : {}),
+      ...(body.refImageScale !== undefined ? { refImageScale: body.refImageScale } : {}),
     }).where(eq(venueLayouts.weddingId, weddingId))
   }
   else {
@@ -40,5 +44,8 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutCon
     stagePositionX: saved!.stagePositionX,
     stagePositionY: saved!.stagePositionY,
     referenceImageUrl: saved!.referenceImageUrl,
+    refImageX: saved!.refImageX,
+    refImageY: saved!.refImageY,
+    refImageScale: saved!.refImageScale,
   }
 })

@@ -4,8 +4,10 @@ import type {
   CreateTableBody,
   CreateVenueMarkerBody,
   GuestSeatedEvent,
+  MoveSeatBody,
   SeatGuestBody,
   SeatListItem,
+  SeatMovedEvent,
   TableCreatedEvent,
   TableListItem,
   TableUpdatedEvent,
@@ -70,6 +72,14 @@ export function unseatGuest(weddingId: string, tableId: string, guestId: string)
   return useHttp().delete<void>(
     '/api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}',
     { pathParams: { weddingId, tableId, guestId } },
+  )
+}
+
+// 單席移動／互換（目標座位有人＝互換）
+export function moveSeat(weddingId: string, body: MoveSeatBody) {
+  return useHttp().post<SeatMovedEvent>(
+    '/api/v1/weddings/{weddingId}/seats/move',
+    { pathParams: { weddingId }, body },
   )
 }
 
