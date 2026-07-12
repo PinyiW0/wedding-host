@@ -61,6 +61,24 @@ export interface GuestSeatedEvent {
   seatNumber: number
 }
 
+// 單席移動：以「席位」為粒度（一組賓客的大人、兒童椅席可各自移動）
+export interface MoveSeatBody {
+  fromTableId: string
+  fromSeatNumber: number
+  toTableId: string
+  // 目標座號；不帶＝接續目標桌下一個空號（拖到整桌）
+  toSeatNumber?: number
+}
+
+export interface SeatMovedEvent {
+  fromTableId: string
+  fromSeatNumber: number
+  toTableId: string
+  toSeatNumber: number
+  // 目標座位原有人＝互換兩席
+  swapped: boolean
+}
+
 export interface VenueLayoutBody {
   stageWidth: number
   stageHeight: number
@@ -68,6 +86,10 @@ export interface VenueLayoutBody {
   stagePositionY: number
   // 場地參考圖 URL（R2 公開 URL 或 dataURL）；不帶＝維持既有、null＝移除
   referenceImageUrl?: string | null
+  // 參考圖對位（畫布位置 px 與縮放倍率）；不帶＝維持既有
+  refImageX?: number
+  refImageY?: number
+  refImageScale?: number
 }
 
 export interface VenueLayoutConfiguredEvent {
@@ -77,6 +99,9 @@ export interface VenueLayoutConfiguredEvent {
   stagePositionX: number
   stagePositionY: number
   referenceImageUrl: string | null
+  refImageX: number
+  refImageY: number
+  refImageScale: number
 }
 
 // GET 讀回的場地佈局（重整後還原 modal 既有值）
