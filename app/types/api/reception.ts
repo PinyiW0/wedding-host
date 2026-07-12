@@ -22,6 +22,8 @@ export interface GuestSelfCheckedInEvent {
   guestId: string
   name: string
   checkedInAt: string
+  // 實際入座桌名優先，退回預排 tableName；無桌次為 null
+  tableName?: string | null
 }
 
 export interface RecordGiftMoneyBody {
