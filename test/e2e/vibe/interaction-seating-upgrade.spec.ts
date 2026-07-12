@@ -186,16 +186,24 @@ test.describe('vibe：場地參考圖上傳', () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 80, { steps: 5 })
+    // 放開後對位結果延遲寫回 venue-layout（debounce 合併），先掛 spy 再放開
+    const saveCall = waitForApiCall(page, /\/venue-layout(\?|$)/, 'PUT')
     await page.mouse.up()
 
     // Then：底圖移到新位置
     await expect(img).toHaveCSS('left', '120px')
     await expect(img).toHaveCSS('top', '80px')
+    await saveCall
 
     // When：完成調整 → Then：調整列收起、底圖恢復不攔截指標事件（桌子照常可拖）
     await page.getByTestId('vibe-venue-ref-done').click()
     await expect(page.getByTestId('vibe-venue-ref-adjust-bar')).not.toBeVisible()
     await expect(img).toHaveClass(/pointer-events-none/)
+
+    // And：對位結果持久化——重整後底圖位置仍在
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(img).toHaveCSS('left', '120px')
+    await expect(img).toHaveCSS('top', '80px')
   })
 
   test('縮放按鈕改變底圖大小，重設回 100% 與原位', async ({ page }) => {
