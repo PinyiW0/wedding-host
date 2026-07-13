@@ -17,12 +17,21 @@ export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEv
     throw createError({ statusCode: 400, statusMessage: '請輸入帳號與密碼' })
   }
 
+  // 防爆破（issue #70）：以「IP＋帳號」為 key 限流，僅累計嘗試、成功即清零，
+  // 15 分鐘內達上限回 429。正常使用者每次成功登入都會重置，不受影響。
+  const ip = getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'
+  const rateLimitKey = `login:${ip}:${body.username.toLowerCase()}`
+  if (!consumeRateLimit(rateLimitKey, 10, 15 * 60 * 1000)) {
+    throw createError({ statusCode: 429, statusMessage: '登入嘗試過於頻繁，請稍後再試' })
+  }
+
   const db = useDb()
   const [user] = await db.select().from(users).where(and(eq(users.username, body.username), isNull(users.deletedAt)))
   if (user) {
     if (!verifyPassword(body.password, user.passwordHash)) {
       throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
     }
+    resetRateLimit(rateLimitKey)
     setResponseStatus(event, 201)
     return {
       userId: user.userId,
@@ -43,6 +52,7 @@ export default defineEventHandler(async (event: H3Event): Promise<UserLoggedInEv
     throw createError({ statusCode: 401, statusMessage: '帳號或密碼錯誤' })
   }
 
+  resetRateLimit(rateLimitKey)
   setResponseStatus(event, 201)
   return {
     userId: account.accountId,
