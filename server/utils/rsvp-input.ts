@@ -16,4 +16,8 @@ export function assertValidRsvpInput(body: SubmitRsvpBody): void {
     || !Number.isInteger(body.childChairCount) || body.childChairCount < 0) {
     throw createError({ statusCode: 400, statusMessage: '同行人數格式不正確' })
   }
+  // shuttleCount 落 integer 欄（issue #70 / M4）：未登入可達的公開端點，防浮點／溢位／負值致 500 或污染
+  if (body.shuttleCount != null) {
+    assertPositiveInt(body.shuttleCount, '接駁人數', 999)
+  }
 }

@@ -16,6 +16,13 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
   const notes = body.notes ?? null
   const partySize = body.partySize ?? 1
   const childChairCount = body.childChairCount ?? 0
+  // 數字欄與 enum 欄驗證（issue #70 / M4）：防浮點／溢位／負值落 integer 欄、非法 enum 污染統計
+  assertPositiveInt(partySize, '總人數', 999)
+  assertPositiveInt(childChairCount, '兒童椅數', 99)
+  if (body.side !== undefined)
+    assertEnum(body.side, ['groom', 'bride'], '男女方')
+  if (body.diet !== undefined)
+    assertEnum(body.diet, ['meat', 'vegetarian'], '飲食偏好')
   const db = useDb()
   await db.insert(guests).values({
     guestId,

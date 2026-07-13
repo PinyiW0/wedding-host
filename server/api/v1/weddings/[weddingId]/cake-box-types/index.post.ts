@@ -18,6 +18,9 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeCre
   const description = body.description ?? null
   const imageUrl = body.imageUrl ?? null
   const price = body.price ?? null
+  // 價格落 integer 欄（issue #70 / M4）：防浮點／int4 溢位致 500、負值
+  if (price !== null)
+    assertPositiveInt(price, '款式價格', 100_000_000)
 
   const db = useDb()
   // 單一預設不變式：設為預設時，先取消同婚禮其他款式的預設

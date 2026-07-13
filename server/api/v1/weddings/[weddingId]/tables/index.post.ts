@@ -11,6 +11,9 @@ export default defineEventHandler(async (event: H3Event): Promise<TableCreatedEv
   if (!body?.tableName) {
     throw createError({ statusCode: 400, statusMessage: '請輸入桌次名稱' })
   }
+  // 容量落 integer 欄（issue #70 / M4）：防浮點／溢位，並與座位展開的人頭上限對齊
+  if (body.capacity !== undefined)
+    assertPositiveInt(body.capacity, '桌次容量', 999)
 
   const tableId = `table-${crypto.randomUUID().slice(0, 8)}`
   const table = {

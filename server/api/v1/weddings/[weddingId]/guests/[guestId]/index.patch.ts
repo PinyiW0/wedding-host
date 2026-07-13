@@ -17,6 +17,18 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
 
+  // 數字欄與 enum 欄驗證（issue #70 / M4）：patch 的 partySize 會進座位重算，NaN 會靜默污染
+  if (body.partySize !== undefined)
+    assertPositiveInt(body.partySize, '總人數', 999)
+  if (body.childChairCount !== undefined)
+    assertPositiveInt(body.childChairCount, '兒童椅數', 99)
+  if (body.shuttleCount !== undefined && body.shuttleCount !== null)
+    assertPositiveInt(body.shuttleCount, '接駁人數', 999)
+  if (body.side !== undefined)
+    assertEnum(body.side, ['groom', 'bride'], '男女方')
+  if (body.diet !== undefined)
+    assertEnum(body.diet, ['meat', 'vegetarian'], '飲食偏好')
+
   const patch: Partial<typeof guests.$inferInsert> = {}
   if (body.name !== undefined)
     patch.name = body.name
