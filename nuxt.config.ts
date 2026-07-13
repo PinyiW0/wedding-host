@@ -58,6 +58,17 @@ export default defineNuxtConfig({
     },
   },
   css: ['~/assets/css/main.css'],
+  // 全站安全標頭（issue #70 / M7）：防點擊劫持與 MIME sniff；
+  // 嚴格 CSP 因可能影響現有 inline 樣式暫緩，列後續（見 docs/security.md）
+  routeRules: {
+    '/**': {
+      headers: {
+        'X-Frame-Options': 'SAMEORIGIN',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+      },
+    },
+  },
   // SEO / Meta（來源：spec/ui-config/ui-config.yaml）
   app: {
     head: {

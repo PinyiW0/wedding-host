@@ -16,6 +16,12 @@ const KIND_RE = /^[a-z0-9-]{1,32}$/
 export default defineEventHandler(async (event: H3Event): Promise<PresignUploadResponse> => {
   const weddingId = getRouterParam(event, 'weddingId')!
 
+  // 限流（issue #70 / M5）：持婚禮簽名者可無限索取上傳 URL，限每 IP＋婚禮每分鐘上限，防灌爆 bucket／成本
+  const ip = getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'
+  if (!consumeRateLimit(`presign:${ip}:${weddingId}`, 30, 60 * 1000)) {
+    throw createError({ statusCode: 429, statusMessage: '上傳請求過於頻繁，請稍後再試' })
+  }
+
   if (!isR2Configured()) {
     throw createError({ statusCode: 503, statusMessage: '圖片儲存服務未設定' })
   }
