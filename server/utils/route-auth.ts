@@ -27,6 +27,7 @@ const SHARE_GET = new Set([
 const RECEPTION_GET = new Set([
   'guests', // 接待台報到需讀賓客名單（完整資料限已登入管理端／接待員，公開頁走 guests/display-names）
   'reception-status',
+  'tables', // 接待台桌次圖需讀桌次（原漏列導致接待員 403、桌次圖空白）
   'cake-box-types',
   'cake-box-types/assignments',
   'cake-box-exclusions',
