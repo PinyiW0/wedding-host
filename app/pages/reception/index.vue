@@ -19,11 +19,11 @@ import {
   createTable,
   distributeCakeBox,
   getReceptionStatus,
-  getTableSeats,
   listCakeBoxAssignments,
   listCakeBoxTypes,
   listGuests,
   listTables,
+  listWeddingSeats,
   recordGiftMoney,
   seatGuest,
   updateGiftMoney,
@@ -44,20 +44,28 @@ const identityLabel = computed(() => {
     return '主辦 · 管理員'
   return '接待 · 共用帳號'
 })
-// SSR：loadSeats 於 setup 多個 await 後才迴圈呼叫 getTableSeats（內部用 useHttp→useRuntimeConfig），
-// 需於 await 前取得 nuxtApp，迴圈內以 runWithContext 保留 Nuxt context
-const nuxtApp = useNuxtApp()
 // weddingId 由查詢字串帶入（沿用既有模式），預設 wedding-001
 const weddingId = computed(() => String(route.query.weddingId ?? 'wedding-001'))
 
+// === 資料載入（彼此獨立：先同步呼叫、再一起 await，消 waterfall）===
 // 賓客清單（現場新增臨時賓客後 refresh，左欄報到名單即時更新）
-const { data: guests, refresh: refreshGuests } = await listGuests(weddingId, { default: () => [] })
-
+const guestsAsync = listGuests(weddingId, { default: () => [] })
 // 喜餅款式（供發放選擇）
-const { data: cakeBoxTypes } = await listCakeBoxTypes(weddingId, { default: () => [] })
-
+const cakeTypesAsync = listCakeBoxTypes(weddingId, { default: () => [] })
 // 後台逐位指定的喜餅款式（接待端據此顯示「指定款式」並可打勾發放）
-const { data: cakeAssignments, refresh: refreshCakeAssignments } = await listCakeBoxAssignments(weddingId, { default: () => [] })
+const cakeAssignAsync = listCakeBoxAssignments(weddingId, { default: () => [] })
+// 報到／禮金／喜餅狀態（GuestListItem 不含這些欄位，見下方 status 區）
+const statusAsync = getReceptionStatus(weddingId, { default: () => [] })
+// 現場桌次圖：桌次 + 全婚禮座位（一次抓，取代逐桌 N 請求）
+const tablesAsync = listTables(weddingId, { default: () => [] })
+const seatsAsync = listWeddingSeats(weddingId, { default: () => [] })
+await Promise.all([guestsAsync, cakeTypesAsync, cakeAssignAsync, statusAsync, tablesAsync, seatsAsync])
+const { data: guests, refresh: refreshGuests } = guestsAsync
+const { data: cakeBoxTypes } = cakeTypesAsync
+const { data: cakeAssignments, refresh: refreshCakeAssignments } = cakeAssignAsync
+const { data: receptionStatus, refresh: refreshStatus } = statusAsync
+const { data: tables, refresh: refreshTables } = tablesAsync
+const { data: allSeats, refresh: refreshSeats } = seatsAsync
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -107,8 +115,6 @@ const quickAmounts = [1200, 3600, 6000, 12000]
 // GuestListItem 不含接待狀態欄位，改由 reception-status 端點取得，操作後就地更新
 type ReceptionStatus = Omit<ReceptionStatusItem, 'guestId'>
 const status = reactive<Record<string, ReceptionStatus>>({})
-
-const { data: receptionStatus, refresh: refreshStatus } = await getReceptionStatus(weddingId, { default: () => [] })
 
 watchEffect(() => {
   for (const item of receptionStatus.value ?? []) {
@@ -349,31 +355,20 @@ async function quickDistribute(guest: GuestListItem) {
 }
 
 // ===========================================================================
-// 現場桌次圖：載入桌次與座位，供接待人員比照，並可現場新增桌次 / 安排座位
+// 現場桌次圖：桌次與座位於頂部一次載入，供接待人員比照，並可現場新增桌次 / 安排座位
 // ===========================================================================
-const { data: tables, refresh: refreshTables } = await listTables(weddingId, { default: () => [] })
-
-// 每張桌的座位（key = tableId）
-const seatsByTable = ref<Record<string, SeatListItem[]>>({})
-
-async function loadSeats() {
-  const list = tables.value ?? []
-  // 15 桌平行抓取座位（runWithContext 保留 SSR Nuxt context）
-  const seatLists = await Promise.all(
-    list.map(t => nuxtApp.runWithContext(() => getTableSeats(weddingId.value, t.tableId))),
-  )
-  const result: Record<string, SeatListItem[]> = {}
-  list.forEach((t, i) => {
-    result[t.tableId] = seatLists[i]!
-  })
-  seatsByTable.value = result
-}
-
-await loadSeats()
+// 每張桌的座位（key = tableId；每桌保證有 key，無座位為空陣列）
+const seatsByTable = computed<Record<string, SeatListItem[]>>(() => {
+  const map: Record<string, SeatListItem[]> = {}
+  for (const t of tables.value ?? [])
+    map[t.tableId] = []
+  for (const s of allSeats.value ?? [])
+    (map[s.tableId] ??= []).push(s)
+  return map
+})
 
 async function refreshSeating() {
-  await refreshTables()
-  await loadSeats()
+  await Promise.all([refreshTables(), refreshSeats()])
 }
 
 // 現場即時性：自助報到、其他接待機的操作、後台排座位的變動，

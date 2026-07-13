@@ -53,11 +53,14 @@ export function deleteTable(weddingId: string, tableId: string) {
   )
 }
 
-// 命令式讀取單桌座位（在 loadSeats 迴圈內逐桌抓，故用 getOnce 走 $fetch 而非 useFetch）
-export function getTableSeats(weddingId: string, tableId: string) {
-  return useHttp().getOnce<SeatListItem[]>(
-    '/api/v1/weddings/{weddingId}/tables/{tableId}/seats',
-    { pathParams: { weddingId, tableId } },
+// 一次讀整場婚禮的座位（reactive；輪詢與操作後用 refresh 重抓，取代逐桌 N 請求）
+export function listWeddingSeats(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<SeatListItem[]>,
+) {
+  return useHttp().get<SeatListItem[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/seats`,
+    options,
   )
 }
 

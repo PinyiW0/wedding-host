@@ -21,11 +21,11 @@ import {
   createVenueMarker,
   deleteTable,
   deleteVenueMarker,
-  getTableSeats,
   getVenueLayout,
   listGuests,
   listTables,
   listVenueMarkers,
+  listWeddingSeats,
   moveSeat,
   seatGuest,
   unseatGuest,
@@ -37,48 +37,38 @@ definePageMeta({ layout: 'default' })
 
 const route = useRoute()
 const toast = useToast()
-// SSR：loadSeats 於 setup 多個 await 後才迴圈呼叫 getTableSeats（內部用 useHttp→useRuntimeConfig），
-// 需保留 Nuxt context 以免「composable 在 setup 外被呼叫」錯誤
-const nuxtApp = useNuxtApp()
 const weddingId = computed(() => String(route.params.weddingId))
 
-// === 資料載入 ===
-const { data: tables, refresh: refreshTables } = await listTables(weddingId, {
-  default: () => [],
-})
-const { data: guests } = await listGuests(weddingId, { default: () => [] })
+// === 資料載入（彼此獨立：先同步呼叫、再一起 await，消 waterfall）===
+const tablesAsync = listTables(weddingId, { default: () => [] })
+const guestsAsync = listGuests(weddingId, { default: () => [] })
 // 場地佈局：由 GET 讀回，重整後 modal 仍能還原既有值
-const { data: venueLayout, refresh: refreshVenue } = await getVenueLayout(weddingId, {
-  default: () => null,
-})
+const venueAsync = getVenueLayout(weddingId, { default: () => null })
 // 場地標記（門口、送客區、進場入口等；與桌次同畫布座標系）
-const { data: venueMarkers, refresh: refreshMarkers } = await listVenueMarkers(weddingId, {
-  default: () => [],
-})
+const markersAsync = listVenueMarkers(weddingId, { default: () => [] })
+// 全婚禮座位一次抓（取代逐桌 N 請求）
+const seatsAsync = listWeddingSeats(weddingId, { default: () => [] })
+await Promise.all([tablesAsync, guestsAsync, venueAsync, markersAsync, seatsAsync])
+const { data: tables, refresh: refreshTables } = tablesAsync
+const { data: guests } = guestsAsync
+const { data: venueLayout, refresh: refreshVenue } = venueAsync
+const { data: venueMarkers, refresh: refreshMarkers } = markersAsync
+const { data: allSeats, refresh: refreshSeats } = seatsAsync
 
 const activeGuests = computed(() => (guests.value ?? []).filter(g => !g.deletedAt))
 
-// 每張桌的座位（key = tableId）
-const seatsByTable = ref<Record<string, SeatListItem[]>>({})
-
-async function loadSeats() {
-  const list = tables.value ?? []
-  // 平行抓取各桌座位（runWithContext 保留 SSR Nuxt context）
-  const seatLists = await Promise.all(
-    list.map(t => nuxtApp.runWithContext(() => getTableSeats(weddingId.value, t.tableId))),
-  )
-  const result: Record<string, SeatListItem[]> = {}
-  list.forEach((t, i) => {
-    result[t.tableId] = seatLists[i]!
-  })
-  seatsByTable.value = result
-}
-
-await loadSeats()
+// 每張桌的座位（key = tableId；每桌保證有 key，無座位為空陣列）
+const seatsByTable = computed<Record<string, SeatListItem[]>>(() => {
+  const map: Record<string, SeatListItem[]> = {}
+  for (const t of tables.value ?? [])
+    map[t.tableId] = []
+  for (const s of allSeats.value ?? [])
+    (map[s.tableId] ??= []).push(s)
+  return map
+})
 
 async function refreshAll() {
-  await refreshTables()
-  await loadSeats()
+  await Promise.all([refreshTables(), refreshSeats()])
 }
 
 function guestName(guestId: string): string {
