@@ -27,6 +27,13 @@ npx eslint . --fix && npm run typelint
 4. 如果有型別錯誤，修正後重新執行直到通過
 5. **兩者都通過後才算完成**
 
+## Hydration 自查
+
+改動 `.vue` 渲染輸出時自查一項：template 是否渲染 server/client 會算出不同值的表達式
+（`colorMode.value`、`Date.now()`/`Math.random()`、`window`/`localStorage`、只在 client 成立的 v-if）
+→ 包 `<ClientOnly>`（同尺寸 fallback）或移入 `onMounted`。
+注意：persist 的 auth 狀態預設存 **cookie**，SSR 讀得到，不屬於 client-only 值。
+
 ## 常見問題
 
 | 問題 | 原因 | 解法 |

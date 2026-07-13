@@ -1,6 +1,6 @@
-// 登入守衛（前端輕量版，mock 階段用；M0 真 auth 時改為以後端 session/token 驗證）
-// 未登入訪問需登入頁 → 導向 /login。賓客公開頁與認證頁不攔截。
-// 角色守衛：接待員只能進接待台，其餘後台一律導回接待台（API 層權限留待 M0 真 auth）。
+// 登入守衛（全端：SSR 與 client 都執行）
+// 未登入訪問需登入頁 → 導向 /login（SSR 端直接 302，不渲染「未登入版」再由 client 修正——那是 hydration mismatch 的來源）。
+// 賓客公開頁與認證頁不攔截。角色守衛：接待員只能進接待台，其餘後台一律導回接待台（API 層權限兜底）。
 
 // 公開頁（不需登入）：認證頁 + 賓客端 LIFF 頁。提到 module scope 避免每次重編譯。
 const PUBLIC_PATTERNS = [
@@ -29,9 +29,8 @@ const ADMIN_ONLY_PATTERNS = [/^\/users(\/|$)/]
 const WEDDING_PATH_RE = /^\/weddings\/([^/]+)/
 
 export default defineNuxtRouteMiddleware((to) => {
-  // 守衛只在 client 執行：登入狀態存在 localStorage（persist），SSR 讀不到，避免 SSR 誤判而誤導
-  if (import.meta.server)
-    return
+  // 登入狀態存在 cookie（pinia-plugin-persistedstate/nuxt 預設 storage），SSR 讀得到，
+  // 因此守衛全端執行——兩端讀同一份狀態，SSR 不會渲染出與 client 不一致的畫面
 
   // 根路由交給 index.vue 依登入狀態自行導向
   if (to.path === '/' || PUBLIC_PATTERNS.some(re => re.test(to.path)))
