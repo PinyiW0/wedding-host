@@ -4,7 +4,7 @@ import type { CustomizeThankYouCardBody, ThankYouCardCustomizedEvent } from '../
 import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
-import { thankYouCustomizations, weddings } from '../../../../../db/schema'
+import { guests, thankYouCustomizations, weddings } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<ThankYouCardCustomizedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -14,6 +14,12 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouCardCu
   const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
+  }
+
+  // guestId 需屬於本婚禮（issue #70 / L3）：避免建立對應外來 guestId 的孤兒客製
+  const [guest] = await db.select({ id: guests.guestId }).from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
+  if (!guest) {
+    throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
 
   // (weddingId, guestId) 複合鍵 upsert：先查有無客製，有則更新、無則新增
