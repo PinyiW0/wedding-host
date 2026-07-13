@@ -10,9 +10,16 @@ type SlimRow = Omit<typeof guests.$inferSelect, 'blessing' | 'flowerDrawing'>
 
 // 預設 slim：不撈 blessing / flowerDrawing（base64 手繪可達數十 KB/張），
 // 僅 RSVP 回覆管理頁（CSV 匯出、花圖下載）帶 ?fields=full 取完整欄位
+// 接待員視角剔除的敏感欄位（issue #70 / M3）：報到／發喜餅不需這些 PII
+function stripForReception(item: GuestListItem): GuestListItem {
+  return { ...item, contact: '', notes: null, lineUserId: null, mailingAddress: null, customAnswers: null }
+}
+
 export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[]> => {
   const weddingId = getRouterParam(event, 'weddingId')!
-  const full = getQuery(event).fields === 'full'
+  // 接待員略過 fields=full（不撈 blessing/flowerDrawing）並剔除聯絡方式等敏感欄位
+  const isReception = event.context.authUser?.role === '接待員'
+  const full = !isReception && getQuery(event).fields === 'full'
   const db = useDb()
   const where = and(
     eq(guests.weddingId, weddingId),
@@ -52,5 +59,6 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
   }
   const { blessing: _blessing, flowerDrawing: _flowerDrawing, ...slimColumns } = getTableColumns(guests)
   const rows = await db.select(slimColumns).from(guests).where(where).orderBy(asc(guests.seq))
-  return rows.map(toItem)
+  const items = rows.map(toItem)
+  return isReception ? items.map(stripForReception) : items
 })

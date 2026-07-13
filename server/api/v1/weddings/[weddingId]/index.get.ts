@@ -14,6 +14,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingDetail>
   }
   // 新人僅能存取自己擁有的婚禮
   assertWeddingAccess(getRequestUser(event), wedding.ownerId)
+  // 匿名（公開頁簽名）不需內部欄位（issue #70 / L1）：剔除 ownerId（新人帳號主鍵）與軟刪除狀態
+  const isAuthenticated = !!event.context.authUser
   return {
     weddingId: wedding.weddingId,
     title: wedding.title,
@@ -26,7 +28,7 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingDetail>
     parkingInfo: wedding.parkingInfo,
     transportInfo: wedding.transportInfo,
     transportImageUrls: wedding.transportImageUrls ?? [],
-    ownerId: wedding.ownerId ?? null,
-    deletedAt: wedding.deletedAt,
+    ownerId: isAuthenticated ? (wedding.ownerId ?? null) : null,
+    deletedAt: isAuthenticated ? wedding.deletedAt : null,
   }
 })
