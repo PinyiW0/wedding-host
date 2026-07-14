@@ -32,7 +32,9 @@ test.describe('持久化：場地佈局重整後仍在', () => {
 
     const apiCall = waitForApiCall(page, /\/venue-layout(\?|$)/, 'PUT')
     await page.getByTestId('venue-submit').click()
-    await apiCall
+    // 等 PUT response 完成（DB 已 commit）再 reload，避免 GET 搶在寫入前讀到舊值的競態
+    const request = await apiCall
+    await request.response()
 
     // 重整後重開 modal：值應由 GET 還原為剛存的，而非硬編預設
     await page.reload({ waitUntil: 'networkidle' })
