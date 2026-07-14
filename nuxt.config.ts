@@ -103,6 +103,9 @@ export default defineNuxtConfig({
     theme: {
       colors: ['primary', 'secondary', 'info', 'success', 'warning', 'error', 'neutral'],
     },
+    // 整站鎖定 light 模式（issue #82）：不掛 @nuxtjs/color-mode，
+    // 瀏覽器 dark 模式不會在 <html> 加 .dark class，dark: 樣式永不生效
+    colorMode: false,
   },
   // 字體（Editorial Luxe）：build 期由 @nuxt/fonts 下載自我托管，離線穩定
   // 名稱須與 main.css @theme 的 --font-* 完全一致
