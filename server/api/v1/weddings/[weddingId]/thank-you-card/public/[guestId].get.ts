@@ -18,7 +18,8 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicThankYou
   if (!wedding) {
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
-  const [guest] = await db.select().from(guests).where(and(eq(guests.guestId, guestId), isNull(guests.deletedAt)))
+  // weddingId 一併過濾（issue #70 / M2）：防跨婚禮枚舉並讀出他人賓客姓名
+  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

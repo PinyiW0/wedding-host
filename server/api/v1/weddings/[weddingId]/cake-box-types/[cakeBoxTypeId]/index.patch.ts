@@ -17,6 +17,10 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
     throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
   }
 
+  // 價格欄驗證（issue #70 / M4）：防浮點／int4 溢位致 500、負值
+  if (body.price !== undefined && body.price !== null)
+    assertPositiveInt(body.price, '款式價格', 100_000_000)
+
   const patch: Partial<typeof cakeBoxTypes.$inferInsert> = {}
   if (body.name !== undefined)
     patch.name = body.name

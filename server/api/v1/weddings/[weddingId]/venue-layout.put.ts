@@ -33,7 +33,18 @@ export default defineEventHandler(async (event: H3Event): Promise<VenueLayoutCon
     }).where(eq(venueLayouts.weddingId, weddingId))
   }
   else {
-    await db.insert(venueLayouts).values({ weddingId, ...body, referenceImageUrl: body.referenceImageUrl ?? null })
+    // 顯式白名單欄位（issue #70 / M1）：不可用 ...body 展開，否則 body.weddingId 會覆蓋 URL 值造成跨租戶寫入
+    await db.insert(venueLayouts).values({
+      weddingId,
+      stageWidth: body.stageWidth,
+      stageHeight: body.stageHeight,
+      stagePositionX: body.stagePositionX,
+      stagePositionY: body.stagePositionY,
+      referenceImageUrl: body.referenceImageUrl ?? null,
+      ...(body.refImageX !== undefined ? { refImageX: body.refImageX } : {}),
+      ...(body.refImageY !== undefined ? { refImageY: body.refImageY } : {}),
+      ...(body.refImageScale !== undefined ? { refImageScale: body.refImageScale } : {}),
+    })
   }
 
   const [saved] = await db.select().from(venueLayouts).where(eq(venueLayouts.weddingId, weddingId))

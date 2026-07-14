@@ -16,6 +16,8 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpOverridden
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
+  // 出席狀態 enum 驗證（issue #70 / M4）：非法值會落庫並污染 dashboard 統計
+  assertEnum(body.attending, ['attending', 'declined', 'absent'], '出席狀態')
   await db.update(guests).set({ rsvpAttending: body.attending }).where(eq(guests.guestId, guest.guestId))
 
   return { guestId: guest.guestId, attending: body.attending, reason: body.reason }

@@ -17,6 +17,18 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemUpdate
     throw createError({ statusCode: 404, statusMessage: '禮物品項不存在' })
   }
 
+  // 金額／數量欄驗證（issue #70 / M4）：防浮點／int4 溢位致 500、負值污染採購試算
+  if (body.unitPrice !== undefined)
+    assertPositiveInt(body.unitPrice, '單價', 100_000_000)
+  if (body.quantity !== undefined)
+    assertPositiveInt(body.quantity, '數量', 1_000_000)
+  if (body.shippingFee1 !== undefined)
+    assertPositiveInt(body.shippingFee1, '運費', 100_000_000)
+  if (body.shippingFee2 !== undefined)
+    assertPositiveInt(body.shippingFee2, '運費', 100_000_000)
+  if (body.otherFee !== undefined)
+    assertPositiveInt(body.otherFee, '其他費用', 100_000_000)
+
   const patch: Partial<typeof giftItems.$inferInsert> = {}
   if (body.category !== undefined)
     patch.category = body.category

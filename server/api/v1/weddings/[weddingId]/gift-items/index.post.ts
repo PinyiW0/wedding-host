@@ -31,6 +31,12 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
     otherFee: body.otherFee ?? 0,
     note: body.note ?? null,
   }
+  // 金額／數量欄落 integer（issue #70 / M4）：防浮點／int4 溢位致 500、負值污染採購試算
+  assertPositiveInt(item.unitPrice, '單價', 100_000_000)
+  assertPositiveInt(item.quantity, '數量', 1_000_000)
+  assertPositiveInt(item.shippingFee1, '運費', 100_000_000)
+  assertPositiveInt(item.shippingFee2, '運費', 100_000_000)
+  assertPositiveInt(item.otherFee, '其他費用', 100_000_000)
   const db = useDb()
   await db.insert(giftItems).values(item)
 

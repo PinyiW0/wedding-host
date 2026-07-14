@@ -10,7 +10,13 @@ export default defineEventHandler(async (event: H3Event): Promise<BlessingListIt
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
   const rows = await db.select().from(blessings).where(eq(blessings.weddingId, weddingId)).orderBy(asc(blessings.seq))
-  return rows.map(b => ({
+
+  // 匿名（僅婚禮簽名，投影牆）只看得到已通過的祝福且不含退件原因（issue #70 / H4）；
+  // 登入的管理端／接待員維持全量（審核所需）。middleware 已把登入者掛在 context.authUser。
+  const isAuthenticated = !!event.context.authUser
+  const visible = isAuthenticated ? rows : rows.filter(b => b.status === 'approved')
+
+  return visible.map(b => ({
     blessingId: b.blessingId,
     weddingId: b.weddingId,
     guestId: b.guestId,
