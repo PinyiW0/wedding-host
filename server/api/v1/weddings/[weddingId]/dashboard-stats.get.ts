@@ -1,56 +1,64 @@
 import type { H3Event } from 'h3'
 import type { DashboardStats } from '../../../../../app/types/api/dashboard'
 
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { useDb } from '../../../../db'
 import { guests } from '../../../../db/schema'
 
-// 儀表板聚合統計（issue #11）：單次撈出該婚禮全部賓客後於 JS 聚合
-// （婚禮規模數百組以內，不需 SQL 聚合；規則與 guests 頁 stats bar 一致）
+// 儀表板聚合統計（issue #11 / #71）：改用單一 SQL 聚合（FILTER 子句）取代撈全表 JS 聚合，
+// 規則與 guests 頁 stats bar 一致。母集語意：
+//   active＝未軟刪且非待審核（status 為 null 視為正式賓客）
 export default defineEventHandler(async (event: H3Event): Promise<DashboardStats> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
-  const rows = await db.select({
-    rsvpAttending: guests.rsvpAttending,
-    partySize: guests.partySize,
-    childChairCount: guests.childChairCount,
-    diet: guests.diet,
-    checkedInAt: guests.checkedInAt,
-    giftAmount: guests.giftAmount,
-    status: guests.status,
-    deletedAt: guests.deletedAt,
+
+  const active = sql`${guests.deletedAt} is null and (${guests.status} is null or ${guests.status} <> 'pending_review')`
+  const attending = sql`(${active}) and ${guests.rsvpAttending} = 'attending'`
+
+  const [agg] = await db.select({
+    totalGroups: sql<number>`count(*) filter (where ${active})`,
+    attending: sql<number>`count(*) filter (where ${attending})`,
+    declined: sql<number>`count(*) filter (where (${active}) and ${guests.rsvpAttending} = 'declined')`,
+    headcount: sql<number>`coalesce(sum(${guests.partySize}) filter (where ${attending}), 0)`,
+    children: sql<number>`coalesce(sum(${guests.childChairCount}) filter (where ${attending}), 0)`,
+    vegetarian: sql<number>`count(*) filter (where (${attending}) and ${guests.diet} = 'vegetarian')`,
+    checkedIn: sql<number>`count(*) filter (where (${active}) and ${guests.checkedInAt} is not null)`,
+    giftTotal: sql<number>`coalesce(sum(${guests.giftAmount}) filter (where (${active}) and ${guests.giftAmount} is not null), 0)`,
+    giftCount: sql<number>`count(*) filter (where (${active}) and ${guests.giftAmount} is not null)`,
+    pendingReview: sql<number>`count(*) filter (where ${guests.deletedAt} is null and ${guests.status} = 'pending_review')`,
   }).from(guests).where(eq(guests.weddingId, weddingId))
 
-  // 正式名單：未軟刪且非待審核（與 guests 列表端點的母集一致）
-  const active = rows.filter(g => !g.deletedAt && g.status !== 'pending_review')
-  const attendingRows = active.filter(g => g.rsvpAttending === 'attending')
-  const attending = attendingRows.length
-  const declined = active.filter(g => g.rsvpAttending === 'declined').length
-  const giftRows = active.filter(g => g.giftAmount != null)
+  // count/sum 於 pg 回傳 bigint（driver 給字串），一律 Number() 收斂為數字
+  const n = (v: unknown): number => Number(v ?? 0)
+  const totalGroups = n(agg?.totalGroups)
+  const attendingCount = n(agg?.attending)
+  const declined = n(agg?.declined)
+  const headcount = n(agg?.headcount)
+  const children = n(agg?.children)
 
   return {
     rsvp: {
-      totalGroups: active.length,
-      attending,
+      totalGroups,
+      attending: attendingCount,
       declined,
       // 未提交（null）與 absent 統一視為待回覆
-      pending: active.length - attending - declined,
+      pending: totalGroups - attendingCount - declined,
     },
     attendance: {
-      headcount: attendingRows.reduce((sum, g) => sum + g.partySize, 0),
-      adults: attendingRows.reduce((sum, g) => sum + g.partySize - g.childChairCount, 0),
-      children: attendingRows.reduce((sum, g) => sum + g.childChairCount, 0),
-      vegetarian: attendingRows.filter(g => g.diet === 'vegetarian').length,
+      headcount,
+      adults: headcount - children,
+      children,
+      vegetarian: n(agg?.vegetarian),
     },
     checkIn: {
-      checkedIn: active.filter(g => g.checkedInAt).length,
-      expected: attending,
+      checkedIn: n(agg?.checkedIn),
+      expected: attendingCount,
     },
     giftMoney: {
-      totalAmount: giftRows.reduce((sum, g) => sum + (g.giftAmount ?? 0), 0),
-      recordCount: giftRows.length,
+      totalAmount: n(agg?.giftTotal),
+      recordCount: n(agg?.giftCount),
     },
-    pendingReviewCount: rows.filter(g => g.status === 'pending_review' && !g.deletedAt).length,
+    pendingReviewCount: n(agg?.pendingReview),
   }
 })
