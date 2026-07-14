@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { listWeddings } from '~/api'
 import { useAuthStore } from '~/stores/auth'
 
 const authStore = useAuthStore()
@@ -7,6 +8,33 @@ const router = useRouter()
 const { wedding, weddingId } = useCurrentWedding()
 const isMobileMenuOpen = ref(false)
 const isCollapsed = ref(false)
+
+// 管理者多婚禮切換器（issue #74）：標頭婚禮名稱改為下拉，一步直達另一場
+// 比照 useCurrentWedding：延後至 mounted 才抓，避免 hydration 中途 resolve 造成 mismatch（#52）
+const { data: switcherWeddings, execute: fetchSwitcherWeddings } = listWeddings({
+  immediate: false,
+  watch: false,
+  server: false,
+  key: 'wedding-switcher-list',
+  default: () => [],
+})
+
+onMounted(() => {
+  if (authStore.isAdmin)
+    fetchSwitcherWeddings()
+})
+
+// 子頁皆為靜態路由段（無巢狀動態 id），切換時直接替換路徑中的 weddingId 即可保留當前子頁
+const switcherItems = computed(() =>
+  (switcherWeddings.value ?? [])
+    .filter(w => !w.deletedAt)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(w => ({
+      label: w.title,
+      icon: w.weddingId === weddingId.value ? 'i-heroicons-check' : undefined,
+      to: route.path.replace(`/weddings/${weddingId.value}`, `/weddings/${w.weddingId}`),
+    })),
+)
 
 // 全域導覽（未進入特定婚禮時顯示）；接待員只保留「接待報到」（帶 weddingId）
 const globalNav = computed(() => {
@@ -157,7 +185,25 @@ async function handleLogout() {
           <p class="text-overline uppercase text-gold-deep">
             {{ wedding ? 'The Wedding of' : 'The Wedding Platform' }}
           </p>
-          <p class="mt-1 truncate font-display text-base font-semibold text-ink dark:text-paper">
+          <!-- 管理者：婚禮名稱可點開下拉一步切換（issue #74）；新人/接待員維持純文字 -->
+          <UDropdownMenu
+            v-if="authStore.isAdmin && wedding"
+            :items="switcherItems"
+            :content="{ align: 'start' }"
+          >
+            <button
+              type="button"
+              data-testid="vibe-wedding-switcher"
+              aria-label="切換婚禮"
+              class="group mt-1 flex w-full min-w-0 items-center gap-1 rounded text-left"
+            >
+              <span class="truncate font-display text-base font-semibold text-ink transition-colors group-hover:text-gold-deep dark:text-paper">
+                {{ wedding.title }}
+              </span>
+              <UIcon name="i-heroicons-chevron-down" class="size-4 shrink-0 text-ink-500" />
+            </button>
+          </UDropdownMenu>
+          <p v-else class="mt-1 truncate font-display text-base font-semibold text-ink dark:text-paper">
             {{ wedding?.title ?? 'EverAfter' }}
           </p>
           <p v-if="wedding" class="mt-0.5 truncate text-caption text-ink-500 dark:text-neutral-400">
