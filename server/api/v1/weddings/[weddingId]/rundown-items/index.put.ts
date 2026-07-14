@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { RundownItemListItem, RundownTableSavedEvent, SaveRundownTableBody } from '../../../../../../app/types/api/rundown'
 
-import { eq } from 'drizzle-orm'
+import { and, eq, notInArray, sql } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
 import { rundownItems, rundownRoles } from '../../../../../db/schema'
@@ -42,10 +42,30 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
     highlight: row.highlight ?? false,
   }))
 
-  // 整批取代：刪除該婚禮全部 items 後依序 insert（seq 自然遞增＝傳入順序）
-  await db.delete(rundownItems).where(eq(rundownItems.weddingId, weddingId))
-  if (items.length)
-    await db.insert(rundownItems).values(items)
+  // 整批取代：改用「upsert（by rundownItemId）先行 + 刪除不在新集合者」取代 delete-all+insert，
+  // 任一步失敗都不會讓流程表瞬間清空；顯示序由 GET 依 time 排序、不依賴 seq（issue #71）
+  if (items.length) {
+    await db.insert(rundownItems).values(items).onConflictDoUpdate({
+      target: rundownItems.rundownItemId,
+      set: {
+        time: sql`excluded.time`,
+        durationMinutes: sql`excluded.duration_minutes`,
+        title: sql`excluded.title`,
+        location: sql`excluded.location`,
+        supplies: sql`excluded.supplies`,
+        note: sql`excluded.note`,
+        roleTasks: sql`excluded.role_tasks`,
+        highlight: sql`excluded.highlight`,
+      },
+    })
+    await db.delete(rundownItems).where(and(
+      eq(rundownItems.weddingId, weddingId),
+      notInArray(rundownItems.rundownItemId, items.map(i => i.rundownItemId)),
+    ))
+  }
+  else {
+    await db.delete(rundownItems).where(eq(rundownItems.weddingId, weddingId))
+  }
 
   return { weddingId, itemCount: items.length, items }
 })

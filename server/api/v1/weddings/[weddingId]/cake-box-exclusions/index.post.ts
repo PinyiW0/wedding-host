@@ -1,8 +1,6 @@
 import type { H3Event } from 'h3'
 import type { CakeBoxGuestExcludedEvent, ExcludeGuestCakeBoxBody } from '../../../../../../app/types/api/cakebox'
 
-import { and, eq } from 'drizzle-orm'
-
 import { useDb } from '../../../../../db'
 import { cakeBoxExclusions } from '../../../../../db/schema'
 
@@ -15,10 +13,10 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxGuestEx
     throw createError({ statusCode: 400, statusMessage: '請指定賓客' })
   }
 
+  // (weddingId, guestId) unique + onConflictDoNothing：冪等寫入取代 check-then-insert，
+  // 併發重複由 DB 兜底、不產生多筆（issue #71）
   const db = useDb()
-  const [existing] = await db.select().from(cakeBoxExclusions).where(and(eq(cakeBoxExclusions.weddingId, weddingId), eq(cakeBoxExclusions.guestId, body.guestId)))
-  if (!existing)
-    await db.insert(cakeBoxExclusions).values({ weddingId, guestId: body.guestId })
+  await db.insert(cakeBoxExclusions).values({ weddingId, guestId: body.guestId }).onConflictDoNothing()
 
   setResponseStatus(event, 201)
   return { guestId: body.guestId }

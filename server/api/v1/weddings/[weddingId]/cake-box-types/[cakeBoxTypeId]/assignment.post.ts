@@ -21,10 +21,11 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxAssignm
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
 
-  // 一位賓客只保留一筆指派（upsert）：先移除同賓客的舊指派，再寫入新的。
-  // 使「依分類帶入」可重複套用而不產生重複，且符合「一位賓客一種喜餅」語意。
-  await db.delete(cakeBoxAssignments).where(eq(cakeBoxAssignments.guestId, body.guestId))
-  await db.insert(cakeBoxAssignments).values({ cakeBoxTypeId, guestId: body.guestId, assignmentRule: body.assignmentRule })
+  // 一位賓客只保留一筆指派：改用單語句 upsert（guestId unique）取代 delete+insert 非原子替換，
+  // 中途失敗不會讓賓客沒有指派，併發重複也由 DB 唯一約束兜底（issue #71）
+  await db.insert(cakeBoxAssignments)
+    .values({ cakeBoxTypeId, guestId: body.guestId, assignmentRule: body.assignmentRule })
+    .onConflictDoUpdate({ target: cakeBoxAssignments.guestId, set: { cakeBoxTypeId, assignmentRule: body.assignmentRule } })
 
   setResponseStatus(event, 201)
   return { cakeBoxTypeId, guestId: body.guestId, assignmentRule: body.assignmentRule }
