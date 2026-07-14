@@ -137,6 +137,53 @@ export function useSeatAssign(deps: SeatAssignDeps) {
     await assignSeat(table.tableId, src.guestId, seatNumber)
   }
 
+  // === 觸控備援（tap-to-assign，issue #73）===
+  // 點選側欄賓客（或取消座位視窗的「移至其他座位」）進入「待放置」，點桌上座位完成入座／移動；
+  // 與 HTML5 拖曳並存：來源同為 DragSource 形狀，commit 分派邏輯與 drop 一致
+  const pendingSource = ref<DragSource | null>(null)
+  const pendingGuestId = computed(() => pendingSource.value?.guestId ?? null)
+  const hasPending = computed(() => pendingSource.value != null)
+
+  // 側欄賓客：點一下進入待放置、再點同一位取消
+  function togglePendingGuest(guestId: string) {
+    const cur = pendingSource.value
+    pendingSource.value = cur?.guestId === guestId && !cur.fromTableId ? null : { guestId }
+  }
+  // 「移至其他座位」：以單一席位為來源（點空位移動、點已入座互換）
+  function startPendingMove(tableId: string, seatNumber: number, guestId: string) {
+    pendingSource.value = { guestId, fromTableId: tableId, fromSeatNumber: seatNumber }
+  }
+  function cancelPending() {
+    pendingSource.value = null
+  }
+
+  // 點座位（空位或已入座皆可為目標）：與 onDropToSeat 同一分派邏輯
+  async function tapSeat(table: TableListItem, seatNumber: number) {
+    const src = pendingSource.value
+    if (!src)
+      return
+    pendingSource.value = null
+    if (src.fromTableId && src.fromSeatNumber != null) {
+      // 點回自己原位不動
+      if (src.fromTableId === table.tableId && src.fromSeatNumber === seatNumber)
+        return
+      await moveSingleSeat(src.fromTableId, src.fromSeatNumber, table.tableId, seatNumber)
+      return
+    }
+    const occupant = occupantAt(table.tableId, seatNumber)
+    if (occupant) {
+      // 待放置賓客點到已佔位 → 改放該桌下一個空位（含兒童加位）
+      const seat = nextSeatFor(table, src.guestId)
+      if (seat == null) {
+        toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
+        return
+      }
+      await assignSeat(table.tableId, src.guestId, seat)
+      return
+    }
+    await assignSeat(table.tableId, src.guestId, seatNumber)
+  }
+
   return {
     draggingGuestId,
     dragOverTableId,
@@ -149,5 +196,11 @@ export function useSeatAssign(deps: SeatAssignDeps) {
     onTableDragLeave,
     onDropToTable,
     onDropToSeat,
+    pendingGuestId,
+    hasPending,
+    togglePendingGuest,
+    startPendingMove,
+    cancelPending,
+    tapSeat,
   }
 }

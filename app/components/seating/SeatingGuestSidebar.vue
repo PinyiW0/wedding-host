@@ -11,6 +11,8 @@ defineProps<{
   activeCount: number
   isAutoSeating: boolean
   isClearing: boolean
+  /** tap-to-assign 待放置中的賓客（點選視覺提示） */
+  pendingGuestId: string | null
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +21,8 @@ const emit = defineEmits<{
   autoSeat: []
   guestDragStart: [event: DragEvent, guestId: string]
   guestDragEnd: []
+  /** 點選賓客切換待放置（觸控備援；再點一次取消） */
+  guestTap: [guestId: string]
 }>()
 </script>
 
@@ -73,7 +77,7 @@ const emit = defineEmits<{
     </div>
 
     <p class="mb-3 shrink-0 text-caption text-ink-300">
-      點「推薦排序」依「主桌帶入新人與雙親、男左女右、長輩近主桌」自動帶位，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置
+      點「推薦排序」依「主桌帶入新人與雙親、男左女右、長輩近主桌」自動帶位，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置。平板／觸控可點選賓客後再點桌上空位入座
     </p>
 
     <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
@@ -91,6 +95,8 @@ const emit = defineEmits<{
         draggable="true"
         :data-testid="`vibe-seating-guest-${guest.guestId}`"
         class="group flex cursor-grab items-center gap-2 rounded-md border border-line bg-white px-3 py-2 transition-shadow hover:shadow active:cursor-grabbing dark:border-neutral-800 dark:bg-neutral-900"
+        :class="pendingGuestId === guest.guestId && 'border-gold ring-2 ring-gold'"
+        @click="emit('guestTap', guest.guestId)"
         @dragstart="emit('guestDragStart', $event, guest.guestId)"
         @dragend="emit('guestDragEnd')"
       >

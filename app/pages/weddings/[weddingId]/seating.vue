@@ -224,7 +224,7 @@ async function confirmResetTable() {
   }
 }
 
-// === 拖曳排位（HTML5 DnD：側欄入座、單席移動／互換）===
+// === 拖曳排位（HTML5 DnD：側欄入座、單席移動／互換）+ 觸控備援（tap-to-assign）===
 const {
   dragOverTableId,
   onGuestDragStart,
@@ -234,11 +234,26 @@ const {
   onTableDragLeave,
   onDropToTable,
   onDropToSeat,
+  pendingGuestId,
+  hasPending,
+  togglePendingGuest,
+  startPendingMove,
+  cancelPending,
+  tapSeat,
 } = useSeatAssign({
   weddingId,
   math: { occupantAt, nextSeatFor },
   refreshAll,
 })
+
+// 座位上賓客點擊：待放置中＝以此席位為目標（移動／互換）；否則開取消座位確認
+function onOccupantClick(table: TableListItem, seatNumber: number, guestId: string) {
+  if (hasPending.value) {
+    void tapSeat(table, seatNumber)
+    return
+  }
+  openUnseat(table.tableId, guestId, seatNumber)
+}
 
 // === 新增 / 編輯桌次 Modal ===
 const isTableFormOpen = ref(false)
@@ -305,11 +320,20 @@ function suggestSeatNumber(tableId: string): number {
 // === 取消座位 ===
 const isUnseatOpen = ref(false)
 const isUnseating = ref(false)
-const unseatTarget = ref<{ tableId: string, guestId: string, guestName: string } | null>(null)
+const unseatTarget = ref<{ tableId: string, guestId: string, guestName: string, seatNumber: number } | null>(null)
 
-function openUnseat(tableId: string, guestId: string) {
-  unseatTarget.value = { tableId, guestId, guestName: guestName(guestId) }
+function openUnseat(tableId: string, guestId: string, seatNumber: number) {
+  unseatTarget.value = { tableId, guestId, guestName: guestName(guestId), seatNumber }
   isUnseatOpen.value = true
+}
+
+// 「移至其他座位」（觸控備援換位入口）：關閉確認框，改以該席位為待放置來源
+function startMoveFromUnseat() {
+  const target = unseatTarget.value
+  if (!target)
+    return
+  isUnseatOpen.value = false
+  startPendingMove(target.tableId, target.seatNumber, target.guestId)
 }
 
 async function confirmUnseat() {
@@ -555,6 +579,25 @@ onMounted(async () => {
               完成
             </UButton>
           </div>
+          <!-- 待放置提示列：tap-to-assign 進行中（觸控備援；sticky 讓長畫布捲動時仍可見） -->
+          <div
+            v-if="hasPending && pendingGuestId"
+            data-testid="vibe-seating-pending-bar"
+            class="sticky left-0 top-0 z-50 mb-3 flex w-fit items-center gap-2 rounded-md border border-gold bg-paper/95 px-3 py-1.5 shadow-sm dark:bg-neutral-900/95"
+          >
+            <span class="text-caption text-ink-500 dark:text-neutral-400">
+              待放置：<span class="font-medium text-gold-deep">{{ guestName(pendingGuestId) }}</span>，點桌上空位入座
+            </span>
+            <UButton
+              data-testid="vibe-seating-pending-cancel"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="cancelPending"
+            >
+              取消
+            </UButton>
+          </div>
           <!-- 自由佈局畫布：圓桌可拖曳調整位置以因應現場空間 -->
           <div
             data-testid="table-list"
@@ -687,7 +730,7 @@ onMounted(async () => {
                     class="group/seat absolute z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 text-center text-micro font-medium leading-none shadow-sm transition-transform hover:z-50 hover:scale-110 active:cursor-grabbing"
                     :class="occupantColorClass(slot.occupant)"
                     :style="{ left: slot.pos.left, top: slot.pos.top }"
-                    @click="openUnseat(table.tableId, slot.occupant.guestId)"
+                    @click="onOccupantClick(table, slot.seatNumber, slot.occupant.guestId)"
                     @dragstart="onSeatDragStart($event, table.tableId, slot.seatNumber, slot.occupant.guestId)"
                     @dragend="onGuestDragEnd"
                     @dragover="onTableDragOver($event, table.tableId)"
@@ -701,15 +744,16 @@ onMounted(async () => {
                       {{ occupantMeta(slot.occupant.guestId) }}
                     </span>
                   </button>
-                  <!-- 空位：拖曳賓客至此可入座 -->
+                  <!-- 空位：拖曳賓客至此可入座；tap-to-assign 待放置中點擊即入座（觸控備援） -->
                   <div
                     v-else
                     :data-testid="`${table.tableId}-empty-${slot.idx + 1}`"
                     class="absolute flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed text-ink-300 transition-colors"
-                    :class="dragOverTableId === table.tableId
-                      ? 'border-gold bg-gold-light/30 text-gold-deep'
+                    :class="dragOverTableId === table.tableId || hasPending
+                      ? 'cursor-pointer border-gold bg-gold-light/30 text-gold-deep'
                       : 'border-line/70 bg-paper/60 dark:border-neutral-700 dark:bg-neutral-900/40'"
                     :style="{ left: slot.pos.left, top: slot.pos.top }"
+                    @click="tapSeat(table, slot.seatNumber)"
                     @dragover="onTableDragOver($event, table.tableId)"
                     @drop="onDropToSeat($event, table, slot.seatNumber)"
                   >
@@ -769,11 +813,13 @@ onMounted(async () => {
         :active-count="activeGuests.length"
         :is-auto-seating="isAutoSeating"
         :is-clearing="isClearing"
+        :pending-guest-id="pendingGuestId"
         @seat-form="isSeatFormOpen = true"
         @clear-all="openClearAll"
         @auto-seat="autoSeat"
         @guest-drag-start="onGuestDragStart"
         @guest-drag-end="onGuestDragEnd"
+        @guest-tap="togglePendingGuest"
       />
     </div>
 
@@ -847,7 +893,7 @@ onMounted(async () => {
       </template>
     </UModal>
 
-    <!-- 取消座位確認 -->
+    <!-- 取消座位確認（含觸控備援換位入口「移至其他座位」） -->
     <ConfirmModal
       v-model:open="isUnseatOpen"
       title="確認取消座位"
@@ -856,7 +902,20 @@ onMounted(async () => {
       confirm-color="error"
       :loading="isUnseating"
       @confirm="confirmUnseat"
-    />
+    >
+      <template #extra>
+        <UButton
+          data-testid="vibe-seat-move"
+          icon="i-heroicons-arrows-right-left"
+          color="neutral"
+          variant="outline"
+          :disabled="isUnseating"
+          @click="startMoveFromUnseat"
+        >
+          移至其他座位
+        </UButton>
+      </template>
+    </ConfirmModal>
 
     <!-- 一鍵取消：清空所有座位安排確認 -->
     <ConfirmModal
