@@ -113,7 +113,8 @@ const petals = [
 
     <!-- 信封 ⇄ 謝卡：同格疊放，卡片從信封口向上抽出展開 -->
     <div class="relative z-10 grid w-full place-items-center">
-      <Transition name="envelope-out">
+      <!-- out-in：信封退場完才掛載卡片，避免兩者短暫共存（賓客名重複、e2e strict mode 也會撞） -->
+      <Transition name="envelope-out" mode="out-in">
         <div v-if="!opened" key="envelope" class="envelope-intro col-start-1 row-start-1 flex flex-col items-center">
           <p class="relative z-10 mb-16 text-overline uppercase text-rose-400">
             With Love · 吳限幸福
