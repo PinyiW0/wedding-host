@@ -4,7 +4,7 @@ import type { GuestSource, GuestStatus } from '../../app/types/api/guests'
 import type { ProjectionMediaType } from '../../app/types/api/projection'
 import type { AttendingStatus, InvitationPreference } from '../../app/types/api/rsvp'
 import type { RsvpQuestion, RsvpTheme } from '../../app/types/api/rsvp-config'
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text } from 'drizzle-orm/pg-core'
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core'
 
 // Drizzle schema：24 張表，一一對齊 server/mock/data 的 store 形狀（欄位名即 API 合約）
 // 設計原則（務實派 CRUD，見 issue #3 / #4）：
@@ -31,7 +31,9 @@ export const receptionAccounts = pgTable('reception_accounts', {
   weddingId: text().notNull(),
   username: text().notNull(),
   passwordHash: text().notNull(),
-}, t => [index().on(t.weddingId)])
+  // (weddingId, username) 唯一：DB 層兜底併發建帳撞名（handler 的 check-then-insert 之外）（issue #71）
+  // 複合索引最左前綴亦服務原本的 weddingId 查詢
+}, t => [uniqueIndex().on(t.weddingId, t.username)])
 
 export const weddings = pgTable('weddings', {
   seq: integer().generatedByDefaultAsIdentity(),
@@ -129,19 +131,21 @@ export const cakeBoxTypes = pgTable('cake_box_types', {
   price: integer(),
 }, t => [index().on(t.weddingId)])
 
-// 指派／排除／座位等連結表不設 PK：mock 陣列本無唯一約束，唯一性語意由 handler 維護
+// 一位賓客只保留一筆喜餅指派：guestId 設 unique，讓指派改用單語句 upsert（ON CONFLICT）
+// 取代原本 delete+insert 非原子替換，並在 DB 層兜底併發重複（issue #71）
 export const cakeBoxAssignments = pgTable('cake_box_assignments', {
   seq: integer().generatedByDefaultAsIdentity(),
   cakeBoxTypeId: text().notNull(),
   guestId: text().notNull(),
   assignmentRule: text().notNull(),
-}, t => [index().on(t.guestId)])
+}, t => [uniqueIndex().on(t.guestId)])
 
 export const cakeBoxExclusions = pgTable('cake_box_exclusions', {
   seq: integer().generatedByDefaultAsIdentity(),
   weddingId: text().notNull(),
   guestId: text().notNull(),
-}, t => [index().on(t.weddingId)])
+  // (weddingId, guestId) 唯一：一位賓客一筆排除，讓寫入改用 onConflictDoNothing 冪等、DB 兜底重複（issue #71）
+}, t => [uniqueIndex().on(t.weddingId, t.guestId)])
 
 export const cakeBoxExtraOrders = pgTable('cake_box_extra_orders', {
   seq: integer().generatedByDefaultAsIdentity(),
@@ -203,7 +207,8 @@ export const rundownRoles = pgTable('rundown_roles', {
   roleId: text().primaryKey(),
   weddingId: text().notNull(),
   name: text().notNull(),
-}, t => [index().on(t.weddingId)])
+  // (weddingId, name) 唯一：DB 層兜底併發建立同名角色（handler check-then-insert 之外）（issue #71）
+}, t => [uniqueIndex().on(t.weddingId, t.name)])
 
 export const rundownItems = pgTable('rundown_items', {
   seq: integer().generatedByDefaultAsIdentity(),
