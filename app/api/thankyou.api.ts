@@ -3,12 +3,14 @@ import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CustomizeThankYouCardBody,
   PublicThankYouCard,
+  ResendThankYouBody,
   SendThankYouFallbackBody,
   SetThankYouTemplateBody,
   ThankYouBatchSentEvent,
   ThankYouCardCustomizedEvent,
   ThankYouCustomizationListItem,
   ThankYouFallbackSentEvent,
+  ThankYouResentEvent,
   ThankYouTemplateDetail,
   ThankYouTemplateSetEvent,
 } from '~/types/api/thankyou'
@@ -63,6 +65,14 @@ export function batchSendThankYou(weddingId: string) {
   return useHttp().post<ThankYouBatchSentEvent>(
     '/api/v1/weddings/{weddingId}/thank-you/batch-send',
     { pathParams: { weddingId } },
+  )
+}
+
+// 群發失敗後對單一賓客重發謝卡
+export function resendThankYou(weddingId: string, body: ResendThankYouBody) {
+  return useHttp().post<ThankYouResentEvent>(
+    '/api/v1/weddings/{weddingId}/thank-you/resend',
+    { pathParams: { weddingId }, body },
   )
 }
 

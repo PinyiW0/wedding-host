@@ -108,6 +108,7 @@ export {
   getPublicThankYouCard,
   getThankYouTemplate,
   listThankYouCustomizations,
+  resendThankYou,
   setThankYouTemplate,
 } from './thankyou.api'
 export { presignUpload } from './uploads.api'

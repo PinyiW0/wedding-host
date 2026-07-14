@@ -32,22 +32,10 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouBatchS
       })
     }
 
-    // 群發內容＝謝卡範本內文（未設範本時用預設感謝詞）；範本圖片需公開 https 才能附上
     const [template] = await db.select().from(thankYouTemplates).where(eq(thankYouTemplates.weddingId, weddingId))
-    const text = [
-      template?.greeting,
-      template?.templateContent,
-      [template?.signature, template?.signatureDate].filter(Boolean).join(' '),
-    ].map(part => part?.trim()).filter(Boolean).join('\n\n') || '感謝您蒞臨我們的婚禮！'
-    const imageUrl = template?.templateImageUrl?.startsWith('https://') ? template.templateImageUrl : null
-    const messages = [
-      { type: 'text' as const, text },
-      ...(imageUrl ? [{ type: 'image' as const, originalContentUrl: imageUrl, previewImageUrl: imageUrl }] : []),
-    ]
-
-    const { successCount, failedCount } = await multicastLineMessages(
+    const { successCount, failedCount, failedUserIds } = await multicastLineMessages(
       boundGuests.map(guest => guest.lineUserId!),
-      messages,
+      buildThankYouLineMessages(template),
     )
     await db.insert(thankYouBatchSends).values({
       weddingId,
@@ -56,14 +44,16 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouBatchS
       sentAt: new Date().toISOString(),
       sentBy: getRequestUser(event).userId,
     })
-    if (successCount === 0) {
-      throw createError({ statusCode: 502, statusMessage: 'LINE 群發失敗，請稍後再試' })
-    }
+    // 失敗不再擋回應：把失敗賓客清單交給前端顯示並提供單獨重發（issue #72）
+    const failedSet = new Set(failedUserIds)
+    const failedGuests = boundGuests
+      .filter(guest => failedSet.has(guest.lineUserId!))
+      .map(guest => ({ guestId: guest.guestId, name: guest.name }))
     setResponseStatus(event, 201)
-    return { weddingId, recipientCount: successCount }
+    return { weddingId, recipientCount: successCount, failedGuests }
   }
 
-  // mock：群發結果固定回 50 位（對齊 flow 的預期人數）
+  // mock：群發結果固定回 50 位（對齊 flow 的預期人數），不真發送、無失敗名單
   setResponseStatus(event, 201)
-  return { weddingId, recipientCount: 50 }
+  return { weddingId, recipientCount: 50, failedGuests: [] }
 })
