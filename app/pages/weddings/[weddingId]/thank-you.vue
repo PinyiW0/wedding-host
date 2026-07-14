@@ -4,6 +4,7 @@ import type {
   CustomizeThankYouCardBody,
   SendThankYouFallbackBody,
   SetThankYouTemplateBody,
+  ThankYouFailedGuest,
 } from '~/types/api/thankyou'
 import {
   batchSendThankYou,
@@ -13,6 +14,7 @@ import {
   getThankYouTemplate,
   listGuests,
   listThankYouCustomizations,
+  resendThankYou,
   setThankYouTemplate,
 } from '~/api'
 
@@ -218,6 +220,14 @@ const isBatchOpen = ref(false)
 const isBatchSending = ref(false)
 const batchError = ref('')
 const batchResultCount = ref<number | null>(null)
+// 發送失敗的賓客清單（可見、可單獨重發，issue #72）；mock 模式恆為空
+const batchFailedGuests = ref<ThankYouFailedGuest[]>([])
+const resendingGuestId = ref('')
+
+// 已綁定 LINE 的賓客數（群發前確認提示用，與後端 batch-send 同一篩選條件）
+const boundGuestCount = computed(() =>
+  (guests.value ?? []).filter(g => !g.deletedAt && g.lineUserId).length,
+)
 
 function openBatch() {
   batchError.value = ''
@@ -232,8 +242,12 @@ async function confirmBatch() {
   try {
     const res = await batchSendThankYou(weddingId.value)
     batchResultCount.value = res.recipientCount
+    batchFailedGuests.value = res.failedGuests
     // 人數只放穩定的 inline 結果區，toast 不帶數字（避免 getByText(/50/) 觸發 strict mode，坑 #2）
-    toast.add({ title: '感謝訊息已群發', color: 'success' })
+    if (res.recipientCount > 0)
+      toast.add({ title: '感謝訊息已群發', color: 'success' })
+    else
+      toast.add({ title: '群發失敗，請查看失敗清單', color: 'error' })
     isBatchOpen.value = false
   }
   catch (error: any) {
@@ -243,6 +257,28 @@ async function confirmBatch() {
   }
   finally {
     isBatchSending.value = false
+  }
+}
+
+// 對單一失敗賓客重發：成功即自清單移除並計入已發送人數
+async function resendToGuest(guest: ThankYouFailedGuest) {
+  if (resendingGuestId.value)
+    return
+  resendingGuestId.value = guest.guestId
+  try {
+    await resendThankYou(weddingId.value, { guestId: guest.guestId })
+    batchFailedGuests.value = batchFailedGuests.value.filter(g => g.guestId !== guest.guestId)
+    batchResultCount.value = (batchResultCount.value ?? 0) + 1
+    toast.add({ title: `已重發給 ${guest.name}`, color: 'success' })
+  }
+  catch (error: any) {
+    toast.add({
+      title: error?.data?.message || error?.statusMessage || '重發失敗，請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    resendingGuestId.value = ''
   }
 }
 
@@ -673,6 +709,35 @@ async function submitFallback() {
             <p class="text-ink-700 dark:text-neutral-300">
               已發送給 {{ batchResultCount }} 位賓客
             </p>
+            <!-- 發送失敗清單（issue #72）：可見、可單獨重發，不靜默吞掉 -->
+            <div
+              v-if="batchFailedGuests.length > 0"
+              data-testid="batch-failed-list"
+              class="mt-4 border-t border-line pt-4 dark:border-neutral-800"
+            >
+              <p class="text-body font-medium text-error">
+                發送失敗 {{ batchFailedGuests.length }} 位，可逐一重發：
+              </p>
+              <ul class="mt-2 space-y-2">
+                <li
+                  v-for="g in batchFailedGuests"
+                  :key="g.guestId"
+                  class="flex items-center justify-between gap-3"
+                >
+                  <span class="text-body text-ink-700 dark:text-neutral-300">{{ g.name }}</span>
+                  <UButton
+                    size="xs"
+                    color="neutral"
+                    variant="outline"
+                    :loading="resendingGuestId === g.guestId"
+                    :disabled="!!resendingGuestId && resendingGuestId !== g.guestId"
+                    @click="resendToGuest(g)"
+                  >
+                    重發
+                  </UButton>
+                </li>
+              </ul>
+            </div>
           </section>
         </section>
       </div>
@@ -688,6 +753,19 @@ async function submitFallback() {
           <p class="mt-2 text-neutral-500 dark:text-neutral-400">
             將透過 LINE 群發感謝訊息給已綁定 LINE 的賓客，確定要發送嗎？
           </p>
+
+          <!-- 配額確認提示（issue #72）：告知則數，額度由使用者自行判斷 -->
+          <div
+            data-testid="batch-send-count"
+            class="mt-4 rounded-lg bg-paper p-4 dark:bg-neutral-800"
+          >
+            <p class="text-body font-medium text-ink dark:text-paper">
+              本次將發送 {{ boundGuestCount }} 則／本月剩餘額度不明
+            </p>
+            <p class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
+              LINE 免費方案每月上限 200 則且不可加購，請自行評估本月用量後再發送。
+            </p>
+          </div>
 
           <UAlert
             v-if="batchError"
