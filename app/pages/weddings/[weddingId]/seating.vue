@@ -1,36 +1,22 @@
 <!-- app/pages/weddings/[weddingId]/seating.vue -->
 <script setup lang="ts">
-import type { FormSubmitEvent } from '@nuxt/ui'
-
-import type { GuestDiet, GuestListItem, GuestSide } from '~/types/api/guests'
 import type {
   CreateTableBody,
-  SeatGuestBody,
-  SeatListItem,
   TableListItem,
-  UpdateTableBody,
   VenueLayoutBody,
   VenueMarkerListItem,
 } from '~/types/api/seating'
 
-import { z } from 'zod'
-
 import {
   configureVenueLayout,
   createTable,
-  createVenueMarker,
   deleteTable,
-  deleteVenueMarker,
   getVenueLayout,
   listGuests,
   listTables,
   listVenueMarkers,
   listWeddingSeats,
-  moveSeat,
-  seatGuest,
   unseatGuest,
-  updateTable,
-  updateVenueMarker,
 } from '~/api'
 
 definePageMeta({ layout: 'default' })
@@ -55,1077 +41,104 @@ const { data: venueLayout, refresh: refreshVenue } = venueAsync
 const { data: venueMarkers, refresh: refreshMarkers } = markersAsync
 const { data: allSeats, refresh: refreshSeats } = seatsAsync
 
-const activeGuests = computed(() => (guests.value ?? []).filter(g => !g.deletedAt))
-
-// 每張桌的座位（key = tableId；每桌保證有 key，無座位為空陣列）
-const seatsByTable = computed<Record<string, SeatListItem[]>>(() => {
-  const map: Record<string, SeatListItem[]> = {}
-  for (const t of tables.value ?? [])
-    map[t.tableId] = []
-  for (const s of allSeats.value ?? [])
-    (map[s.tableId] ??= []).push(s)
-  return map
-})
-
 async function refreshAll() {
   await Promise.all([refreshTables(), refreshSeats()])
 }
 
-function guestName(guestId: string): string {
-  return activeGuests.value.find(g => g.guestId === guestId)?.name ?? guestId
-}
+// === 座位計算純邏輯（occupant 展開、容量人頭、主桌男左女右、側欄排序）===
+const {
+  activeGuests,
+  seatsByTable,
+  guestName,
+  guestById,
+  tableSeats,
+  mainTable,
+  isMainTable,
+  tableCenterX,
+  occupantAt,
+  guestNormalHeads,
+  nextFreeSeat,
+  nextSeatFor,
+  seatSlots,
+  occupantMeta,
+  unseatedGuests,
+  seatedCount,
+  sidebarGuests,
+} = useSeatingMath({ tables, guests, allSeats })
 
-function guestSide(guestId: string): GuestSide | null {
-  return activeGuests.value.find(g => g.guestId === guestId)?.side ?? null
-}
+// === 場地參考圖底圖（上傳、對位拖曳、縮放；結果持久化於 venue-layout）===
+const {
+  refImageUrl,
+  refImageBox,
+  refImageTransform,
+  isAdjustingRefImage,
+  onRefImagePointerDown,
+  zoomRefImage,
+  resetRefImageTransform,
+  finishRefImageAdjust,
+  refImageInput,
+  isUploadingRefImage,
+  onRefImageSelected,
+  removeRefImage,
+} = useVenueRefImage({ weddingId, venueLayout, refreshVenue })
 
-function guestById(guestId: string): GuestListItem | undefined {
-  return activeGuests.value.find(g => g.guestId === guestId)
-}
-
-function tableSeats(tableId: string): SeatListItem[] {
-  return seatsByTable.value[tableId] ?? []
-}
-
-// === 圓桌平面：主桌單獨面對舞台，其餘雙數並列 ===
-const sideLabel = (s: GuestSide) => (s === 'groom' ? '男方' : '女方')
-const dietLabel = (d: GuestDiet) => (d === 'meat' ? '葷食' : '素食')
-
-const mainTable = computed(() =>
-  (tables.value ?? []).find(t => t.tableName.includes('主桌')) ?? (tables.value ?? [])[0] ?? null,
-)
-function isMainTable(table: TableListItem): boolean {
-  return mainTable.value?.tableId === table.tableId
-}
-
-// === 自由移動桌位（拖曳圓桌調整 positionX/positionY，因應現場空間）===
-// 拖曳中以 localPos 即時覆寫顯示，放開才送 PATCH 持久化
-const localPos = ref<Record<string, { x: number, y: number }>>({})
-const movingTableId = ref<string | null>(null)
-let dragStart = { px: 0, py: 0, ox: 0, oy: 0 }
-
-function tablePos(table: TableListItem): { x: number, y: number } {
-  return localPos.value[table.tableId] ?? { x: table.positionX, y: table.positionY }
-}
-
-// === 舞台呈現（依 venueLayout 定位與尺寸；未設定時 fallback 置頂置中膠囊）===
-const localStagePos = ref<{ x: number, y: number } | null>(null)
-const isMovingStage = ref(false)
-let stageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
-const stageBox = computed(() => {
-  const layout = venueLayout.value
-  if (!layout)
-    return null
-  const pos = localStagePos.value ?? { x: layout.stagePositionX, y: layout.stagePositionY }
-  return { x: pos.x, y: pos.y, width: layout.stageWidth, height: layout.stageHeight }
+// === 畫布拖曳（桌位／標記／舞台 pointer-drag）與畫布尺寸 ===
+const {
+  tablePos,
+  movingTableId,
+  onTablePointerDown,
+  markerPos,
+  movingMarkerId,
+  onMarkerPointerDown,
+  stageBox,
+  isMovingStage,
+  onStagePointerDown,
+  canvasSize,
+} = useSeatingCanvasDrag({
+  weddingId,
+  tables,
+  venueMarkers,
+  venueLayout,
+  refreshTables,
+  refreshMarkers,
+  refreshVenue,
+  refImageBox,
 })
 
-// === 場地參考圖底圖（顯示寬度上限 1200 等比縮放；載入後 canvasSize 需納入其範圍）===
-const refImageUrl = computed(() => venueLayout.value?.referenceImageUrl ?? null)
-const refImageDims = ref<{ width: number, height: number } | null>(null)
-// 底圖調整模式：拖曳移動、按鈕縮放。對位結果持久化於 venue-layout，跨進出頁面保留
-const isAdjustingRefImage = ref(false)
-const refImageTransform = ref({ x: 0, y: 0, scale: 1 })
-watch(refImageUrl, (url) => {
-  refImageDims.value = null
-  isAdjustingRefImage.value = false
-  const layout = venueLayout.value
-  refImageTransform.value = { x: layout?.refImageX ?? 0, y: layout?.refImageY ?? 0, scale: layout?.refImageScale ?? 1 }
-  if (!url || import.meta.server)
-    return
-  const img = new Image()
-  img.onload = () => {
-    const w = Math.min(img.naturalWidth, 1200)
-    refImageDims.value = { width: w, height: Math.round(img.naturalHeight * (w / img.naturalWidth)) }
-  }
-  img.src = url
-}, { immediate: true })
-
-// 對位結果寫回 venue-layout：連續拖放／縮放合併為一次 PUT，靜默儲存（失敗才提示）
-let refTransformSaveTimer: ReturnType<typeof setTimeout> | undefined
-async function saveRefImageTransform() {
-  clearTimeout(refTransformSaveTimer)
-  refTransformSaveTimer = undefined
-  const layout = venueLayout.value
-  if (!layout?.referenceImageUrl)
-    return
-  const t = refImageTransform.value
-  if (t.x === layout.refImageX && t.y === layout.refImageY && t.scale === layout.refImageScale)
-    return
-  try {
-    await configureVenueLayout(weddingId.value, {
-      stageWidth: layout.stageWidth,
-      stageHeight: layout.stageHeight,
-      stagePositionX: layout.stagePositionX,
-      stagePositionY: layout.stagePositionY,
-      refImageX: t.x,
-      refImageY: t.y,
-      refImageScale: t.scale,
-    })
-    await refreshVenue()
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '請稍後再試'
-    toast.add({ title: '參考圖位置儲存失敗', description: message, color: 'error' })
-  }
-}
-function scheduleSaveRefImageTransform() {
-  clearTimeout(refTransformSaveTimer)
-  refTransformSaveTimer = setTimeout(saveRefImageTransform, 400)
-}
-function resetRefImageTransform() {
-  refImageTransform.value = { x: 0, y: 0, scale: 1 }
-  scheduleSaveRefImageTransform()
-}
-function finishRefImageAdjust() {
-  isAdjustingRefImage.value = false
-  void saveRefImageTransform()
-}
-
-const REF_SCALE_MIN = 0.25
-const REF_SCALE_MAX = 3
-function zoomRefImage(delta: number) {
-  const next = Math.round((refImageTransform.value.scale + delta) * 100) / 100
-  refImageTransform.value.scale = Math.min(REF_SCALE_MAX, Math.max(REF_SCALE_MIN, next))
-  scheduleSaveRefImageTransform()
-}
-
-// 底圖實際渲染框（位置 + 縮放後尺寸），畫布尺寸與 template 共用
-const refImageBox = computed(() => {
-  if (!refImageDims.value)
-    return null
-  const t = refImageTransform.value
-  return {
-    x: t.x,
-    y: t.y,
-    width: Math.round(refImageDims.value.width * t.scale),
-    height: Math.round(refImageDims.value.height * t.scale),
-  }
-})
-
-const isMovingRefImage = ref(false)
-let refImageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
-function onRefImagePointerDown(event: PointerEvent) {
-  if (!isAdjustingRefImage.value || event.button !== 0)
-    return
-  isMovingRefImage.value = true
-  refImageDragStart = { px: event.clientX, py: event.clientY, ox: refImageTransform.value.x, oy: refImageTransform.value.y }
-  window.addEventListener('pointermove', onRefImagePointerMove)
-  window.addEventListener('pointerup', onRefImagePointerUp, { once: true })
-  event.preventDefault()
-}
-function onRefImagePointerMove(event: PointerEvent) {
-  if (!isMovingRefImage.value)
-    return
-  refImageTransform.value.x = Math.round(refImageDragStart.ox + (event.clientX - refImageDragStart.px))
-  refImageTransform.value.y = Math.round(refImageDragStart.oy + (event.clientY - refImageDragStart.py))
-}
-function onRefImagePointerUp() {
-  window.removeEventListener('pointermove', onRefImagePointerMove)
-  if (isMovingRefImage.value)
-    scheduleSaveRefImageTransform()
-  isMovingRefImage.value = false
-}
-
-// 畫布尺寸：依最遠的桌位、標記、舞台與參考圖推算，確保可容納並可捲動
-const canvasSize = computed(() => {
-  const BLOCK = 290
-  const PAD = 48
-  let maxX = 0
-  let maxY = 0
-  for (const t of tables.value ?? []) {
-    const p = tablePos(t)
-    maxX = Math.max(maxX, p.x + BLOCK)
-    maxY = Math.max(maxY, p.y + BLOCK)
-  }
-  for (const m of venueMarkers.value ?? []) {
-    const p = markerPos(m)
-    maxX = Math.max(maxX, p.x + m.width)
-    maxY = Math.max(maxY, p.y + m.height)
-  }
-  const stage = stageBox.value
-  if (stage) {
-    maxX = Math.max(maxX, stage.x + stage.width)
-    maxY = Math.max(maxY, stage.y + stage.height)
-  }
-  const refBox = refImageBox.value
-  if (refBox) {
-    maxX = Math.max(maxX, refBox.x + refBox.width)
-    maxY = Math.max(maxY, refBox.y + refBox.height)
-  }
-  return { width: Math.max(640, maxX + PAD), height: Math.max(420, maxY + PAD) }
-})
-
-// 拖曳期間把 pointermove / pointerup 綁在 window，而非小圓心元素上：
-// 即使游標移出圓心、或瀏覽器未接上 pointer capture，放開時仍能可靠送出 PATCH 持久化。
-function onTablePointerDown(event: PointerEvent, table: TableListItem) {
-  if (event.button !== 0)
-    return
-  movingTableId.value = table.tableId
-  const p = tablePos(table)
-  dragStart = { px: event.clientX, py: event.clientY, ox: p.x, oy: p.y }
-  window.addEventListener('pointermove', onTablePointerMove)
-  window.addEventListener('pointerup', onTablePointerUp, { once: true })
-  event.preventDefault()
-}
-function onTablePointerMove(event: PointerEvent) {
-  const id = movingTableId.value
-  if (!id)
-    return
-  localPos.value[id] = {
-    x: Math.max(0, Math.round(dragStart.ox + (event.clientX - dragStart.px))),
-    y: Math.max(0, Math.round(dragStart.oy + (event.clientY - dragStart.py))),
-  }
-}
-async function onTablePointerUp() {
-  window.removeEventListener('pointermove', onTablePointerMove)
-  const id = movingTableId.value
-  movingTableId.value = null
-  if (!id)
-    return
-  const pos = localPos.value[id]
-  const table = (tables.value ?? []).find(t => t.tableId === id)
-  if (!pos || !table)
-    return
-  // 未實際位移則不送 PATCH
-  if (pos.x === table.positionX && pos.y === table.positionY)
-    return
-  try {
-    // 放開即送 PATCH 持久化新座標
-    await updateTable(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
-    await refreshTables()
-    // 儲存成功後清掉本地暫存覆寫，改由伺服器回傳值呈現（避免本地與後端不同步）
-    // 拖曳頻繁，成功靜默（位置畫面直接可見），失敗才提示
-    delete localPos.value[id]
-  }
-  catch (error: any) {
-    // 失敗則還原本地覆寫
-    delete localPos.value[id]
-    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
-    toast.add({ title: '移動失敗', description: message, color: 'error' })
-  }
-}
-
-// === 場地標記：拖曳移動（比照桌位 pointer-drag 模式）與加入/編輯 modal ===
-const localMarkerPos = ref<Record<string, { x: number, y: number }>>({})
-const movingMarkerId = ref<string | null>(null)
-let markerDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
-
-function markerPos(marker: VenueMarkerListItem): { x: number, y: number } {
-  return localMarkerPos.value[marker.markerId] ?? { x: marker.positionX, y: marker.positionY }
-}
-
-function onMarkerPointerDown(event: PointerEvent, marker: VenueMarkerListItem) {
-  if (event.button !== 0)
-    return
-  movingMarkerId.value = marker.markerId
-  const p = markerPos(marker)
-  markerDragStart = { px: event.clientX, py: event.clientY, ox: p.x, oy: p.y }
-  window.addEventListener('pointermove', onMarkerPointerMove)
-  window.addEventListener('pointerup', onMarkerPointerUp, { once: true })
-  event.preventDefault()
-}
-function onMarkerPointerMove(event: PointerEvent) {
-  const id = movingMarkerId.value
-  if (!id)
-    return
-  localMarkerPos.value[id] = {
-    x: Math.max(0, Math.round(markerDragStart.ox + (event.clientX - markerDragStart.px))),
-    y: Math.max(0, Math.round(markerDragStart.oy + (event.clientY - markerDragStart.py))),
-  }
-}
-async function onMarkerPointerUp() {
-  window.removeEventListener('pointermove', onMarkerPointerMove)
-  const id = movingMarkerId.value
-  movingMarkerId.value = null
-  if (!id)
-    return
-  const pos = localMarkerPos.value[id]
-  const marker = (venueMarkers.value ?? []).find(m => m.markerId === id)
-  if (!pos || !marker)
-    return
-  if (pos.x === marker.positionX && pos.y === marker.positionY)
-    return
-  try {
-    await updateVenueMarker(weddingId.value, id, { positionX: pos.x, positionY: pos.y })
-    await refreshMarkers()
-    delete localMarkerPos.value[id]
-  }
-  catch (error: any) {
-    delete localMarkerPos.value[id]
-    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
-    toast.add({ title: '移動失敗', description: message, color: 'error' })
-  }
-}
-
-// 加入 / 編輯標記 modal（尺寸與座標用數字欄調整，比照舞台設定的欄位模式）
+// === 加入 / 編輯場地標記 Modal ===
 const isMarkerFormOpen = ref(false)
-const isMarkerSubmitting = ref(false)
-const markerFormError = ref('')
-const editingMarkerId = ref<string | null>(null)
-const markerDraft = reactive({ label: '', width: 140, height: 48, positionX: 24, positionY: 24 })
+const editingMarker = ref<VenueMarkerListItem | null>(null)
+const editingMarkerPos = ref<{ x: number, y: number } | null>(null)
 
 function openCreateMarker() {
-  editingMarkerId.value = null
-  markerFormError.value = ''
-  markerDraft.label = ''
-  markerDraft.width = 140
-  markerDraft.height = 48
-  markerDraft.positionX = 24
-  markerDraft.positionY = 24
+  editingMarker.value = null
+  editingMarkerPos.value = null
   isMarkerFormOpen.value = true
 }
 
 function openEditMarker(marker: VenueMarkerListItem) {
-  editingMarkerId.value = marker.markerId
-  markerFormError.value = ''
-  markerDraft.label = marker.label
-  markerDraft.width = marker.width
-  markerDraft.height = marker.height
-  const p = markerPos(marker)
-  markerDraft.positionX = p.x
-  markerDraft.positionY = p.y
+  editingMarker.value = marker
+  editingMarkerPos.value = markerPos(marker)
   isMarkerFormOpen.value = true
 }
 
-async function submitMarker() {
-  if (isMarkerSubmitting.value)
-    return
-  const label = markerDraft.label.trim()
-  if (!label) {
-    markerFormError.value = '請輸入標記文字'
-    return
-  }
-  isMarkerSubmitting.value = true
-  markerFormError.value = ''
-  try {
-    if (editingMarkerId.value) {
-      await updateVenueMarker(weddingId.value, editingMarkerId.value, {
-        label,
-        width: Number(markerDraft.width) || 140,
-        height: Number(markerDraft.height) || 48,
-        positionX: Number(markerDraft.positionX) || 0,
-        positionY: Number(markerDraft.positionY) || 0,
-      })
-      toast.add({ title: '標記已更新', color: 'success' })
-    }
-    else {
-      await createVenueMarker(weddingId.value, {
-        label,
-        width: Number(markerDraft.width) || 140,
-        height: Number(markerDraft.height) || 48,
-      })
-      toast.add({ title: '標記已加入', color: 'success' })
-    }
-    isMarkerFormOpen.value = false
-    await refreshMarkers()
-  }
-  catch (error: any) {
-    markerFormError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
-  }
-  finally {
-    isMarkerSubmitting.value = false
-  }
-}
-
-async function removeMarker() {
-  if (!editingMarkerId.value || isMarkerSubmitting.value)
-    return
-  isMarkerSubmitting.value = true
-  try {
-    await deleteVenueMarker(weddingId.value, editingMarkerId.value)
-    toast.add({ title: '標記已刪除', color: 'success' })
-    isMarkerFormOpen.value = false
-    await refreshMarkers()
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '刪除失敗，請稍後再試'
-    toast.add({ title: '刪除失敗', description: message, color: 'error' })
-  }
-  finally {
-    isMarkerSubmitting.value = false
-  }
-}
-
-// === 舞台拖曳（比照桌位／標記 pointer-drag；放開送 PUT venue-layout 持久化）===
-function onStagePointerDown(event: PointerEvent) {
-  if (event.button !== 0 || !stageBox.value)
-    return
-  isMovingStage.value = true
-  stageDragStart = { px: event.clientX, py: event.clientY, ox: stageBox.value.x, oy: stageBox.value.y }
-  window.addEventListener('pointermove', onStagePointerMove)
-  window.addEventListener('pointerup', onStagePointerUp, { once: true })
-  event.preventDefault()
-}
-function onStagePointerMove(event: PointerEvent) {
-  if (!isMovingStage.value)
-    return
-  localStagePos.value = {
-    x: Math.max(0, Math.round(stageDragStart.ox + (event.clientX - stageDragStart.px))),
-    y: Math.max(0, Math.round(stageDragStart.oy + (event.clientY - stageDragStart.py))),
-  }
-}
-async function onStagePointerUp() {
-  window.removeEventListener('pointermove', onStagePointerMove)
-  if (!isMovingStage.value)
-    return
-  isMovingStage.value = false
-  const layout = venueLayout.value
-  const pos = localStagePos.value
-  if (!layout || !pos)
-    return
-  if (pos.x === layout.stagePositionX && pos.y === layout.stagePositionY) {
-    localStagePos.value = null
-    return
-  }
-  try {
-    await configureVenueLayout(weddingId.value, {
-      stageWidth: layout.stageWidth,
-      stageHeight: layout.stageHeight,
-      stagePositionX: pos.x,
-      stagePositionY: pos.y,
-    })
-    await refreshVenue()
-    localStagePos.value = null
-  }
-  catch (error: any) {
-    localStagePos.value = null
-    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
-    toast.add({ title: '移動失敗', description: message, color: 'error' })
-  }
-}
-
-// 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）；參考圖對位有未寫回的變更則立即送出
-onBeforeUnmount(() => {
-  window.removeEventListener('pointermove', onTablePointerMove)
-  window.removeEventListener('pointerup', onTablePointerUp)
-  window.removeEventListener('pointermove', onMarkerPointerMove)
-  window.removeEventListener('pointerup', onMarkerPointerUp)
-  window.removeEventListener('pointermove', onStagePointerMove)
-  window.removeEventListener('pointerup', onStagePointerUp)
-  if (refTransformSaveTimer !== undefined)
-    void saveRefImageTransform()
+// === 下載桌次圖（備餐統計 + canvas 匯出 JPEG / PDF）===
+const { downloadItems } = useSeatingChartExport({
+  weddingId,
+  tables,
+  venueMarkers,
+  math: { tableSeats, guestById, mainTable, isMainTable },
+  tablePos,
+  markerPos,
 })
-
-// 環繞圓桌的座位座標（百分比，從正上方順時針排列）。
-// offsetRad：整體旋轉角；主桌傳 -π/count 旋半格，使兩個座位對稱跨在正上方（新人並排 C 位）。
-function seatPositions(count: number, offsetRad = 0) {
-  const positions: { left: string, top: string }[] = []
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * 2 * Math.PI - Math.PI / 2 + offsetRad
-    positions.push({
-      left: `${(50 + 50 * Math.cos(angle)).toFixed(2)}%`,
-      top: `${(50 + 50 * Math.sin(angle)).toFixed(2)}%`,
-    })
-  }
-  return positions
-}
-
-// 由席位資料建出顯示用入座者；label 依類型展開為「名字N」/「名字-兒童N」
-function buildOccupant(seat: SeatListItem) {
-  const name = guestName(seat.guestId)
-  return {
-    guestId: seat.guestId,
-    name,
-    label: seat.seatType === 'childChair' ? `${name}-兒童${seat.partyIndex}` : `${name}${seat.partyIndex}`,
-    side: guestSide(seat.guestId),
-    seatType: seat.seatType,
-    seatNumber: seat.seatNumber,
-  }
-}
-
-// 某桌某座位號的入座席位（無人則 null）；供拖放交換／移動時反查
-function occupantAt(tableId: string, seatNumber: number) {
-  const seat = tableSeats(tableId).find(s => s.seatNumber === seatNumber)
-  return seat ? buildOccupant(seat) : null
-}
-
-// 圓桌要畫幾個座位：至少 capacity，若有展開座位（座號 > capacity）則一併畫出
-function slotCount(table: TableListItem): number {
-  const maxSeat = tableSeats(table.tableId).reduce((m, s) => Math.max(m, s.seatNumber), 0)
-  return Math.max(table.capacity, maxSeat)
-}
-
-// 該桌已用正常席人頭（兒童椅不計）
-function tableNormalHeads(tableId: string): number {
-  return tableSeats(tableId).filter(s => s.seatType === 'normal').length
-}
-// 此賓客組的正常席人頭 = partySize − 兒童椅嬰兒數（至少 1）
-function guestNormalHeads(guestId: string): number {
-  const g = guestById(guestId)
-  return Math.max(1, (g?.partySize ?? 1) - (g?.childChairCount ?? 0))
-}
-// 此桌容得下此賓客組嗎（正常席人頭不超過 capacity；兒童椅額外不計）
-function canSeatGuest(table: TableListItem, guestId: string): boolean {
-  return tableNormalHeads(table.tableId) + guestNormalHeads(guestId) <= table.capacity
-}
-
-// 下一個空號（該桌最小未占用座號；後端亦以此起點往上填空號）
-function nextFreeSeat(table: TableListItem): number {
-  const occupied = new Set(tableSeats(table.tableId).map(s => s.seatNumber))
-  let n = 1
-  while (occupied.has(n))
-    n++
-  return n
-}
-
-// 該賓客可入座則回起始座號；正常席不足回 null。
-function nextSeatFor(table: TableListItem, guestId: string): number | null {
-  return canSeatGuest(table, guestId) ? nextFreeSeat(table) : null
-}
-
-// 主桌入座者的角色排序：新人(0) → 雙親(1) → 其他家屬(2)
-function mainSeatRoleRank(guestId: string): number {
-  const category = guestById(guestId)?.category
-  if (category === '新人')
-    return 0
-  if (category === '雙親')
-    return 1
-  return 2
-}
-
-// 某桌「視覺位置 → 入座者」排列。
-// 主桌特別處理：新郎在最靠舞台頂端、新娘並排於其左側；新郎側家屬順時針向右外擴、新娘側家屬逆時針向左外擴。
-// 其餘桌維持依座號環繞。回傳含座標、入座者與供拖放用的座位號。
-function seatSlots(table: TableListItem) {
-  const n = slotCount(table)
-  const isMain = isMainTable(table)
-  // 主桌旋半格，使兩個座位對稱跨在正上方（新人並排於最靠舞台的 C 位）
-  const positions = seatPositions(n, isMain ? -Math.PI / n : 0)
-  const seats = [...tableSeats(table.tableId)].sort((a, b) => a.seatNumber - b.seatNumber)
-  const occupants = Array.from<ReturnType<typeof buildOccupant> | null>({ length: n }).fill(null)
-
-  if (isMain) {
-    const sideRoleSort = (a: SeatListItem, b: SeatListItem) =>
-      mainSeatRoleRank(a.guestId) - mainSeatRoleRank(b.guestId) || a.seatNumber - b.seatNumber
-    const groom = seats.filter(s => guestSide(s.guestId) === 'groom').sort(sideRoleSort)
-    const bride = seats.filter(s => guestSide(s.guestId) === 'bride').sort(sideRoleSort)
-    const rest = seats.filter(s => guestSide(s.guestId) == null)
-    // 全場統一男左女右：新郎(男方)填左半 → 頂端左座(0) 再往左下(n-1, n-2…)；
-    // 新娘(女方)填右半 → 頂端右座(1) 再往右下(2, 3…)。新郎新娘並排於正上方中央。
-    const groomOrder = [0, ...Array.from({ length: n - 1 }, (_, k) => n - 1 - k)]
-    const brideOrder = Array.from({ length: n - 1 }, (_, k) => k + 1)
-    const fillSide = (list: SeatListItem[], order: number[]) => {
-      let p = 0
-      for (const s of list) {
-        while (p < order.length && occupants[order[p]!] != null)
-          p++
-        if (p < order.length)
-          occupants[order[p++]!] = buildOccupant(s)
-      }
-    }
-    fillSide(groom, groomOrder)
-    fillSide(bride, brideOrder)
-    for (const s of rest) {
-      const slot = occupants.findIndex(x => x == null)
-      if (slot >= 0)
-        occupants[slot] = buildOccupant(s)
-    }
-  }
-  else {
-    for (const s of seats) {
-      if (s.seatNumber >= 1 && s.seatNumber <= n)
-        occupants[s.seatNumber - 1] = buildOccupant(s)
-    }
-  }
-
-  return positions.map((pos, idx) => ({
-    idx,
-    pos,
-    occupant: occupants[idx],
-    // 已入座用實際座號（供交換／取消反查）；空位：一般桌用該視覺位置的座號（拖入即落位），主桌座號與視覺位置脫鉤、用最小空號
-    seatNumber: occupants[idx]?.seatNumber ?? (isMain ? nextFreeSeat(table) : idx + 1),
-  }))
-}
-
-// 已入座者 hover 提示：哪一方 · 關係 · 葷素（姓名已顯示在座位上，不重複以免撞 getByText）
-function occupantMeta(guestId: string): string {
-  const g = guestById(guestId)
-  if (!g)
-    return ''
-  return `${sideLabel(g.side)} · ${g.category} · ${dietLabel(g.diet)}`
-}
-
-// === 備餐統計與分類（供桌次圖標示與下載地圖）===
-// 大人 = 正常席（吃大人餐，依賓客葷素分流）；小孩 = 兒童椅嬰兒（不佔正常席、不吃大人餐）
-interface TableMeal { veg: number, meat: number, child: number, adults: number }
-function tableMeal(tableId: string): TableMeal {
-  let veg = 0
-  let meat = 0
-  let child = 0
-  for (const s of tableSeats(tableId)) {
-    if (s.seatType === 'childChair') {
-      child++
-      continue
-    }
-    if (guestById(s.guestId)?.diet === 'vegetarian')
-      veg++
-    else
-      meat++
-  }
-  return { veg, meat, child, adults: veg + meat }
-}
-// 桌次圖 canvas 配色：對齊 main.css 設計 token，使下載圖與畫面語意色（cls）一致
-const CHART = {
-  paper: '#ffffff', // 列印白底
-  ink: '#111111', // 主標 / 桌名（ink）
-  inkSoft: '#6B655C', // 副標（ink-500）
-  inkFaint: '#A8A096', // 舞台 / 次要（ink-300）
-  line: '#DCD4C7', // 舞台框（line）
-  empty: { fill: '#FAF7F1', stroke: '#DCD4C7', text: '#A8A096' }, // paper / line / ink-300
-  veg: { fill: '#E0E8E1', stroke: '#3D4E41', text: '#323F35' }, // success 100 / 600 / 700
-  meat: { fill: '#DCE3EC', stroke: '#344358', text: '#2B3748' }, // info 100 / 600 / 700
-  mixed: { fill: '#F4EAD3', stroke: '#B8965A', text: '#9A7B43' }, // primary 100 / 500(gold) / 600(gold-deep)
-} as const
-
-// 餐點分類：尚無入座 / 全素食桌 / 全葷食桌 / 葷食桌（含 N 位素食）。cls 供畫面、fill/stroke/text 供 canvas（對齊 CHART token）
-type MealCatKey = 'empty' | 'veg' | 'meat' | 'mixed'
-interface MealCategory { key: MealCatKey, label: string, cls: string, fill: string, stroke: string, text: string }
-function mealCategory(tableId: string): MealCategory {
-  const m = tableMeal(tableId)
-  if (m.adults === 0)
-    return { key: 'empty', label: '尚無入座', cls: 'border-line text-ink-300', ...CHART.empty }
-  if (m.meat === 0)
-    return { key: 'veg', label: '全素食桌', cls: 'border-success-600 text-success-700', ...CHART.veg }
-  if (m.veg === 0)
-    return { key: 'meat', label: '全葷食桌', cls: 'border-info-600 text-info-700', ...CHART.meat }
-  return { key: 'mixed', label: `葷食桌（含素 ${m.veg}）`, cls: 'border-gold text-gold-deep', ...CHART.mixed }
-}
-// 全場備餐總計（地圖抬頭）
-const totalMeal = computed(() => {
-  let veg = 0
-  let meat = 0
-  let child = 0
-  for (const t of tables.value ?? []) {
-    const m = tableMeal(t.tableId)
-    veg += m.veg
-    meat += m.meat
-    child += m.child
-  }
-  return { veg, meat, child }
-})
-// 地圖桌序：主桌排前
-const chartTables = computed(() => {
-  const main = mainTable.value
-  const rest = (tables.value ?? []).filter(t => t.tableId !== main?.tableId)
-  return main ? [main, ...rest] : rest
-})
-
-// === 下載桌次圖：以 canvas 依桌位 positionX/Y 畫圓桌地圖（標餐點分類、不含賓客姓名），匯出 JPEG / PDF ===
-// 餐廳人員據此知道哪桌在哪、各桌素葷與兒童需求
-// A4 直式畫布尺寸（pt；下載時整頁縮放讓所有桌次塞進一頁）
-const A4_W = 595
-const A4_H = 842
-function buildChartCanvas(): HTMLCanvasElement {
-  const list = chartTables.value
-  const M = 24
-  const TITLE_H = 70
-  const dpr = 4 // 高解析，列印清晰
-  const canvas = document.createElement('canvas')
-  canvas.width = A4_W * dpr
-  canvas.height = A4_H * dpr
-  const ctx = canvas.getContext('2d')!
-  ctx.scale(dpr, dpr)
-  ctx.fillStyle = CHART.paper
-  ctx.fillRect(0, 0, A4_W, A4_H)
-  const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
-
-  // 抬頭、總計、圖例（固定於頁首）
-  ctx.fillStyle = CHART.ink
-  ctx.font = `600 16px ${FONT}`
-  ctx.fillText('桌次圖 · 備餐需求', M, 24)
-  ctx.font = `9px ${FONT}`
-  ctx.fillStyle = CHART.inkSoft
-  ctx.fillText(`素食 ${totalMeal.value.veg} 份 · 葷食 ${totalMeal.value.meat} 份 · 兒童椅 ${totalMeal.value.child}`, M, 40)
-  let lx = M
-  for (const item of [{ c: CHART.veg.stroke, t: '全素食桌' }, { c: CHART.mixed.stroke, t: '葷食含素' }, { c: CHART.meat.stroke, t: '全葷食桌' }]) {
-    ctx.fillStyle = item.c
-    ctx.beginPath()
-    ctx.arc(lx + 4, 53, 4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = CHART.inkSoft
-    ctx.fillText(item.t, lx + 12, 56)
-    lx += 12 + ctx.measureText(item.t).width + 14
-  }
-
-  if (list.length === 0)
-    return canvas
-
-  // 緊湊重排（桌間距固定縮小、不沿用畫面上的鬆散座標）：
-  // 主桌置頂置中，其餘依「男左女右」分兩欄、各欄依原 Y 序由上而下密排。
-  const centerXOf = (t: TableListItem) => t.positionX + (isMainTable(t) ? 100 : 84)
-  const main = list.find(t => isMainTable(t)) ?? null
-  const others = list.filter(t => !isMainTable(t))
-  const xs = others.map(centerXOf)
-  const axis = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0
-  const leftCol = others.filter(t => centerXOf(t) <= axis).sort((a, b) => a.positionY - b.positionY)
-  const rightCol = others.filter(t => centerXOf(t) > axis).sort((a, b) => a.positionY - b.positionY)
-
-  const R = 54
-  const RM = 70
-  const colStep = 2 * R + 36 // 欄距 = 圓桌直徑 + 緊密間隙
-  const rowStep = 2 * R + 28 // 列距 = 圓桌直徑 + 緊密間隙
-  const leftCx = R
-  const rightCx = R + colStep
-  const STAGE_H = 26
-  interface ChartItem { t: TableListItem, cx: number, cy: number, r: number, isMain: boolean }
-  const items: ChartItem[] = []
-  if (main)
-    items.push({ t: main, cx: (leftCx + rightCx) / 2, cy: STAGE_H + RM, r: RM, isMain: true })
-  const startY = STAGE_H + (main ? 2 * RM + 26 : 0) + R
-  const rowCount = Math.max(leftCol.length, rightCol.length)
-  for (let i = 0; i < rowCount; i++) {
-    const cy = startY + i * rowStep
-    if (leftCol[i])
-      items.push({ t: leftCol[i]!, cx: leftCx, cy, r: R, isMain: false })
-    if (rightCol[i])
-      items.push({ t: rightCol[i]!, cx: rightCx, cy, r: R, isMain: false })
-  }
-
-  // 內容範圍 → 等比縮放置中塞進可用區
-  let minX = Infinity
-  const minY = 0
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const it of items) {
-    minX = Math.min(minX, it.cx - it.r)
-    maxX = Math.max(maxX, it.cx + it.r)
-    maxY = Math.max(maxY, it.cy + it.r)
-  }
-  const contentW = Math.max(1, maxX - minX)
-  const contentH = Math.max(1, maxY - minY)
-  const availW = A4_W - M * 2
-  const availH = A4_H - TITLE_H - M
-  const scale = Math.min(availW / contentW, availH / contentH)
-  const baseX = M + (availW - contentW * scale) / 2 - minX * scale
-  const baseY = TITLE_H + (availH - contentH * scale) / 2 - minY * scale
-
-  // 舞台（內容頂端置中）
-  const stageCx = baseX + ((minX + maxX) / 2) * scale
-  ctx.strokeStyle = CHART.line
-  ctx.setLineDash([4, 3])
-  ctx.strokeRect(stageCx - 30, baseY + 2, 60, 16)
-  ctx.setLineDash([])
-  ctx.textAlign = 'center'
-  ctx.fillStyle = CHART.inkFaint
-  ctx.font = `9px ${FONT}`
-  ctx.fillText('舞台', stageCx, baseY + 13)
-
-  // 桌次圓（位置、半徑、字級皆隨整體縮放）
-  for (const it of items) {
-    const cx = baseX + it.cx * scale
-    const cy = baseY + it.cy * scale
-    const r = it.r * scale
-    const cat = mealCategory(it.t.tableId)
-    ctx.beginPath()
-    ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.fillStyle = cat.fill
-    ctx.fill()
-    ctx.lineWidth = Math.max(0.8, (it.isMain ? 3 : 2) * scale)
-    ctx.strokeStyle = cat.stroke
-    ctx.stroke()
-    const child = tableMeal(it.t.tableId).child
-    const nameFont = Math.max(8, (it.isMain ? 17 : 14) * scale)
-    const subFont = Math.max(7, 11 * scale)
-    ctx.fillStyle = CHART.ink
-    ctx.font = `600 ${nameFont}px ${FONT}`
-    ctx.fillText(it.t.tableName, cx, cy - (child > 0 ? subFont + 2 : subFont * 0.4), r * 1.7)
-    ctx.font = `${subFont}px ${FONT}`
-    ctx.fillStyle = cat.text
-    ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
-    if (child > 0) {
-      ctx.fillStyle = CHART.veg.stroke
-      ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
-    }
-  }
-
-  // 場地標記：下載圖是緊湊重排、無法 1:1 對位 → 以「螢幕座標正規化 0..1 → chart 內容框映射」
-  // 保留相對方位（右側送客區仍在右側），以虛線矩形＋label 呈現（比照舞台樣式）
-  const markers = venueMarkers.value ?? []
-  if (markers.length > 0) {
-    const SCREEN_BLOCK = 290
-    let sMinX = Infinity
-    let sMinY = Infinity
-    let sMaxX = -Infinity
-    let sMaxY = -Infinity
-    for (const t of list) {
-      const p = tablePos(t)
-      sMinX = Math.min(sMinX, p.x)
-      sMinY = Math.min(sMinY, p.y)
-      sMaxX = Math.max(sMaxX, p.x + SCREEN_BLOCK)
-      sMaxY = Math.max(sMaxY, p.y + SCREEN_BLOCK)
-    }
-    const sW = Math.max(1, sMaxX - sMinX)
-    const sH = Math.max(1, sMaxY - sMinY)
-    ctx.setLineDash([4, 3])
-    ctx.strokeStyle = CHART.line
-    ctx.font = `9px ${FONT}`
-    for (const m of markers) {
-      const p = markerPos(m)
-      const nx = Math.min(1, Math.max(0, (p.x + m.width / 2 - sMinX) / sW))
-      const ny = Math.min(1, Math.max(0, (p.y + m.height / 2 - sMinY) / sH))
-      const mcx = baseX + (minX + nx * contentW) * scale
-      const mcy = baseY + (minY + ny * contentH) * scale
-      const mw = Math.min(80, Math.max(32, m.width * 0.4))
-      const mh = Math.min(28, Math.max(14, m.height * 0.4))
-      ctx.strokeRect(mcx - mw / 2, mcy - mh / 2, mw, mh)
-      ctx.fillStyle = CHART.inkFaint
-      ctx.fillText(m.label, mcx, mcy + 3, mw - 4)
-    }
-    ctx.setLineDash([])
-  }
-
-  ctx.textAlign = 'start'
-  return canvas
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function downloadChartJpeg() {
-  buildChartCanvas().toBlob(
-    (blob) => {
-      if (blob)
-        triggerDownload(blob, `桌次圖-${weddingId.value}.jpg`)
-      else
-        toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
-    },
-    'image/jpeg',
-    0.92,
-  )
-}
-
-// 自製單張影像 PDF：內嵌 canvas 匯出的 JPEG（DCTDecode），免裝套件
-function downloadChartPdf() {
-  const canvas = buildChartCanvas()
-  const bin = atob(canvas.toDataURL('image/jpeg', 0.92).split(',')[1] ?? '')
-  const jpeg = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++)
-    jpeg[i] = bin.charCodeAt(i)
-
-  const enc = (s: string) => new TextEncoder().encode(s)
-  const parts: Uint8Array[] = []
-  let offset = 0
-  const push = (u8: Uint8Array) => {
-    parts.push(u8)
-    offset += u8.length
-  }
-  const xref: number[] = []
-  const obj = (num: number, head: string, stream?: Uint8Array) => {
-    xref[num] = offset
-    push(enc(`${num} 0 obj\n${head}`))
-    if (stream) {
-      push(enc('\nstream\n'))
-      push(stream)
-      push(enc('\nendstream'))
-    }
-    push(enc('\nendobj\n'))
-  }
-  // 頁面用 A4 點數，影像填滿整頁（canvas 本身即 A4 比例，故不變形）
-  const content = `q\n${A4_W} 0 0 ${A4_H} 0 0 cm\n/Im0 Do\nQ\n`
-
-  push(enc('%PDF-1.3\n'))
-  obj(1, '<< /Type /Catalog /Pages 2 0 R >>')
-  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
-  obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_W} ${A4_H}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`)
-  obj(4, `<< /Length ${content.length} >>`, enc(content))
-  obj(5, `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>`, jpeg)
-  const xrefStart = offset
-  let xs = 'xref\n0 6\n0000000000 65535 f \n'
-  for (let i = 1; i <= 5; i++)
-    xs += `${String(xref[i]).padStart(10, '0')} 00000 n \n`
-  push(enc(xs))
-  push(enc(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`))
-
-  triggerDownload(new Blob(parts as BlobPart[], { type: 'application/pdf' }), `桌次圖-${weddingId.value}.pdf`)
-}
-
-// 下載桌次圖下拉選單：JPEG / PDF
-const downloadItems = [[
-  { label: '下載 JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadChartJpeg() },
-  { label: '下載 PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadChartPdf() },
-]]
-
-// 座位顏色：兒童椅席綠色，否則依男方／女方區分（非性別、是家屬方）
-function occupantColorClass(o: { side: GuestSide | null, seatType: 'normal' | 'childChair' }): string {
-  if (o.seatType === 'childChair')
-    return 'border-success-600 bg-success-100 text-success-700 dark:bg-success-900/40'
-  if (o.side === 'bride')
-    return 'border-gold bg-gold-light/50 text-gold-deep'
-  return 'border-info-600 bg-info-100 text-info-700 dark:bg-info-900/40'
-}
-
-// 名單姓名顏色：有兒童椅嬰兒者標綠，否則女方金 / 男方藍
-function nameColorClass(g: GuestListItem): string {
-  if (g.childChairCount > 0)
-    return 'text-success-700'
-  return g.side === 'bride' ? 'text-gold-deep' : 'text-info-700'
-}
-
-// === 賓客名單側欄：待排席 ===
-// 主桌專屬賓客：新郎新娘（新人）與雙方父母（雙親），推薦排序時優先帶入主桌
-function isMainTableGuest(g: GuestListItem): boolean {
-  return g.category === '新人' || g.category === '雙親'
-}
-// 縱向尊卑分層（數字小＝越靠主桌/舞台）：新人 → 家屬長輩 → 主管摯友 → 一般同學同事
-const FAMILY_CATEGORY_RE = /雙親|父母|家人|家屬|長輩|親戚/
-const VIP_CATEGORY_RE = /主管|貴賓|vip|摯友|朋友/i
-function seniorityTier(category: string): number {
-  if (category === '新人')
-    return 0
-  if (FAMILY_CATEGORY_RE.test(category))
-    return 1
-  if (VIP_CATEGORY_RE.test(category))
-    return 2
-  return 3
-}
-// 視角：以舞台為上方、面向賓客（由上往下看）。桌位中心 X 供左右分流：中軸線左＝男方、右＝女方
-function tableCenterX(table: TableListItem): number {
-  return table.positionX + (isMainTable(table) ? 100 : 84)
-}
-
-const SIDE_ORDER: Record<GuestSide, number> = { groom: 0, bride: 1 }
-// 素食優先（盡量排同一桌）：素食 0、葷食 1
-const DIET_ORDER: Record<GuestDiet, number> = { vegetarian: 0, meat: 1 }
-// 排序：男方/女方 → 尊卑分層（長輩近主桌）→ 素食優先 → 分類 → 姓名
-// （先分男女方分桌；同方內長輩家屬在前、一般同事同學在後；素食集中同桌；同類別相鄰）
-function bySeatingPriority(a: GuestListItem, b: GuestListItem) {
-  return SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
-    || seniorityTier(a.category) - seniorityTier(b.category)
-    || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
-    || a.category.localeCompare(b.category, 'zh-Hant')
-    || a.name.localeCompare(b.name, 'zh-Hant')
-}
-
-const seatedGuestIds = computed(() => {
-  const ids = new Set<string>()
-  for (const seats of Object.values(seatsByTable.value)) {
-    for (const s of seats)
-      ids.add(s.guestId)
-  }
-  return ids
-})
-const unseatedGuests = computed(() =>
-  activeGuests.value.filter(g => !seatedGuestIds.value.has(g.guestId)),
-)
-const seatedCount = computed(() => activeGuests.value.length - unseatedGuests.value.length)
-
-// 側欄固定依男女方→分類分群顯示，方便辨識
-const sidebarGuests = computed(() => [...unseatedGuests.value].sort(bySeatingPriority))
 
 // === 推薦排序：依「主桌帶入新人雙親 × 男左女右 × 長輩近主桌」自動帶入座位 ===
-// 規則：① 主桌先帶入新郎新娘與雙方父母（最靠舞台的 C 位）；② 男方親友排中軸線左側、女方排右側；
-//      ③ 同側內長輩家屬靠前（近主桌）、一般同學同事靠後；④ 某側專屬桌不足時跨界外溢到後方桌。
-const isAutoSeating = ref(false)
-
-async function autoSeat() {
-  if (isAutoSeating.value)
-    return
-  const pending = [...unseatedGuests.value]
-  if (pending.length === 0) {
-    toast.add({ title: '沒有待排席的賓客', color: 'info' })
-    return
-  }
-  const allTables = tables.value ?? []
-  const main = mainTable.value
-  const fillTables = allTables.filter(t => !isMainTable(t))
-  if (!main && fillTables.length === 0) {
-    toast.add({ title: '沒有可安排的桌次', description: '請先新增桌次', color: 'warning' })
-    return
-  }
-
-  isAutoSeating.value = true
-  try {
-    // 各桌目前已用正常席人頭（推薦排序在既有座位上接續安排，兒童椅額外不計）
-    const usedNormal: Record<string, number> = {}
-    for (const t of allTables)
-      usedNormal[t.tableId] = tableSeats(t.tableId).filter(s => s.seatType === 'normal').length
-    const canFit = (table: TableListItem, guestId: string): boolean =>
-      usedNormal[table.tableId]! + guestNormalHeads(guestId) <= table.capacity
-    const plan: { tableId: string, guestId: string }[] = []
-    const assign = (table: TableListItem, guest: GuestListItem) => {
-      usedNormal[table.tableId]! += guestNormalHeads(guest.guestId)
-      plan.push({ tableId: table.tableId, guestId: guest.guestId })
-    }
-
-    // ① 主桌：先帶入新郎新娘（新人）與雙方父母（雙親）；新郎→新娘→父母依序送出，最靠舞台先排
-    if (main) {
-      const mainGuests = pending
-        .filter(isMainTableGuest)
-        .sort((a, b) =>
-          seniorityTier(a.category) - seniorityTier(b.category)
-          || SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
-          || a.name.localeCompare(b.name, 'zh-Hant'))
-      for (const g of mainGuests) {
-        if (canFit(main, g.guestId))
-          assign(main, g)
-      }
-    }
-
-    // ② 其餘賓客：左右分流 + 縱向尊卑（已排進主桌者排除）
-    const restSort = (a: GuestListItem, b: GuestListItem) =>
-      SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
-      || seniorityTier(a.category) - seniorityTier(b.category)
-      || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
-      || a.name.localeCompare(b.name, 'zh-Hant')
-    const planned = new Set(plan.map(p => p.guestId))
-    const rest = pending.filter(g => !planned.has(g.guestId)).sort(restSort)
-
-    // 中軸線：以可填入桌的中心 X 取中點，左側＝男方區、右側＝女方區
-    const centers = fillTables.map(tableCenterX)
-    const axisX = centers.length ? (Math.min(...centers) + Math.max(...centers)) / 2 : 0
-    const byFront = (a: TableListItem, b: TableListItem) => a.positionY - b.positionY // Y 小＝靠主桌/舞台＝前排
-    const leftTables = fillTables.filter(t => tableCenterX(t) <= axisX).sort(byFront)
-    const rightTables = fillTables.filter(t => tableCenterX(t) > axisX).sort(byFront)
-    const backmost = [...fillTables].sort((a, b) => b.positionY - a.positionY) // 跨界外溢優先靠後方
-
-    const pickTable = (guest: GuestListItem): TableListItem | null => {
-      // 同側專屬區由前往後找第一張坐得下的（長輩已排前面、自然落在靠主桌的前排桌）
-      const zone = guest.side === 'groom' ? leftTables : rightTables
-      const inZone = zone.find(t => canFit(t, guest.guestId))
-      if (inZone)
-        return inZone
-      // 該側桌不足 → 跨界外溢到後方任一坐得下的桌
-      return backmost.find(t => canFit(t, guest.guestId)) ?? null
-    }
-
-    for (const g of rest) {
-      const table = pickTable(g)
-      if (table)
-        assign(table, g)
-    }
-
-    // 逐筆送出（座號交由後端接續展開，避免同桌併發超賣）
-    for (const a of plan)
-      await seatGuest(weddingId.value, a.tableId, { guestId: a.guestId, seatNumber: 1 })
-    await refreshAll()
-
-    const remain = pending.length - plan.length
-    const mainCount = plan.filter(p => p.tableId === main?.tableId).length
-    const mainNote = mainCount > 0 ? `主桌帶入 ${mainCount} 位主角／雙親，` : ''
-    toast.add({
-      title: `已自動帶入 ${plan.length} 位`,
-      description: remain > 0
-        ? `${mainNote}尚有 ${remain} 位待排席（桌次不足）`
-        : `${mainNote}其餘依男左女右、長輩近主桌分流`,
-      color: 'success',
-    })
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '請稍後再試'
-    toast.add({ title: '自動帶入失敗', description: message, color: 'error' })
-    await refreshAll()
-  }
-  finally {
-    isAutoSeating.value = false
-  }
-}
+const { isAutoSeating, autoSeat } = useAutoSeat({
+  weddingId,
+  tables,
+  math: { unseatedGuests, mainTable, isMainTable, tableSeats, guestNormalHeads, tableCenterX },
+  refreshAll,
+})
 
 // === 一鍵取消：清空所有座位安排 ===
 const isClearOpen = ref(false)
@@ -1211,222 +224,49 @@ async function confirmResetTable() {
   }
 }
 
-// === 拖曳排位 ===
-// 拖曳來源：側欄賓客無 from* 欄位；座位上的賓客帶 fromTableId / fromSeatNumber（供移動 / 互換）
-interface DragSource { guestId: string, fromTableId?: string, fromSeatNumber?: number }
-const dragSource = ref<DragSource | null>(null)
-const draggingGuestId = ref<string | null>(null)
-const dragOverTableId = ref<string | null>(null)
-
-function endDrag() {
-  dragSource.value = null
-  draggingGuestId.value = null
-  dragOverTableId.value = null
-}
-
-// 拖曳操作成功不彈 toast（結果畫面直接可見），僅失敗提示
-async function assignSeat(tableId: string, guestId: string, seatNumber: number) {
-  try {
-    const body: SeatGuestBody = { guestId, seatNumber }
-    await seatGuest(weddingId.value, tableId, body)
-    await refreshAll()
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '安排失敗，請稍後再試'
-    toast.add({ title: '安排失敗', description: message, color: 'error' })
-  }
-}
-
-// 單席移動／互換：以「席位」為粒度，一組賓客的大人、兒童椅席可各自移動；目標有人＝互換
-async function moveSingleSeat(fromTableId: string, fromSeatNumber: number, toTableId: string, toSeatNumber?: number) {
-  try {
-    await moveSeat(weddingId.value, { fromTableId, fromSeatNumber, toTableId, toSeatNumber })
-    await refreshAll()
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '移動失敗，請稍後再試'
-    toast.add({ title: '移動失敗', description: message, color: 'error' })
-    await refreshAll()
-  }
-}
-
-// 側欄賓客拖曳
-function onGuestDragStart(event: DragEvent, guestId: string) {
-  dragSource.value = { guestId }
-  draggingGuestId.value = guestId
-  if (event.dataTransfer) {
-    event.dataTransfer.setData('text/plain', guestId)
-    event.dataTransfer.effectAllowed = 'move'
-  }
-}
-// 座位上的賓客拖曳（供互換 / 移動）
-function onSeatDragStart(event: DragEvent, tableId: string, seatNumber: number, guestId: string) {
-  dragSource.value = { guestId, fromTableId: tableId, fromSeatNumber: seatNumber }
-  draggingGuestId.value = guestId
-  if (event.dataTransfer) {
-    event.dataTransfer.setData('text/plain', guestId)
-    event.dataTransfer.effectAllowed = 'move'
-  }
-}
-function onGuestDragEnd() {
-  endDrag()
-}
-function onTableDragOver(event: DragEvent, tableId: string) {
-  event.preventDefault()
-  dragOverTableId.value = tableId
-  if (event.dataTransfer)
-    event.dataTransfer.dropEffect = 'move'
-}
-function onTableDragLeave(tableId: string) {
-  if (dragOverTableId.value === tableId)
-    dragOverTableId.value = null
-}
-
-// 拖到整桌：座位上的席位→單席移到該桌下一個空號；側欄賓客→整組帶入（含兒童加位）
-async function onDropToTable(event: DragEvent, table: TableListItem) {
-  event.preventDefault()
-  const src = dragSource.value
-  endDrag()
-  if (!src)
-    return
-  if (src.fromTableId === table.tableId)
-    return
-  if (src.fromTableId && src.fromSeatNumber != null) {
-    await moveSingleSeat(src.fromTableId, src.fromSeatNumber, table.tableId)
-    return
-  }
-  const seat = nextSeatFor(table, src.guestId)
-  if (seat == null) {
-    toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
-    return
-  }
-  await assignSeat(table.tableId, src.guestId, seat)
-}
-
-// 拖到某座位：席位來源→單席移動（目標有人＝互換）；側欄賓客→整組帶入（已佔位改放下一個空位）
-async function onDropToSeat(event: DragEvent, table: TableListItem, seatNumber: number) {
-  event.preventDefault()
-  event.stopPropagation()
-  const src = dragSource.value
-  endDrag()
-  if (!src)
-    return
-  if (src.fromTableId && src.fromSeatNumber != null) {
-    // 拖回自己原位不動
-    if (src.fromTableId === table.tableId && src.fromSeatNumber === seatNumber)
-      return
-    await moveSingleSeat(src.fromTableId, src.fromSeatNumber, table.tableId, seatNumber)
-    return
-  }
-  const occupant = occupantAt(table.tableId, seatNumber)
-  if (occupant) {
-    // 側欄賓客拖到已佔位 → 改放該桌下一個空位（含兒童加位）
-    const seat = nextSeatFor(table, src.guestId)
-    if (seat == null) {
-      toast.add({ title: '桌次已滿，無法再安排座位', color: 'error' })
-      return
-    }
-    await assignSeat(table.tableId, src.guestId, seat)
-    return
-  }
-  await assignSeat(table.tableId, src.guestId, seatNumber)
-}
-
-// === 新增 / 編輯桌次 ===
-const tableSchema = z.object({
-  tableName: z.string().trim().min(1, '請輸入桌次名稱'),
-  capacity: z.number().int().min(1, '座位數至少 1'),
-  positionX: z.number().int(),
-  positionY: z.number().int(),
-  // 批次新增桌數（僅新增模式使用；編輯模式固定 1）
-  count: z.number().int().min(1, '至少 1 桌').max(20, '一次最多 20 桌'),
+// === 拖曳排位（HTML5 DnD：側欄入座、單席移動／互換）+ 觸控備援（tap-to-assign）===
+const {
+  dragOverTableId,
+  onGuestDragStart,
+  onSeatDragStart,
+  onGuestDragEnd,
+  onTableDragOver,
+  onTableDragLeave,
+  onDropToTable,
+  onDropToSeat,
+  pendingGuestId,
+  hasPending,
+  togglePendingGuest,
+  startPendingMove,
+  cancelPending,
+  tapSeat,
+} = useSeatAssign({
+  weddingId,
+  math: { occupantAt, nextSeatFor },
+  refreshAll,
 })
-type TableSchema = z.output<typeof tableSchema>
 
+// 座位上賓客點擊：待放置中＝以此席位為目標（移動／互換）；否則開取消座位確認
+function onOccupantClick(table: TableListItem, seatNumber: number, guestId: string) {
+  if (hasPending.value) {
+    void tapSeat(table, seatNumber)
+    return
+  }
+  openUnseat(table.tableId, guestId, seatNumber)
+}
+
+// === 新增 / 編輯桌次 Modal ===
 const isTableFormOpen = ref(false)
-const isTableSubmitting = ref(false)
-const tableFormError = ref('')
-const editingTableId = ref<string | null>(null)
-const tableState = reactive<TableSchema>({
-  tableName: '',
-  capacity: 10,
-  positionX: 0,
-  positionY: 0,
-  count: 1,
-})
+const editingTable = ref<TableListItem | null>(null)
 
 function openCreateTable() {
-  editingTableId.value = null
-  tableFormError.value = ''
-  tableState.tableName = ''
-  tableState.capacity = 10
-  tableState.positionX = 0
-  tableState.positionY = 0
-  tableState.count = 1
+  editingTable.value = null
   isTableFormOpen.value = true
 }
 
 function openEditTable(table: TableListItem) {
-  editingTableId.value = table.tableId
-  tableFormError.value = ''
-  tableState.tableName = table.tableName
-  tableState.capacity = table.capacity
-  tableState.positionX = table.positionX
-  tableState.positionY = table.positionY
-  tableState.count = 1
+  editingTable.value = table
   isTableFormOpen.value = true
-}
-
-async function onTableSubmit(event: FormSubmitEvent<TableSchema>) {
-  if (isTableSubmitting.value)
-    return
-  isTableSubmitting.value = true
-  tableFormError.value = ''
-  try {
-    const data = event.data
-    if (editingTableId.value) {
-      const body: UpdateTableBody = {
-        tableName: data.tableName,
-        capacity: data.capacity,
-        positionX: data.positionX,
-        positionY: data.positionY,
-      }
-      await updateTable(weddingId.value, editingTableId.value, body)
-      toast.add({ title: '桌次已更新', color: 'success' })
-    }
-    else if (data.count <= 1) {
-      const body: CreateTableBody = {
-        tableName: data.tableName,
-        capacity: data.capacity,
-        positionX: data.positionX,
-        positionY: data.positionY,
-      }
-      await createTable(weddingId.value, body)
-      toast.add({ title: '桌次新增成功', color: 'success' })
-    }
-    else {
-      // 批次新增：名稱加流水號、位置以 3 欄格狀階梯展開（避免全疊在同一點）
-      for (let i = 0; i < data.count; i++) {
-        const body: CreateTableBody = {
-          tableName: `${data.tableName}${i + 1}`,
-          capacity: data.capacity,
-          positionX: data.positionX + (i % 3) * 200,
-          positionY: data.positionY + Math.floor(i / 3) * 310,
-        }
-        await createTable(weddingId.value, body)
-      }
-      toast.add({ title: `已新增 ${data.count} 桌`, color: 'success' })
-    }
-    isTableFormOpen.value = false
-    await refreshAll()
-  }
-  catch (error: any) {
-    tableFormError.value
-      = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
-  }
-  finally {
-    isTableSubmitting.value = false
-  }
 }
 
 // === 移除桌次 ===
@@ -1469,66 +309,31 @@ const guestOptions = computed(() =>
 const tableOptions = computed(() =>
   (tables.value ?? []).map(t => ({ label: t.tableName, value: t.tableId })),
 )
-
 const isSeatFormOpen = ref(false)
-const isSeating = ref(false)
-const seatFormError = ref('')
-const seatState = reactive<{ guestId: string, tableId: string, seatNumber: number }>({
-  guestId: '',
-  tableId: '',
-  seatNumber: 1,
-})
 
-function openSeatForm() {
-  seatFormError.value = ''
-  seatState.guestId = ''
-  seatState.tableId = ''
-  seatState.seatNumber = 1
-  isSeatFormOpen.value = true
-}
-
-// 在 Modal 內改選桌次時，自動建議下一個座位號
-function onSeatTableChange(tableId: string) {
+// 改選桌次時建議下一個座位號（傳入 modal）
+function suggestSeatNumber(tableId: string): number {
   const table = (tables.value ?? []).find(t => t.tableId === tableId)
-  seatState.seatNumber = table ? nextFreeSeat(table) : tableSeats(tableId).length + 1
-}
-
-async function confirmSeat() {
-  if (isSeating.value)
-    return
-  if (!seatState.guestId || !seatState.tableId) {
-    seatFormError.value = '請選擇賓客與桌次'
-    return
-  }
-  isSeating.value = true
-  seatFormError.value = ''
-  try {
-    const body: SeatGuestBody = {
-      guestId: seatState.guestId,
-      seatNumber: seatState.seatNumber,
-    }
-    await seatGuest(weddingId.value, seatState.tableId, body)
-    toast.add({ title: '已安排座位', color: 'success' })
-    isSeatFormOpen.value = false
-    await refreshAll()
-  }
-  catch (error: any) {
-    seatFormError.value
-      = error?.data?.message || error?.statusMessage || '安排失敗，請稍後再試'
-  }
-  finally {
-    isSeating.value = false
-  }
+  return table ? nextFreeSeat(table) : tableSeats(tableId).length + 1
 }
 
 // === 取消座位 ===
 const isUnseatOpen = ref(false)
 const isUnseating = ref(false)
-const unseatTarget = ref<{ tableId: string, guestId: string, guestName: string } | null>(null)
+const unseatTarget = ref<{ tableId: string, guestId: string, guestName: string, seatNumber: number } | null>(null)
 
-function openUnseat(tableId: string, guestId: string) {
-  unseatTarget.value = { tableId, guestId, guestName: guestName(guestId) }
+function openUnseat(tableId: string, guestId: string, seatNumber: number) {
+  unseatTarget.value = { tableId, guestId, guestName: guestName(guestId), seatNumber }
   isUnseatOpen.value = true
+}
+
+// 「移至其他座位」（觸控備援換位入口）：關閉確認框，改以該席位為待放置來源
+function startMoveFromUnseat() {
+  const target = unseatTarget.value
+  if (!target)
+    return
+  isUnseatOpen.value = false
+  startPendingMove(target.tableId, target.seatNumber, target.guestId)
 }
 
 async function confirmUnseat() {
@@ -1555,146 +360,8 @@ async function confirmUnseat() {
   }
 }
 
-// === 場地佈局 ===
-const venueSchema = z.object({
-  stageWidth: z.number().int().min(0),
-  stageHeight: z.number().int().min(0),
-  stagePositionX: z.number().int(),
-  stagePositionY: z.number().int(),
-})
-type VenueSchema = z.output<typeof venueSchema>
-
+// === 場地佈局 Modal ===
 const isVenueOpen = ref(false)
-const isVenueSubmitting = ref(false)
-const venueError = ref('')
-const venueState = reactive<VenueSchema>({
-  stageWidth: 300,
-  stageHeight: 150,
-  stagePositionX: 500,
-  stagePositionY: 100,
-})
-
-function openVenue() {
-  venueError.value = ''
-  // 用 GET 讀回的既有佈局填入；尚未設定時維持預設值
-  const layout = venueLayout.value
-  if (layout) {
-    venueState.stageWidth = layout.stageWidth
-    venueState.stageHeight = layout.stageHeight
-    venueState.stagePositionX = layout.stagePositionX
-    venueState.stagePositionY = layout.stagePositionY
-  }
-  isVenueOpen.value = true
-}
-
-async function onVenueSubmit(event: FormSubmitEvent<VenueSchema>) {
-  if (isVenueSubmitting.value)
-    return
-  isVenueSubmitting.value = true
-  venueError.value = ''
-  try {
-    const body: VenueLayoutBody = { ...event.data }
-    await configureVenueLayout(weddingId.value, body)
-    // 以 GET 為呈現真實來源（重整也靠 GET）
-    await refreshVenue()
-    toast.add({ title: '場地佈局已設定', color: 'success' })
-    isVenueOpen.value = false
-  }
-  catch (error: any) {
-    venueError.value
-      = error?.data?.message || error?.statusMessage || '設定失敗，請稍後再試'
-  }
-  finally {
-    isVenueSubmitting.value = false
-  }
-}
-
-// === 場地參考圖上傳（jpg / png / pdf ≤ 5MB；PDF 取第一頁轉 PNG 後上傳）===
-const { uploadImage } = useImageUpload()
-const refImageInput = ref<HTMLInputElement | null>(null)
-const isUploadingRefImage = ref(false)
-const REF_IMAGE_MAX_BYTES = 5 * 1024 * 1024
-
-// PDF 第一頁 → PNG dataURL（pdfjs 動態載入，僅選 PDF 時才抓該 chunk）
-async function pdfToPngDataUrl(file: File): Promise<string> {
-  const pdfjs = await import('pdfjs-dist')
-  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
-  pdfjs.GlobalWorkerOptions.workerSrc = worker.default
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
-  const page = await doc.getPage(1)
-  const viewport = page.getViewport({ scale: 2 })
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.ceil(viewport.width)
-  canvas.height = Math.ceil(viewport.height)
-  await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise
-  return canvas.toDataURL('image/png')
-}
-
-// 寫回 venue-layout（尚無佈局時以預設舞台值一併建立）；換圖／移除時對位一併歸零
-async function saveRefImage(url: string | null) {
-  const layout = venueLayout.value
-  await configureVenueLayout(weddingId.value, {
-    stageWidth: layout?.stageWidth ?? 360,
-    stageHeight: layout?.stageHeight ?? 70,
-    stagePositionX: layout?.stagePositionX ?? 270,
-    stagePositionY: layout?.stagePositionY ?? 20,
-    referenceImageUrl: url,
-    refImageX: 0,
-    refImageY: 0,
-    refImageScale: 1,
-  })
-  await refreshVenue()
-}
-
-async function onRefImageSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  // 清空 input 讓同一檔可重選
-  input.value = ''
-  if (!file || isUploadingRefImage.value)
-    return
-  const isPdf = file.type === 'application/pdf'
-  const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
-  if (!isPdf && !isImage) {
-    toast.add({ title: '格式不支援', description: '請上傳 JPG、PNG 或 PDF 檔', color: 'error' })
-    return
-  }
-  if (file.size > REF_IMAGE_MAX_BYTES) {
-    toast.add({ title: '檔案過大', description: '參考圖上限 5MB，請壓縮後再上傳', color: 'error' })
-    return
-  }
-  isUploadingRefImage.value = true
-  try {
-    const source = isPdf ? await pdfToPngDataUrl(file) : file
-    const url = await uploadImage(source, weddingId.value, 'venue')
-    await saveRefImage(url)
-    toast.add({ title: '參考圖已更新', color: 'success' })
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.message || '上傳失敗，請稍後再試'
-    toast.add({ title: '上傳失敗', description: message, color: 'error' })
-  }
-  finally {
-    isUploadingRefImage.value = false
-  }
-}
-
-async function removeRefImage() {
-  if (isUploadingRefImage.value)
-    return
-  isUploadingRefImage.value = true
-  try {
-    await saveRefImage(null)
-    toast.add({ title: '參考圖已移除', color: 'success' })
-  }
-  catch (error: any) {
-    const message = error?.data?.message || error?.statusMessage || '移除失敗，請稍後再試'
-    toast.add({ title: '移除失敗', description: message, color: 'error' })
-  }
-  finally {
-    isUploadingRefImage.value = false
-  }
-}
 
 // === 預設佈局：全新婚禮（無桌次、未設定舞台）自動帶入置中舞台＋五桌（每桌 10 席）===
 const DEFAULT_STAGE: VenueLayoutBody = { stageWidth: 360, stageHeight: 70, stagePositionX: 270, stagePositionY: 20 }
@@ -1730,15 +397,6 @@ onMounted(async () => {
     isSeedingDefault.value = false
   }
 })
-
-// 賓客側欄顯示用：哪一方 · 關係 · 葷素（接在姓名後同一排）
-function guestMeta(g: GuestListItem): string {
-  const parts = [sideLabel(g.side)]
-  if (g.category)
-    parts.push(g.category)
-  parts.push(dietLabel(g.diet))
-  return parts.join(' · ')
-}
 </script>
 
 <template>
@@ -1801,7 +459,7 @@ function guestMeta(g: GuestListItem): string {
             color="neutral"
             variant="ghost"
             size="sm"
-            @click="openVenue"
+            @click="isVenueOpen = true"
           >
             設定舞台位置
           </UButton>
@@ -1919,6 +577,25 @@ function guestMeta(g: GuestListItem): string {
               @click="finishRefImageAdjust"
             >
               完成
+            </UButton>
+          </div>
+          <!-- 待放置提示列：tap-to-assign 進行中（觸控備援；sticky 讓長畫布捲動時仍可見） -->
+          <div
+            v-if="hasPending && pendingGuestId"
+            data-testid="vibe-seating-pending-bar"
+            class="sticky left-0 top-0 z-50 mb-3 flex w-fit items-center gap-2 rounded-md border border-gold bg-paper/95 px-3 py-1.5 shadow-sm dark:bg-neutral-900/95"
+          >
+            <span class="text-caption text-ink-500 dark:text-neutral-400">
+              待放置：<span class="font-medium text-gold-deep">{{ guestName(pendingGuestId) }}</span>，點桌上空位入座
+            </span>
+            <UButton
+              data-testid="vibe-seating-pending-cancel"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="cancelPending"
+            >
+              取消
             </UButton>
           </div>
           <!-- 自由佈局畫布：圓桌可拖曳調整位置以因應現場空間 -->
@@ -2053,7 +730,7 @@ function guestMeta(g: GuestListItem): string {
                     class="group/seat absolute z-10 flex size-10 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-2 text-center text-micro font-medium leading-none shadow-sm transition-transform hover:z-50 hover:scale-110 active:cursor-grabbing"
                     :class="occupantColorClass(slot.occupant)"
                     :style="{ left: slot.pos.left, top: slot.pos.top }"
-                    @click="openUnseat(table.tableId, slot.occupant.guestId)"
+                    @click="onOccupantClick(table, slot.seatNumber, slot.occupant.guestId)"
                     @dragstart="onSeatDragStart($event, table.tableId, slot.seatNumber, slot.occupant.guestId)"
                     @dragend="onGuestDragEnd"
                     @dragover="onTableDragOver($event, table.tableId)"
@@ -2067,15 +744,16 @@ function guestMeta(g: GuestListItem): string {
                       {{ occupantMeta(slot.occupant.guestId) }}
                     </span>
                   </button>
-                  <!-- 空位：拖曳賓客至此可入座 -->
+                  <!-- 空位：拖曳賓客至此可入座；tap-to-assign 待放置中點擊即入座（觸控備援） -->
                   <div
                     v-else
                     :data-testid="`${table.tableId}-empty-${slot.idx + 1}`"
                     class="absolute flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed text-ink-300 transition-colors"
-                    :class="dragOverTableId === table.tableId
-                      ? 'border-gold bg-gold-light/30 text-gold-deep'
+                    :class="dragOverTableId === table.tableId || hasPending
+                      ? 'cursor-pointer border-gold bg-gold-light/30 text-gold-deep'
                       : 'border-line/70 bg-paper/60 dark:border-neutral-700 dark:bg-neutral-900/40'"
                     :style="{ left: slot.pos.left, top: slot.pos.top }"
+                    @click="tapSeat(table, slot.seatNumber)"
                     @dragover="onTableDragOver($event, table.tableId)"
                     @drop="onDropToSeat($event, table, slot.seatNumber)"
                   >
@@ -2129,383 +807,47 @@ function guestMeta(g: GuestListItem): string {
       </div>
 
       <!-- 右欄：賓客名單（可拖曳 + 推薦排序） -->
-      <aside class="flex min-h-0 flex-col lg:w-[320px] lg:shrink-0">
-        <div class="mb-3 flex shrink-0 items-end justify-between gap-3">
-          <div>
-            <h2 class="font-display text-body-l font-semibold leading-none text-ink dark:text-paper">
-              賓客名單
-            </h2>
-            <p class="mt-1.5 text-caption text-ink-500 dark:text-neutral-400">
-              待排席 {{ unseatedGuests.length }} 位 · 已排席 {{ seatedCount }} 位
-            </p>
-          </div>
-          <div class="flex shrink-0 flex-col items-end gap-2">
-            <!-- 安排座位（表單入口）：置於推薦排序上方 -->
-            <UButton
-              data-testid="seat-guest"
-              icon="i-heroicons-user-plus"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              @click="openSeatForm"
-            >
-              安排座位
-            </UButton>
-            <div class="flex items-center gap-2">
-              <UButton
-                data-testid="vibe-seating-clear"
-                icon="i-heroicons-arrow-uturn-left"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                :disabled="isClearing || seatedCount === 0"
-                @click="openClearAll"
-              >
-                一鍵取消
-              </UButton>
-              <UButton
-                data-testid="vibe-seating-recommend"
-                icon="i-heroicons-sparkles"
-                color="primary"
-                variant="solid"
-                size="sm"
-                :loading="isAutoSeating"
-                @click="autoSeat"
-              >
-                推薦排序
-              </UButton>
-            </div>
-          </div>
-        </div>
-
-        <p class="mb-3 shrink-0 text-caption text-ink-300">
-          點「推薦排序」依「主桌帶入新人與雙親、男左女右、長輩近主桌」自動帶位，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置
-        </p>
-
-        <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
-        <div data-testid="vibe-seating-guest-list" class="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto pr-1">
-          <EmptyState
-            v-if="sidebarGuests.length === 0"
-            bordered
-            class="flex-1"
-            :title="seatedCount > 0 ? '賓客皆已排席' : '目前沒有賓客'"
-            :description="seatedCount > 0 ? '' : '請先於賓客管理新增賓客'"
-          />
-          <div
-            v-for="guest in sidebarGuests"
-            :key="guest.guestId"
-            draggable="true"
-            :data-testid="`vibe-seating-guest-${guest.guestId}`"
-            class="group flex cursor-grab items-center gap-2 rounded-md border border-line bg-white px-3 py-2 transition-shadow hover:shadow active:cursor-grabbing dark:border-neutral-800 dark:bg-neutral-900"
-            @dragstart="onGuestDragStart($event, guest.guestId)"
-            @dragend="onGuestDragEnd"
-          >
-            <!-- 姓名（顏色標示男方／女方／兒童）+ 哪一方·關係·葷素 同一排 -->
-            <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }}</span>
-            <span class="min-w-0 flex-1 truncate text-caption text-ink-500 dark:text-neutral-400">{{ guestMeta(guest) }}</span>
-            <UIcon
-              v-if="guest.childChairCount > 0"
-              name="i-heroicons-sparkles"
-              class="size-4 shrink-0 text-gold-deep"
-              title="需兒童椅"
-            />
-            <UIcon
-              name="i-heroicons-bars-3"
-              class="size-4 shrink-0 text-ink-300 transition-colors group-hover:text-gold-deep"
-            />
-          </div>
-
-          <!-- 名單空狀態：小字、不放 icon -->
-          <div v-if="sidebarGuests.length === 0" class="px-1 py-6 text-center">
-            <p class="text-caption font-medium text-ink-500 dark:text-neutral-400">
-              {{ activeGuests.length === 0 ? '目前沒有賓客' : '所有賓客都已排席' }}
-            </p>
-            <p class="mt-1 text-caption text-ink-300">
-              {{ activeGuests.length === 0 ? '請先於賓客管理新增賓客' : '可點選圓桌上的賓客取消座位' }}
-            </p>
-          </div>
-        </div>
-      </aside>
+      <SeatingGuestSidebar
+        :guests="sidebarGuests"
+        :seated-count="seatedCount"
+        :active-count="activeGuests.length"
+        :is-auto-seating="isAutoSeating"
+        :is-clearing="isClearing"
+        :pending-guest-id="pendingGuestId"
+        @seat-form="isSeatFormOpen = true"
+        @clear-all="openClearAll"
+        @auto-seat="autoSeat"
+        @guest-drag-start="onGuestDragStart"
+        @guest-drag-end="onGuestDragEnd"
+        @guest-tap="togglePendingGuest"
+      />
     </div>
 
     <!-- 新增 / 編輯桌次 Modal -->
-    <UModal v-model:open="isTableFormOpen">
-      <template #content>
-        <div data-testid="table-form-modal" class="p-6">
-          <p class="text-overline uppercase text-gold-deep">
-            桌次
-          </p>
-          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
-            {{ editingTableId ? '編輯桌次' : '新增桌次' }}
-          </h3>
-
-          <UAlert
-            v-if="tableFormError"
-            data-testid="table-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="tableFormError"
-            class="mb-4"
-          />
-
-          <UForm
-            :schema="tableSchema"
-            :state="tableState"
-            class="space-y-4"
-            @submit="onTableSubmit"
-          >
-            <UFormField
-              label="桌次名稱"
-              name="tableName"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="tableState.tableName"
-                data-testid="table-name"
-                placeholder="如：主桌、男方家屬桌"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UFormField
-              label="座位數"
-              name="capacity"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model.number="tableState.capacity"
-                data-testid="table-capacity"
-                type="number"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UFormField
-              v-if="!editingTableId"
-              label="一次新增幾桌"
-              name="count"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model.number="tableState.count"
-                data-testid="table-batch-count"
-                type="number"
-                min="1"
-                max="20"
-                class="w-full"
-              />
-              <p class="mt-1 text-caption text-ink-300">
-                超過 1 桌時，名稱自動加流水號、位置階梯展開
-              </p>
-            </UFormField>
-
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="位置 X" name="positionX">
-                <UInput
-                  v-model.number="tableState.positionX"
-                  data-testid="table-position-x"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="位置 Y" name="positionY">
-                <UInput
-                  v-model.number="tableState.positionY"
-                  data-testid="table-position-y"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-
-            <div class="flex justify-end gap-3 pt-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isTableSubmitting"
-                @click="isTableFormOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                type="submit"
-                data-testid="table-submit"
-                color="primary"
-                :loading="isTableSubmitting"
-              >
-                {{ editingTableId ? '儲存' : '新增' }}
-              </UButton>
-            </div>
-          </UForm>
-        </div>
-      </template>
-    </UModal>
+    <SeatingTableFormModal
+      v-model:open="isTableFormOpen"
+      :wedding-id="weddingId"
+      :table="editingTable"
+      @saved="refreshAll"
+    />
 
     <!-- 安排座位 Modal -->
-    <UModal v-model:open="isSeatFormOpen">
-      <template #content>
-        <div data-testid="seat-form-modal" class="p-6">
-          <p class="text-overline uppercase text-gold-deep">
-            座位
-          </p>
-          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
-            安排座位
-          </h3>
-
-          <UAlert
-            v-if="seatFormError"
-            data-testid="seat-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="seatFormError"
-            class="mb-4"
-          />
-
-          <div class="space-y-4">
-            <UFormField label="賓客" name="guestId">
-              <USelectMenu
-                v-model="seatState.guestId"
-                data-testid="seat-guest-select"
-                :items="guestOptions"
-                value-key="value"
-                placeholder="選擇賓客"
-                class="w-full"
-              />
-            </UFormField>
-
-            <UFormField label="桌次" name="tableId">
-              <USelectMenu
-                v-model="seatState.tableId"
-                data-testid="seat-table-select"
-                :items="tableOptions"
-                value-key="value"
-                placeholder="選擇桌次"
-                class="w-full"
-                @update:model-value="onSeatTableChange"
-              />
-            </UFormField>
-
-            <UFormField label="座位號" name="seatNumber">
-              <UInput
-                v-model.number="seatState.seatNumber"
-                data-testid="seat-number"
-                type="number"
-                class="w-full"
-              />
-            </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isSeating"
-                @click="isSeatFormOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                data-testid="seat-submit"
-                color="primary"
-                :loading="isSeating"
-                @click="confirmSeat"
-              >
-                安排
-              </UButton>
-            </div>
-          </div>
-        </div>
-      </template>
-    </UModal>
+    <SeatingSeatFormModal
+      v-model:open="isSeatFormOpen"
+      :wedding-id="weddingId"
+      :guest-options="guestOptions"
+      :table-options="tableOptions"
+      :suggest-seat-number="suggestSeatNumber"
+      @seated="refreshAll"
+    />
 
     <!-- 場地佈局 Modal -->
-    <UModal v-model:open="isVenueOpen">
-      <template #content>
-        <div data-testid="venue-form-modal" class="p-6">
-          <p class="text-overline uppercase text-gold-deep">
-            場地
-          </p>
-          <h3 class="mb-4 mt-1 text-body-l font-semibold text-ink">
-            設定舞台位置
-          </h3>
-
-          <UAlert
-            v-if="venueError"
-            data-testid="venue-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="venueError"
-            class="mb-4"
-          />
-
-          <UForm
-            :schema="venueSchema"
-            :state="venueState"
-            class="space-y-4"
-            @submit="onVenueSubmit"
-          >
-            <div class="grid grid-cols-2 gap-4">
-              <UFormField label="舞台寬度" name="stageWidth">
-                <UInput
-                  v-model.number="venueState.stageWidth"
-                  data-testid="stage-width"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="舞台高度" name="stageHeight">
-                <UInput
-                  v-model.number="venueState.stageHeight"
-                  data-testid="stage-height"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="舞台位置 X" name="stagePositionX">
-                <UInput
-                  v-model.number="venueState.stagePositionX"
-                  data-testid="stage-position-x"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="舞台位置 Y" name="stagePositionY">
-                <UInput
-                  v-model.number="venueState.stagePositionY"
-                  data-testid="stage-position-y"
-                  type="number"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-
-            <div class="flex justify-end gap-3 pt-2">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isVenueSubmitting"
-                @click="isVenueOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                type="submit"
-                data-testid="venue-submit"
-                color="primary"
-                :loading="isVenueSubmitting"
-              >
-                儲存
-              </UButton>
-            </div>
-          </UForm>
-        </div>
-      </template>
-    </UModal>
+    <SeatingVenueModal
+      v-model:open="isVenueOpen"
+      :wedding-id="weddingId"
+      :layout="venueLayout ?? null"
+      @saved="refreshVenue"
+    />
 
     <!-- 移除桌次確認 -->
     <UModal v-model:open="isRemoveOpen">
@@ -2551,7 +893,7 @@ function guestMeta(g: GuestListItem): string {
       </template>
     </UModal>
 
-    <!-- 取消座位確認 -->
+    <!-- 取消座位確認（含觸控備援換位入口「移至其他座位」） -->
     <ConfirmModal
       v-model:open="isUnseatOpen"
       title="確認取消座位"
@@ -2560,7 +902,20 @@ function guestMeta(g: GuestListItem): string {
       confirm-color="error"
       :loading="isUnseating"
       @confirm="confirmUnseat"
-    />
+    >
+      <template #extra>
+        <UButton
+          data-testid="vibe-seat-move"
+          icon="i-heroicons-arrows-right-left"
+          color="neutral"
+          variant="outline"
+          :disabled="isUnseating"
+          @click="startMoveFromUnseat"
+        >
+          移至其他座位
+        </UButton>
+      </template>
+    </ConfirmModal>
 
     <!-- 一鍵取消：清空所有座位安排確認 -->
     <ConfirmModal
@@ -2585,114 +940,12 @@ function guestMeta(g: GuestListItem): string {
     />
 
     <!-- 加入 / 編輯場地標記 Modal -->
-    <UModal v-model:open="isMarkerFormOpen">
-      <template #content>
-        <div data-testid="venue-marker-modal" class="max-h-[85vh] overflow-y-auto p-6">
-          <p class="text-overline uppercase text-gold-deep">
-            Marker
-          </p>
-          <h3 class="mt-1 text-body-l font-semibold text-ink dark:text-paper">
-            {{ editingMarkerId ? '編輯標記' : '加入標記' }}
-          </h3>
-          <p class="mb-5 mt-1 text-caption text-ink-300">
-            在平面圖上標示門口、送客區、進場入口等位置；加入後可直接拖曳調整
-          </p>
-
-          <UAlert
-            v-if="markerFormError"
-            data-testid="venue-marker-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="markerFormError"
-            class="mb-4"
-          />
-
-          <div class="space-y-4">
-            <UFormField label="標記文字" name="markerLabel">
-              <UInput
-                v-model="markerDraft.label"
-                data-testid="venue-marker-label"
-                placeholder="如：門口、送客區、進場入口"
-                class="w-full"
-                @keyup.enter="submitMarker"
-              />
-            </UFormField>
-
-            <div class="grid grid-cols-2 gap-3">
-              <UFormField label="寬（px）" name="markerWidth">
-                <UInput
-                  v-model.number="markerDraft.width"
-                  type="number"
-                  min="40"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="高（px）" name="markerHeight">
-                <UInput
-                  v-model.number="markerDraft.height"
-                  type="number"
-                  min="24"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-
-            <div v-if="editingMarkerId" class="grid grid-cols-2 gap-3">
-              <UFormField label="X 位置" name="markerX">
-                <UInput
-                  v-model.number="markerDraft.positionX"
-                  type="number"
-                  min="0"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Y 位置" name="markerY">
-                <UInput
-                  v-model.number="markerDraft.positionY"
-                  type="number"
-                  min="0"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-          </div>
-
-          <div class="mt-6 flex items-center justify-between gap-3">
-            <UButton
-              v-if="editingMarkerId"
-              data-testid="venue-marker-delete"
-              icon="i-heroicons-trash"
-              color="error"
-              variant="outline"
-              :loading="isMarkerSubmitting"
-              @click="removeMarker"
-            >
-              刪除標記
-            </UButton>
-            <span v-else />
-            <div class="flex gap-3">
-              <UButton
-                color="neutral"
-                variant="outline"
-                :disabled="isMarkerSubmitting"
-                @click="isMarkerFormOpen = false"
-              >
-                取消
-              </UButton>
-              <UButton
-                data-testid="venue-marker-submit"
-                color="neutral"
-                variant="solid"
-                :loading="isMarkerSubmitting"
-                @click="submitMarker"
-              >
-                儲存標記
-              </UButton>
-            </div>
-          </div>
-        </div>
-      </template>
-    </UModal>
+    <SeatingMarkerModal
+      v-model:open="isMarkerFormOpen"
+      :wedding-id="weddingId"
+      :marker="editingMarker"
+      :position="editingMarkerPos"
+      @changed="refreshMarkers"
+    />
   </div>
 </template>

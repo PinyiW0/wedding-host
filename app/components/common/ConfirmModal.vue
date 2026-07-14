@@ -36,6 +36,8 @@ const isOpen = defineModel<boolean>('open', { default: false })
           {{ description }}
         </p>
         <div class="mt-8 flex justify-end gap-3">
+          <!-- 額外動作（選用）：置於取消左側，如「移至其他座位」 -->
+          <slot name="extra" />
           <UButton
             data-testid="confirm-cancel"
             color="neutral"
