@@ -58,9 +58,26 @@ export interface PublicThankYouCard {
   templateImageUrl: string | null
 }
 
+// 群發失敗的賓客（可見、可單獨重發，issue #72）
+export interface ThankYouFailedGuest {
+  guestId: string
+  name: string
+}
+
 export interface ThankYouBatchSentEvent {
   weddingId: string
   recipientCount: number
+  failedGuests: ThankYouFailedGuest[]
+}
+
+// 對單一賓客重發謝卡（群發失敗後的補救）
+export interface ResendThankYouBody {
+  guestId: string
+}
+
+export interface ThankYouResentEvent {
+  weddingId: string
+  guestId: string
 }
 
 export interface SendThankYouFallbackBody {
