@@ -373,7 +373,7 @@ async function refreshSeating() {
 
 // 現場即時性：自助報到、其他接待機的操作、後台排座位的變動，
 // 都不會推播到本頁——以短輪詢靜默同步（背景分頁暫停；本地操作進行中跳過，避免舊資料蓋掉剛寫入的狀態）。
-// 刻意不做推播——維持 5 秒短輪詢是定案，決策依據見 docs/ops.md「接待台即時性」（issue #77）。
+// 刻意不做推播——維持 5 秒短輪詢是定案，決策依據見 docs/architecture.md §3.5「接待台即時性」（issue #77）。
 const POLL_MS = 5000
 let pollTimer: ReturnType<typeof setInterval> | null = null
 onMounted(() => {

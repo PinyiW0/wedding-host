@@ -1,7 +1,7 @@
 import type { MaybeRefOrGetter } from 'vue'
 
 // 投影即時推送（mock）：審核頁 approve / project → 投影頁即時更新
-// 機制：BroadcastChannel（同瀏覽器跨分頁）+ 短輪詢 fallback；不改 SSE/WebSocket（決策見 docs/ops.md「接待台即時性」）
+// 機制：BroadcastChannel（同瀏覽器跨分頁）+ 短輪詢 fallback；不改 SSE/WebSocket（決策見 docs/architecture.md §3.5「接待台即時性」）
 export function useProjectionChannel(weddingId: MaybeRefOrGetter<string>) {
   let channel: BroadcastChannel | null = null
   let timer: ReturnType<typeof setInterval> | null = null
