@@ -28,7 +28,6 @@ import {
   mergePendingGuest,
   rejectPendingGuest,
   renameGuestCategory,
-  restoreGuest,
   saveGuestCategories,
   updateGuest,
 } from '~/api'
@@ -41,18 +40,13 @@ const route = useRoute()
 const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
-// 賓客名單（含已移除，UI 以 deletedAt 分區呈現）
+// 賓客名單（API 仍回傳已軟刪除者，一律於前端濾掉——已移除賓客不呈現於畫面）
 const { data: guests, refresh } = await listGuests(weddingId, {
   default: () => [],
 })
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
-)
-// 已移除賓客預設不顯示（避免干擾正式名單），展開折疊區才可見、可恢復
-const showDeletedGuests = ref(false)
-const deletedGuests = computed(() =>
-  (guests.value ?? []).filter(g => g.deletedAt),
 )
 
 // 出席統計總覽（純前端讀模型）：出席 = rsvpAttending 'attending'；
@@ -615,36 +609,6 @@ async function confirmRemove() {
   }
 }
 
-// === 恢復賓客 ===
-const isRestoreOpen = ref(false)
-const isRestoring = ref(false)
-const restoreTarget = ref<GuestListItem | null>(null)
-
-function openRestore(guest: GuestListItem) {
-  restoreTarget.value = guest
-  isRestoreOpen.value = true
-}
-
-async function confirmRestore() {
-  if (!restoreTarget.value || isRestoring.value)
-    return
-  isRestoring.value = true
-  try {
-    await restoreGuest(weddingId.value, restoreTarget.value.guestId)
-    toast.add({ title: '賓客已恢復', color: 'success' })
-    isRestoreOpen.value = false
-    await refresh()
-  }
-  catch (error: any) {
-    const message
-      = error?.data?.message || error?.statusMessage || '恢復失敗，請稍後再試'
-    toast.add({ title: '恢復失敗', description: message, color: 'error' })
-  }
-  finally {
-    isRestoring.value = false
-  }
-}
-
 // === 批次匯入 ===
 const isImportOpen = ref(false)
 const isImporting = ref(false)
@@ -1123,58 +1087,6 @@ async function confirmImport() {
             </tr>
           </tbody>
         </table>
-
-        <!-- 回收區（已移除）：預設收合不佔畫面，展開後才可見、可恢復 -->
-        <div v-if="deletedGuests.length > 0">
-          <div class="mb-3 flex items-center gap-3">
-            <button
-              type="button"
-              data-testid="vibe-toggle-deleted-guests"
-              class="flex items-center gap-1.5 text-overline uppercase text-gold-deep transition-colors hover:text-gold"
-              :aria-expanded="showDeletedGuests"
-              @click="showDeletedGuests = !showDeletedGuests"
-            >
-              已移除的賓客（{{ deletedGuests.length }}）
-              <UIcon :name="showDeletedGuests ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'" class="size-3.5" />
-            </button>
-            <span class="h-px flex-1 bg-line" />
-          </div>
-          <table
-            v-if="showDeletedGuests"
-            data-testid="guest-deleted-list"
-            class="w-full border-collapse"
-          >
-            <tbody>
-              <tr
-                v-for="guest in deletedGuests"
-                :key="guest.guestId"
-                :data-testid="`guest-row-${guest.guestId}`"
-              >
-                <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
-                  <span class="font-medium text-ink-300 line-through">
-                    {{ guest.name }}
-                  </span>
-                </td>
-                <td class="hidden border-b border-line px-3 py-4 text-ink-300 sm:table-cell dark:border-neutral-800">
-                  {{ sideLabel(guest.side) }}
-                </td>
-                <td class="border-b border-line px-3 py-4 text-right dark:border-neutral-800">
-                  <UButton
-                    data-testid="guest-restore"
-                    icon="i-heroicons-arrow-uturn-left"
-                    color="primary"
-                    variant="ghost"
-                    size="sm"
-                    :aria-label="`恢復 ${guest.name}`"
-                    @click="openRestore(guest)"
-                  >
-                    恢復
-                  </UButton>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </template>
     </div>
 
@@ -1420,36 +1332,25 @@ async function confirmImport() {
     <ConfirmModal
       v-model:open="isRemoveOpen"
       title="確認移除"
-      :description="`確定要移除賓客「${removeTarget?.name ?? ''}」嗎？移除後可從回收區恢復。`"
+      :description="`確定要移除賓客「${removeTarget?.name ?? ''}」嗎？移除後無法自畫面恢復。`"
       confirm-label="移除"
       confirm-color="error"
       :loading="isRemoving"
       @confirm="confirmRemove"
     />
 
-    <!-- 恢復確認 -->
-    <ConfirmModal
-      v-model:open="isRestoreOpen"
-      title="確認恢復"
-      :description="`確定要恢復賓客「${restoreTarget?.name ?? ''}」嗎？`"
-      confirm-label="恢復"
-      confirm-color="primary"
-      :loading="isRestoring"
-      @confirm="confirmRestore"
-    />
-
     <!-- 批次移除確認 -->
     <ConfirmModal
       v-model:open="isBatchRemoveOpen"
       title="確認批次移除"
-      :description="`確定要移除選取的 ${selectedGuests.length} 位賓客嗎？移除後可從回收區恢復。`"
+      :description="`確定要移除選取的 ${selectedGuests.length} 位賓客嗎？移除後無法自畫面恢復。`"
       confirm-label="移除"
       confirm-color="error"
       :loading="isBatchWorking"
       @confirm="confirmBatchRemove"
     />
 
-    <!-- 全部略過確認（略過後不進回收區、無法恢復） -->
+    <!-- 全部略過確認（略過後無法恢復） -->
     <ConfirmModal
       v-model:open="isRejectAllOpen"
       title="確認全部略過"
