@@ -12,7 +12,7 @@ import {
   waitForApiCall,
 } from '../helpers'
 
-// 對應 spec/e2e-flows/03-guests.flow.md（賓客 CRUD + 軟刪 / 恢復 + 批次匯入 + LINE 綁定）
+// 對應 spec/e2e-flows/03-guests.flow.md（賓客 CRUD + 軟刪 + 批次匯入 + LINE 綁定；恢復僅 API 層）
 // Feature Background：
 //   - 賓客 CRUD / 匯入：已登入為管理員（Admin）；wedding-001 已選定
 //   - LINE 綁定：賓客（Guest）端透過專屬連結操作，不需登入
@@ -156,26 +156,23 @@ test.describe('賓客名單（Admin 端）', () => {
 
   test.describe('規則：成功恢復賓客', () => {
     test('成功恢復賓客', async ({ page }) => {
+      // 性質：API 層資料修復途徑（恢復不對管理員 UI 曝光，僅端點保留）
       // Given：guest-001 已新增且已移除
       await page.request.delete('/api/v1/weddings/wedding-001/guests/guest-001')
-      await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
 
-      // 已移除賓客預設不顯示於畫面
+      // 已移除賓客不顯示於畫面
+      await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
       await expect(findEntity(page, /陳大明/)).not.toBeVisible()
 
-      // When：展開「已移除」分區，在 guest-001 範圍觸發恢復
-      await page.getByRole('button', { name: /已移除/ }).click()
-      const apiCall = waitForApiCall(
-        page,
-        /\/guests\/guest-001\/restore(\?|$)/,
-        'POST',
+      // When：經 API 恢復 guest-001
+      const res = await page.request.post(
+        '/api/v1/weddings/wedding-001/guests/guest-001/restore',
       )
-      await findEntity(page, /陳大明/).getByRole('button', { name: /恢復/ }).click()
-      await maybeConfirm(page)
+      expect(res.ok()).toBeTruthy()
 
-      // Then：restore 端點被呼叫，陳大明重新出現於預設清單
-      await apiCall
-      await expect(getFeedbackElement(page)).toBeVisible()
+      // Then：軟刪資料未被硬刪，陳大明重新出現於清單
+      await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
+      await expect(findEntity(page, /陳大明/)).toBeVisible()
     })
   })
 

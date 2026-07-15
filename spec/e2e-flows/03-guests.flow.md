@@ -1,7 +1,7 @@
 # Flow: 賓客管理
 
 > 對應規格：spec/gherkin-feature/AddGuest.feature, UpdateGuest.feature, RemoveGuest.feature, RestoreGuest.feature, ImportGuestsBatch.feature, BindGuestLine.feature
-> 涵蓋頁面：/weddings/[weddingId]/guests（賓客列表 + 新增 / 編輯 / 移除 / 恢復 / 批次匯入）、賓客專屬 LINE 綁定連結 /guest/[guestId]/bind（賓客端）
+> 涵蓋頁面：/weddings/[weddingId]/guests（賓客列表 + 新增 / 編輯 / 移除 / 批次匯入；恢復不在 UI 曝光，僅 API 層）、賓客專屬 LINE 綁定連結 /guest/[guestId]/bind（賓客端）
 
 ## Background
 - 已登入為管理員（Admin）操作賓客 CRUD 與匯入
@@ -14,7 +14,7 @@
 
 1. 管理員能手動新增賓客（姓名、男女方、飲食、同行人數、兒童椅嬰兒數、聯絡方式、分類、備註）
 2. 管理員能更新既有賓客資料
-3. 管理員能軟刪除賓客並能恢復已軟刪除的賓客；已移除賓客預設不顯示於畫面（經展開「已移除」分區才可見、可恢復）
+3. 管理員能軟刪除賓客；已移除賓客不顯示於畫面（無回收區、UI 無恢復入口——恢復僅存在於 API 層作為資料修復途徑）
 4. 管理員能透過 Excel 檔批次匯入賓客，並感知匯入結果（筆數）
 5. 賓客能透過專屬連結綁定 LINE
 6. 賓客的識別欄位（name）與關鍵屬性（side / diet / category）可被使用者讀到
@@ -110,14 +110,14 @@ API 邊界保護。
 3. 若有 confirm dialog，完成確認
 4. 期待：
    - API spy：`DELETE /api/v1/weddings/wedding-001/guests/guest-001`
-   - guest-001 自畫面消失（已移除賓客預設不顯示，收於「已移除」分區）
+   - guest-001 自畫面消失（已移除賓客不顯示於畫面）
 
 ### Verification 策略（destructive）
 - 主要靠 API spy（DELETE / 軟刪端點）
-- UI：執行後「陳大明」不在預設清單
+- UI：執行後「陳大明」不在清單
 
 ### 不再凍結
-- confirm 形式、已移除賓客的呈現（隱藏 / 回收區）
+- confirm 形式
 
 ---
 
@@ -147,28 +147,21 @@ API 邊界保護。
 
 ---
 
-## Flow: 成功恢復賓客（happy-path）
+## Flow: 成功恢復賓客（happy-path，API 層）
 
 > 對應 Feature: 恢復賓客 → Scenario: 成功恢復賓客
+
+### 性質
+API 層資料修復途徑。恢復為領域命令且端點保留，但**不對管理員 UI 曝光**——
+已移除賓客不顯示於畫面，畫面上無恢復入口（使用者決策，2026-07-15）。
 
 ### 業務脈絡
 - guest-001 已新增且已移除
 
-### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/guests`（已移除賓客預設不顯示於畫面）
-2. 展開「已移除」分區
-3. 在已移除的 guest-001 範圍內觸發「恢復」
-4. 期待：
-   - API spy：`POST /api/v1/weddings/wedding-001/guests/guest-001/restore`
-   - guest-001 回到未移除清單
-
-### Verification 策略
-- UI：已移除賓客預設不可見（不干擾正式名單）
-- API spy（restore 端點）
-- UI：恢復後「陳大明」重新出現於預設清單
-
-### 不再凍結
-- 已移除分區進入方式（tab / filter / 折疊）
+### 驗證流程
+- guest-001 已移除狀態下，`POST .../guests/guest-001/restore`
+- 期待：2xx，該賓客回到未移除狀態（`GET .../guests` 中 deletedAt 為 null）
+- UI：恢復後「陳大明」重新出現於清單（軟刪資料未被硬刪的佐證）
 
 ---
 
@@ -296,9 +289,9 @@ API 邊界保護。
 ## Selector 策略（v2 通則）
 
 1. role + name regex 找賓客實體：`getByRole('row', { name: /陳大明/ })`
-2. 動作按鈕：`getByRole('button', { name: /新增|編輯|移除|恢復|匯入|綁定/ })`
+2. 動作按鈕：`getByRole('button', { name: /新增|編輯|移除|匯入|綁定/ })`
 3. 反饋 / 錯誤：`getByRole('alert')` 或 `getByText(/賓客不存在|賓客已移除|賓客未被移除|已綁定 LINE|檔案格式不正確/)`
-4. destructive / async outcome：`page.waitForRequest`（DELETE / restore / import / line-binding）
+4. destructive / async outcome：`page.waitForRequest`（DELETE / import / line-binding）；restore 無 UI 入口，直接以 `page.request` 打端點
 5. testid：fallback only（如同名賓客碰撞時 `guest-row-guest-001`）
 
 ---
