@@ -117,6 +117,30 @@ export interface GuestsImportedEvent {
   importedCount: number
 }
 
+// === 批次操作（issue #75）===
+// 單端點收 guestId 陣列；neon-http 無 transaction，以單一批次 SQL 語句執行，
+// 回報實際處理筆數供前端統計（傳入不存在／已移除的 id 不計入）
+
+export interface BatchDeleteGuestsBody {
+  guestIds: string[]
+}
+
+export interface GuestsBatchDeletedEvent {
+  weddingId: string
+  deletedCount: number
+}
+
+export interface BatchCategorizeGuestsBody {
+  guestIds: string[]
+  category: string
+}
+
+export interface GuestsBatchCategorizedEvent {
+  weddingId: string
+  category: string
+  updatedCount: number
+}
+
 // OAuth 起手資訊：LINE Login 未設定（configured: false）時前端退回 mock 綁定
 export interface GuestLineLoginInfo {
   configured: boolean

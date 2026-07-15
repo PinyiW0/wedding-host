@@ -15,6 +15,8 @@ import type { MatchConfidence } from '~/utils/guestMatch'
 
 import { z } from 'zod'
 import {
+  batchCategorizeGuests,
+  batchDeleteGuests,
   confirmPendingGuest,
   createGuest,
   deleteGuest,
@@ -336,6 +338,142 @@ const filteredGuests = computed(() => {
   return list
 })
 
+// === 批次操作（多選模式，issue #75）===
+// 比照 reception 批量報到的 batchMode／selectedIds；操作走批次單端點（單語句 SQL）
+const batchMode = ref(false)
+const selectedIds = ref(new Set<string>())
+const isBatchWorking = ref(false)
+
+// 實際操作對象：目前過濾結果 ∩ 已勾選（改篩選後看不見的不會被誤操作）
+const selectedGuests = computed(() =>
+  filteredGuests.value.filter(g => selectedIds.value.has(g.guestId)),
+)
+
+function toggleBatchMode() {
+  batchMode.value = !batchMode.value
+  selectedIds.value = new Set()
+}
+
+function exitBatchMode() {
+  batchMode.value = false
+  selectedIds.value = new Set()
+}
+
+function toggleSelect(guestId: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(guestId))
+    next.delete(guestId)
+  else
+    next.add(guestId)
+  selectedIds.value = next
+}
+
+function selectAllFiltered() {
+  selectedIds.value = new Set(filteredGuests.value.map(g => g.guestId))
+}
+
+// 批次移除（軟刪除；回報實際筆數，未命中者不計）
+const isBatchRemoveOpen = ref(false)
+
+async function confirmBatchRemove() {
+  if (isBatchWorking.value || selectedGuests.value.length === 0)
+    return
+  isBatchWorking.value = true
+  const ids = selectedGuests.value.map(g => g.guestId)
+  try {
+    const result = await batchDeleteGuests(weddingId.value, { guestIds: ids })
+    const skipped = ids.length - result.deletedCount
+    toast.add({
+      title: `已移除 ${result.deletedCount} 位賓客`,
+      description: skipped > 0 ? `${skipped} 位未處理，請重新整理後再試` : undefined,
+      color: 'success',
+    })
+    isBatchRemoveOpen.value = false
+    exitBatchMode()
+    await refresh()
+  }
+  catch (error: any) {
+    toast.add({
+      title: '批次移除失敗',
+      description: error?.data?.message || error?.statusMessage || '請稍後再試',
+      color: 'error',
+    })
+  }
+  finally {
+    isBatchWorking.value = false
+  }
+}
+
+// 批次改分類（自由字串，與單筆編輯一致；新分類會進入在用分類 union）
+const isBatchCategoryOpen = ref(false)
+const batchCategoryName = ref('')
+const batchCategoryError = ref('')
+
+function openBatchCategory() {
+  batchCategoryName.value = ''
+  batchCategoryError.value = ''
+  isBatchCategoryOpen.value = true
+}
+
+async function confirmBatchCategory() {
+  if (isBatchWorking.value || selectedGuests.value.length === 0)
+    return
+  const name = batchCategoryName.value.trim()
+  if (!name) {
+    batchCategoryError.value = '請輸入分類名稱'
+    return
+  }
+  isBatchWorking.value = true
+  batchCategoryError.value = ''
+  const ids = selectedGuests.value.map(g => g.guestId)
+  try {
+    const result = await batchCategorizeGuests(weddingId.value, { guestIds: ids, category: name })
+    toast.add({ title: `已將 ${result.updatedCount} 位賓客分類為「${name}」`, color: 'success' })
+    isBatchCategoryOpen.value = false
+    exitBatchMode()
+    await Promise.all([refresh(), refreshCategories()])
+  }
+  catch (error: any) {
+    batchCategoryError.value = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+  }
+  finally {
+    isBatchWorking.value = false
+  }
+}
+
+// === 待確認區一鍵處理（issue #75）：逐筆呼叫既有端點（量小），完成後統計回報 ===
+const isPendingBatchWorking = ref(false)
+const isRejectAllOpen = ref(false)
+
+async function runPendingBatch(action: (guestId: string) => Promise<unknown>, label: string) {
+  if (isPendingBatchWorking.value || pendingList.value.length === 0)
+    return
+  isPendingBatchWorking.value = true
+  const targets = [...pendingList.value]
+  try {
+    const results = await Promise.allSettled(targets.map(p => action(p.guestId)))
+    const succeeded = results.filter(r => r.status === 'fulfilled').length
+    const failed = results.length - succeeded
+    toast.add({
+      title: `${label}完成：成功 ${succeeded}、失敗 ${failed}`,
+      color: failed > 0 ? 'warning' : 'success',
+    })
+    await Promise.all([refresh(), refreshPending()])
+  }
+  finally {
+    isPendingBatchWorking.value = false
+  }
+}
+
+function confirmAllPending() {
+  return runPendingBatch(id => confirmPendingGuest(weddingId.value, id), '全部建立')
+}
+
+async function rejectAllPending() {
+  await runPendingBatch(id => rejectPendingGuest(weddingId.value, id), '全部略過')
+  isRejectAllOpen.value = false
+}
+
 // === 新增 / 編輯賓客表單 ===
 const schema = z.object({
   name: z.string().trim().min(1, '請輸入賓客姓名'),
@@ -640,20 +778,34 @@ async function confirmImport() {
         variant="outline"
         class="w-full sm:max-w-xs"
       />
-      <div data-testid="vibe-guests-filter" class="flex flex-wrap gap-2">
-        <button
-          v-for="tab in filterTabs"
-          :key="tab.key"
-          type="button"
-          :data-testid="`vibe-guests-filter-${tab.key}`"
-          class="rounded-full border px-4 py-1.5 text-sm transition-colors"
-          :class="filter === tab.key
-            ? 'border-ink bg-ink text-cream'
-            : 'border-line text-ink-500 hover:border-gold-deep'"
-          @click="filter = tab.key"
+      <div class="flex flex-wrap items-center gap-2">
+        <div data-testid="vibe-guests-filter" class="flex flex-wrap gap-2">
+          <button
+            v-for="tab in filterTabs"
+            :key="tab.key"
+            type="button"
+            :data-testid="`vibe-guests-filter-${tab.key}`"
+            class="rounded-full border px-4 py-1.5 text-sm transition-colors"
+            :class="filter === tab.key
+              ? 'border-ink bg-ink text-cream'
+              : 'border-line text-ink-500 hover:border-gold-deep'"
+            @click="filter = tab.key"
+          >
+            {{ tab.label }} {{ countOf(tab.key) }}
+          </button>
+        </div>
+        <!-- 多選模式切換（僅正式名單適用；命名避開凍結 strict regex） -->
+        <UButton
+          v-if="filter !== 'review'"
+          data-testid="vibe-guest-batch-toggle"
+          :icon="batchMode ? 'i-heroicons-x-mark' : 'i-heroicons-check-circle'"
+          color="neutral"
+          :variant="batchMode ? 'solid' : 'outline'"
+          size="sm"
+          @click="toggleBatchMode"
         >
-          {{ tab.label }} {{ countOf(tab.key) }}
-        </button>
+          {{ batchMode ? '取消多選' : '多選' }}
+        </UButton>
       </div>
     </div>
 
@@ -666,6 +818,39 @@ async function confirmImport() {
           description="賓客透過公開連結自助回覆後，會出現在這裡等待人工確認"
         />
         <div v-else class="space-y-4">
+          <!-- 一鍵處理工具列（issue #75）：逐筆呼叫既有端點，完成後統計回報 -->
+          <div
+            data-testid="vibe-pending-batch-bar"
+            class="flex flex-wrap items-center justify-between gap-3"
+          >
+            <span class="text-body text-ink-500 dark:text-neutral-400">
+              共 <span class="font-semibold text-ink dark:text-paper">{{ pendingList.length }}</span> 筆待確認回覆
+            </span>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                data-testid="vibe-pending-confirm-all"
+                icon="i-heroicons-user-plus"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :loading="isPendingBatchWorking"
+                @click="confirmAllPending"
+              >
+                全部建為新賓客
+              </UButton>
+              <UButton
+                data-testid="vibe-pending-reject-all"
+                icon="i-heroicons-x-mark"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :disabled="isPendingBatchWorking"
+                @click="isRejectAllOpen = true"
+              >
+                全部略過
+              </UButton>
+            </div>
+          </div>
           <div
             v-for="pending in pendingList"
             :key="pending.guestId"
@@ -760,6 +945,52 @@ async function confirmImport() {
 
       <!-- 正式名單 -->
       <template v-else>
+        <!-- 批次操作工具列（多選模式限定；比照 reception vibe-batch-toolbar 模式） -->
+        <div
+          v-if="batchMode"
+          data-testid="vibe-guest-batch-toolbar"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900"
+        >
+          <span class="text-body text-ink-500 dark:text-neutral-400">
+            已選 <span class="font-semibold text-ink dark:text-paper">{{ selectedGuests.length }}</span> 位
+          </span>
+          <div class="flex flex-wrap items-center gap-2">
+            <UButton
+              data-testid="vibe-guest-batch-select-all"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :disabled="filteredGuests.length === 0"
+              @click="selectAllFiltered"
+            >
+              全選結果
+            </UButton>
+            <UButton
+              data-testid="vibe-guest-batch-category"
+              icon="i-heroicons-tag"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :disabled="selectedGuests.length === 0"
+              @click="openBatchCategory"
+            >
+              改分類
+            </UButton>
+            <UButton
+              data-testid="vibe-guest-batch-remove"
+              icon="i-heroicons-trash"
+              color="error"
+              variant="soft"
+              size="sm"
+              :disabled="selectedGuests.length === 0"
+              :loading="isBatchWorking"
+              @click="isBatchRemoveOpen = true"
+            >
+              移除 {{ selectedGuests.length }} 位
+            </UButton>
+          </div>
+        </div>
+
         <!-- 賓客名單（未移除）— 編輯式表格 -->
         <table
           data-testid="guest-list"
@@ -767,6 +998,12 @@ async function confirmImport() {
         >
           <thead>
             <tr class="text-left text-overline uppercase text-gold-deep">
+              <th
+                v-if="batchMode"
+                scope="col"
+                aria-label="選取"
+                class="w-10 border-b border-line px-3 py-3.5"
+              />
               <th class="border-b border-line px-3 py-3.5 font-medium">
                 姓名
               </th>
@@ -797,6 +1034,15 @@ async function confirmImport() {
               :data-testid="`guest-row-${guest.guestId}`"
               class="transition-colors hover:bg-paper dark:hover:bg-neutral-900"
             >
+              <!-- 多選模式：勾選批次對象 -->
+              <td v-if="batchMode" class="border-b border-line px-3 py-4 dark:border-neutral-800">
+                <UCheckbox
+                  :model-value="selectedIds.has(guest.guestId)"
+                  :data-testid="`vibe-guest-batch-tick-${guest.guestId}`"
+                  :aria-label="`選取 ${guest.name}`"
+                  @update:model-value="toggleSelect(guest.guestId)"
+                />
+              </td>
               <td class="border-b border-line px-3 py-4 dark:border-neutral-800">
                 <span class="flex items-center gap-2.5">
                   <span
@@ -868,7 +1114,7 @@ async function confirmImport() {
               </td>
             </tr>
             <tr v-if="filteredGuests.length === 0">
-              <td colspan="6">
+              <td :colspan="batchMode ? 8 : 7">
                 <EmptyState
                   title="目前沒有賓客"
                   description="點擊「新增賓客」或「匯入名單」建立賓客名單"
@@ -1191,6 +1437,90 @@ async function confirmImport() {
       :loading="isRestoring"
       @confirm="confirmRestore"
     />
+
+    <!-- 批次移除確認 -->
+    <ConfirmModal
+      v-model:open="isBatchRemoveOpen"
+      title="確認批次移除"
+      :description="`確定要移除選取的 ${selectedGuests.length} 位賓客嗎？移除後可從回收區恢復。`"
+      confirm-label="移除"
+      confirm-color="error"
+      :loading="isBatchWorking"
+      @confirm="confirmBatchRemove"
+    />
+
+    <!-- 全部略過確認（略過後不進回收區、無法恢復） -->
+    <ConfirmModal
+      v-model:open="isRejectAllOpen"
+      title="確認全部略過"
+      :description="`確定要略過全部 ${pendingList.length} 筆待確認回覆嗎？略過後將不再顯示。`"
+      confirm-label="略過"
+      confirm-color="error"
+      :loading="isPendingBatchWorking"
+      @confirm="rejectAllPending"
+    />
+
+    <!-- 批次改分類 Modal -->
+    <UModal v-model:open="isBatchCategoryOpen">
+      <template #content>
+        <div data-testid="vibe-guest-batch-category-modal" class="bg-paper p-6 dark:bg-neutral-900">
+          <h3 class="text-body-l font-semibold text-ink dark:text-paper">
+            批次改分類
+          </h3>
+          <p class="mb-5 mt-1 text-caption text-ink-300">
+            將選取的 {{ selectedGuests.length }} 位賓客改為同一分類
+          </p>
+
+          <UAlert
+            v-if="batchCategoryError"
+            data-testid="vibe-guest-batch-category-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="batchCategoryError"
+            class="mb-4"
+          />
+
+          <UInput
+            v-model="batchCategoryName"
+            data-testid="vibe-guest-batch-category-input"
+            placeholder="輸入新分類名稱"
+            aria-label="批次分類名稱"
+            class="w-full"
+            @keyup.enter="confirmBatchCategory"
+          />
+          <USelectMenu
+            v-if="categoryList.length"
+            v-model="batchCategoryName"
+            data-testid="vibe-guest-batch-category-select"
+            :items="categorySelectItems"
+            value-key="value"
+            placeholder="從既有分類選擇"
+            class="mt-2 w-full"
+          />
+
+          <div class="mt-6 flex justify-end gap-3">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :disabled="isBatchWorking"
+              @click="isBatchCategoryOpen = false"
+            >
+              取消
+            </UButton>
+            <UButton
+              data-testid="vibe-guest-batch-category-submit"
+              color="neutral"
+              variant="solid"
+              :loading="isBatchWorking"
+              @click="confirmBatchCategory"
+            >
+              套用
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- 管理分類 Modal -->
     <UModal v-model:open="isCategoryOpen">
