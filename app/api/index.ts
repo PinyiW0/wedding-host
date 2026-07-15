@@ -36,6 +36,8 @@ export {
   updateGiftItem,
 } from './gifts.api'
 export {
+  batchCategorizeGuests,
+  batchDeleteGuests,
   bindGuestLine,
   createGuest,
   deleteGuest,

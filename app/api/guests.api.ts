@@ -1,6 +1,8 @@
 import type { MaybeRefOrGetter } from 'vue'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
+  BatchCategorizeGuestsBody,
+  BatchDeleteGuestsBody,
   BindGuestLineBody,
   CreateGuestBody,
   GuestCategoriesSavedEvent,
@@ -11,6 +13,8 @@ import type {
   GuestLineLoginInfo,
   GuestListItem,
   GuestRestoredEvent,
+  GuestsBatchCategorizedEvent,
+  GuestsBatchDeletedEvent,
   GuestsImportedEvent,
   GuestUpdatedEvent,
   ImportGuestsBody,
@@ -68,6 +72,21 @@ export function restoreGuest(weddingId: string, guestId: string) {
   return useHttp().post<GuestRestoredEvent>(
     '/api/v1/weddings/{weddingId}/guests/{guestId}/restore',
     { pathParams: { weddingId, guestId } },
+  )
+}
+
+// === 批次操作（issue #75）：單端點收 guestId 陣列 ===
+export function batchDeleteGuests(weddingId: string, body: BatchDeleteGuestsBody) {
+  return useHttp().post<GuestsBatchDeletedEvent>(
+    '/api/v1/weddings/{weddingId}/guests/batch-delete',
+    { pathParams: { weddingId }, body },
+  )
+}
+
+export function batchCategorizeGuests(weddingId: string, body: BatchCategorizeGuestsBody) {
+  return useHttp().post<GuestsBatchCategorizedEvent>(
+    '/api/v1/weddings/{weddingId}/guests/batch-category',
+    { pathParams: { weddingId }, body },
   )
 }
 
