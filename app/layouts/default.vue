@@ -36,6 +36,16 @@ const switcherItems = computed(() =>
     })),
 )
 
+// 手機抽屜版：選擇後同步收合抽屜（比照其他行動導覽連結的 @click 行為）
+const mobileSwitcherItems = computed(() =>
+  switcherItems.value.map(item => ({
+    ...item,
+    onSelect: () => {
+      isMobileMenuOpen.value = false
+    },
+  })),
+)
+
 // 全域導覽（未進入特定婚禮時顯示）；接待員只保留「接待報到」（帶 weddingId）
 const globalNav = computed(() => {
   // 接待員：接待報到 + 投影祝福審核
@@ -197,10 +207,14 @@ async function handleLogout() {
               aria-label="切換婚禮"
               class="group mt-1 flex w-full min-w-0 items-center gap-1 rounded text-left"
             >
-              <span class="truncate font-display text-base font-semibold text-ink transition-colors group-hover:text-gold-deep dark:text-paper">
+              <span class="truncate font-display text-base font-semibold text-ink dark:text-paper">
                 {{ wedding.title }}
               </span>
-              <UIcon name="i-heroicons-chevron-down" class="size-4 shrink-0 text-ink-500" />
+              <!-- 平常隱形、hover/鍵盤聚焦/選單開啟時淡入（佔位不變，位置不跳動） -->
+              <UIcon
+                name="i-heroicons-chevron-down"
+                class="size-4 shrink-0 text-ink-500 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-aria-expanded:opacity-100"
+              />
             </button>
           </UDropdownMenu>
           <p v-else class="mt-1 truncate font-display text-base font-semibold text-ink dark:text-paper">
@@ -364,7 +378,25 @@ async function handleLogout() {
               <p class="text-overline uppercase text-gold-deep">
                 {{ wedding ? 'The Wedding of' : 'EverAfter' }}
               </p>
-              <p class="truncate font-display text-xl font-semibold text-ink dark:text-paper">
+              <!-- 管理者：手機版同樣可下拉切換；觸控無 hover，箭頭以淡色常駐 -->
+              <UDropdownMenu
+                v-if="authStore.isAdmin && wedding"
+                :items="mobileSwitcherItems"
+                :content="{ align: 'start' }"
+              >
+                <button
+                  type="button"
+                  data-testid="vibe-wedding-switcher-mobile"
+                  aria-label="切換婚禮"
+                  class="flex w-full min-w-0 items-center gap-1 text-left"
+                >
+                  <span class="truncate font-display text-xl font-semibold text-ink dark:text-paper">
+                    {{ wedding.title }}
+                  </span>
+                  <UIcon name="i-heroicons-chevron-down" class="size-4 shrink-0 text-ink-300" />
+                </button>
+              </UDropdownMenu>
+              <p v-else class="truncate font-display text-xl font-semibold text-ink dark:text-paper">
                 {{ wedding?.title ?? 'EverAfter' }}
               </p>
             </div>
