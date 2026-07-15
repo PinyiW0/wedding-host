@@ -5,5 +5,16 @@ export default defineVitestConfig({
   test: {
     environment: 'nuxt',
     include: ['test/unit/**/*.{test,spec}.ts'],
+    environmentOptions: {
+      nuxt: {
+        overrides: {
+          // 本專案 apiBase 預設空字串（前綴內嵌於 *.api.ts 路徑），
+          // useHttp 煙霧測試需驗證 baseURL 有套上，故測試環境固定給 /api
+          runtimeConfig: {
+            public: { apiBase: '/api' },
+          },
+        },
+      },
+    },
   },
 })
