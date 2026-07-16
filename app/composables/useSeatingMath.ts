@@ -33,22 +33,15 @@ export function guestMeta(g: GuestListItem): string {
   return parts.join(' · ')
 }
 
-// 主桌專屬賓客：新郎新娘（新人）與雙方父母（雙親），推薦排序時優先帶入主桌
+// 主桌專屬賓客：由分類語意欄位決定（guest_categories.is_main_table），不再比對名稱字串（issue #94）
 export function isMainTableGuest(g: GuestListItem): boolean {
-  return g.category === '新人' || g.category === '雙親'
+  return g.categoryIsMainTable ?? false
 }
 
-// 縱向尊卑分層（數字小＝越靠主桌/舞台）：新人 → 家屬長輩 → 主管摯友 → 一般同學同事
-const FAMILY_CATEGORY_RE = /雙親|父母|家人|家屬|長輩|親戚/
-const VIP_CATEGORY_RE = /主管|貴賓|vip|摯友|朋友/i
-export function seniorityTier(category: string): number {
-  if (category === '新人')
-    return 0
-  if (FAMILY_CATEGORY_RE.test(category))
-    return 1
-  if (VIP_CATEGORY_RE.test(category))
-    return 2
-  return 3
+// 縱向尊卑分層（數字小＝越靠主桌/舞台）：0 新人 → 1 家屬長輩 → 2 主管貴賓摯友 → 3 一般。
+// 值來自 guest_categories.tier（建立分類時以名稱推斷初值，見 server/utils/guest-category.ts）
+export function seniorityTier(g: Pick<GuestListItem, 'categoryTier'>): number {
+  return g.categoryTier ?? 3
 }
 
 export const SIDE_ORDER: Record<GuestSide, number> = { groom: 0, bride: 1 }
@@ -59,7 +52,7 @@ export const DIET_ORDER: Record<GuestDiet, number> = { vegetarian: 0, meat: 1 }
 // （先分男女方分桌；同方內長輩家屬在前、一般同事同學在後；素食集中同桌；同類別相鄰）
 export function bySeatingPriority(a: GuestListItem, b: GuestListItem) {
   return SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
-    || seniorityTier(a.category) - seniorityTier(b.category)
+    || seniorityTier(a) - seniorityTier(b)
     || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
     || a.category.localeCompare(b.category, 'zh-Hant')
     || a.name.localeCompare(b.name, 'zh-Hant')
@@ -193,10 +186,10 @@ export function useSeatingMath(deps: SeatingMathDeps) {
 
   // 主桌入座者的角色排序：新人(0) → 雙親(1) → 其他家屬(2)
   function mainSeatRoleRank(guestId: string): number {
-    const category = guestById(guestId)?.category
-    if (category === '新人')
+    const g = guestById(guestId)
+    if (g?.categoryTier === 0) // 新人
       return 0
-    if (category === '雙親')
+    if (g?.categoryIsMainTable) // 雙親
       return 1
     return 2
   }

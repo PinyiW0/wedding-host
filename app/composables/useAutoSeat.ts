@@ -58,7 +58,7 @@ export function useAutoSeat(deps: AutoSeatDeps) {
         const mainGuests = pending
           .filter(isMainTableGuest)
           .sort((a, b) =>
-            seniorityTier(a.category) - seniorityTier(b.category)
+            seniorityTier(a) - seniorityTier(b)
             || SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
             || a.name.localeCompare(b.name, 'zh-Hant'))
         for (const g of mainGuests) {
@@ -70,7 +70,7 @@ export function useAutoSeat(deps: AutoSeatDeps) {
       // ② 其餘賓客：左右分流 + 縱向尊卑（已排進主桌者排除）
       const restSort = (a: GuestListItem, b: GuestListItem) =>
         SIDE_ORDER[a.side] - SIDE_ORDER[b.side]
-        || seniorityTier(a.category) - seniorityTier(b.category)
+        || seniorityTier(a) - seniorityTier(b)
         || DIET_ORDER[a.diet] - DIET_ORDER[b.diet]
         || a.name.localeCompare(b.name, 'zh-Hant')
       const planned = new Set(plan.map(p => p.guestId))
