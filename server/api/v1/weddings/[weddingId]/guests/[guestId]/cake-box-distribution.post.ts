@@ -11,6 +11,10 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxDistrib
   const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<DistributeCakeBoxBody>(event)
 
+  if (!body?.cakeBoxTypeId) {
+    throw createError({ statusCode: 400, statusMessage: '請選擇喜餅款式' })
+  }
+
   const db = useDb()
   const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
@@ -19,13 +23,13 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxDistrib
   if (guest.cakeBoxDistributedTypeId) {
     throw createError({ statusCode: 409, statusMessage: '喜餅已發放' })
   }
-  const cakeBoxTypeId = body?.cakeBoxTypeId ?? 'cakeboxtype-001'
-  // cakeBoxTypeId 需屬於本婚禮（issue #70 / L2）：防指向跨婚禮或幽靈款式
-  if (body?.cakeBoxTypeId) {
-    const [type] = await db.select({ id: cakeBoxTypes.cakeBoxTypeId }).from(cakeBoxTypes).where(and(eq(cakeBoxTypes.weddingId, weddingId), eq(cakeBoxTypes.cakeBoxTypeId, body.cakeBoxTypeId)))
-    if (!type) {
-      throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
-    }
+  // cakeBoxTypeId 需屬於本婚禮（issue #70 / L2）：防指向跨婚禮或幽靈款式。
+  // 原本 `?? 'cakeboxtype-001'` 的 default 配上 `if (body?.cakeBoxTypeId)` 會讓這段驗證在
+  // 未帶 body 時被整段跳過，反而把 seed 專屬的跨婚禮 id 寫進賓客 → 改為必填擋在入口。
+  const cakeBoxTypeId = body.cakeBoxTypeId
+  const [type] = await db.select({ id: cakeBoxTypes.cakeBoxTypeId }).from(cakeBoxTypes).where(and(eq(cakeBoxTypes.weddingId, weddingId), eq(cakeBoxTypes.cakeBoxTypeId, cakeBoxTypeId)))
+  if (!type) {
+    throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
   }
   await db.update(guests).set({ cakeBoxDistributedTypeId: cakeBoxTypeId }).where(eq(guests.guestId, guest.guestId))
 
