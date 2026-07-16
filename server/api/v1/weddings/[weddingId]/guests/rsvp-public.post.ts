@@ -22,6 +22,10 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
 
+  // 分類 find-or-create（weddings 存在檢查已在前，不為不存在的婚禮建分類）；未填一律落「其他」
+  const categoryName = body.relationCategory?.trim() || '其他'
+  const categoryId = await resolveCategoryId(db, weddingId, categoryName)
+
   const guestId = `guest-${crypto.randomUUID().slice(0, 8)}`
   await db.insert(guests).values({
     guestId,
@@ -29,7 +33,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     name: body.guestName.trim(),
     side: body.relationship ?? 'groom',
     diet: body.diet,
-    category: body.relationCategory || '其他',
+    categoryId,
     contact: body.phone || '',
     childChairCount: body.childChairCount,
     notes: null,

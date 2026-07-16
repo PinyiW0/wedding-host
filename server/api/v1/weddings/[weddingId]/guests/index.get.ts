@@ -4,9 +4,11 @@ import type { GuestListItem } from '../../../../../../app/types/api/guests'
 import { and, asc, eq, getTableColumns, isNull, ne, or } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
-import { guests } from '../../../../../db/schema'
+import { guestCategories, guests } from '../../../../../db/schema'
 
-type SlimRow = Omit<typeof guests.$inferSelect, 'blessing' | 'flowerDrawing'>
+// 合約回名稱；tier / isMainTable 供座位排序（名稱與語意脫鉤，issue #94），孤兒時以預設兜底
+interface CategoryCols { categoryName: string | null, categoryTier: number | null, categoryIsMainTable: boolean | null }
+type SlimRow = Omit<typeof guests.$inferSelect, 'blessing' | 'flowerDrawing'> & CategoryCols
 
 // 預設 slim：不撈 blessing / flowerDrawing（base64 手繪可達數十 KB/張），
 // 僅 RSVP 回覆管理頁（CSV 匯出、花圖下載）帶 ?fields=full 取完整欄位
@@ -31,7 +33,9 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
     name: g.name,
     side: g.side,
     diet: g.diet,
-    category: g.category,
+    category: g.categoryName ?? '',
+    categoryTier: g.categoryTier ?? 3,
+    categoryIsMainTable: g.categoryIsMainTable ?? false,
     contact: g.contact,
     childChairCount: g.childChairCount,
     notes: g.notes,
@@ -49,8 +53,15 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
     source: g.source ?? 'manual',
     deletedAt: g.deletedAt,
   })
+  // leftJoin 分類字典取名稱與 tier（必須 leftJoin：無 FK ⇒ 孤兒 categoryId 物理上可能存在，
+  // innerJoin 會讓那些賓客從名單無聲消失）
   if (full) {
-    const rows = await db.select().from(guests).where(where).orderBy(asc(guests.seq))
+    // full 分支須明確 select（原無參數 db.select() 掛 join 後回傳會變巢狀 → blessing 全 undefined）
+    const rows = await db.select({ ...getTableColumns(guests), ...categoryCols })
+      .from(guests)
+      .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
+      .where(where)
+      .orderBy(asc(guests.seq))
     return rows.map(g => ({
       ...toItem(g),
       blessing: g.blessing ?? null,
@@ -58,7 +69,11 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
     }))
   }
   const { blessing: _blessing, flowerDrawing: _flowerDrawing, ...slimColumns } = getTableColumns(guests)
-  const rows = await db.select(slimColumns).from(guests).where(where).orderBy(asc(guests.seq))
+  const rows = await db.select({ ...slimColumns, ...categoryCols })
+    .from(guests)
+    .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
+    .where(where)
+    .orderBy(asc(guests.seq))
   const items = rows.map(toItem)
   return isReception ? items.map(stripForReception) : items
 })

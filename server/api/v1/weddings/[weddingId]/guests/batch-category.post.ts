@@ -22,8 +22,10 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestsBatchCat
   }
 
   const db = useDb()
+  // 目標分類 find-or-create 成 categoryId（自由字串，打字即建分類）；合約仍回名稱
+  const categoryId = await resolveCategoryId(db, weddingId, category)
   const updated = await db.update(guests)
-    .set({ category })
+    .set({ categoryId })
     .where(and(
       eq(guests.weddingId, weddingId),
       inArray(guests.guestId, guestIds),

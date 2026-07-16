@@ -57,6 +57,13 @@
       "when": 1783995505647,
       "tag": "0007_fearless_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784195924512,
+      "tag": "0008_bright_green_goblin",
+      "breakpoints": true
     }
   ]
 }

@@ -1,27 +1,34 @@
 import type { H3Event } from 'h3'
 import type { GuestListItem } from '../../../../../../app/types/api/guests'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, getTableColumns, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
-import { guests } from '../../../../../db/schema'
+import { guestCategories, guests } from '../../../../../db/schema'
 
 // 待確認賓客清單：公開自助回覆（status='pending_review'）且未略過者
 export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[]> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
-  const rows = await db.select().from(guests).where(and(
-    eq(guests.weddingId, weddingId),
-    eq(guests.status, 'pending_review'),
-    isNull(guests.deletedAt),
-  )).orderBy(asc(guests.seq))
+  // leftJoin 取分類名稱與 tier（合約回名稱，issue #94）
+  const rows = await db.select({ ...getTableColumns(guests), ...categoryCols })
+    .from(guests)
+    .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
+    .where(and(
+      eq(guests.weddingId, weddingId),
+      eq(guests.status, 'pending_review'),
+      isNull(guests.deletedAt),
+    ))
+    .orderBy(asc(guests.seq))
   return rows.map(g => ({
     guestId: g.guestId,
     weddingId: g.weddingId,
     name: g.name,
     side: g.side,
     diet: g.diet,
-    category: g.category,
+    category: g.categoryName ?? '',
+    categoryTier: g.categoryTier ?? 3,
+    categoryIsMainTable: g.categoryIsMainTable ?? false,
     contact: g.contact,
     childChairCount: g.childChairCount,
     notes: g.notes,

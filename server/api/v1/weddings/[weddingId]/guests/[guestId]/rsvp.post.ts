@@ -33,8 +33,9 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
     patch.name = body.guestName
   if (body.relationship)
     patch.side = body.relationship
-  if (body.relationCategory)
-    patch.category = body.relationCategory
+  // 有填才動分類（保留空值不覆寫的現行語意）；find-or-create 成 categoryId
+  if (body.relationCategory?.trim())
+    patch.categoryId = await resolveCategoryId(db, weddingId, body.relationCategory.trim())
   if (body.phone)
     patch.contact = body.phone
   if (body.invitation !== undefined)
