@@ -149,10 +149,18 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     return seat ? buildOccupant(seat) : null
   }
 
-  // 圓桌要畫幾個座位：至少 capacity，若有展開座位（座號 > capacity）則一併畫出
+  // 圓桌要畫幾個座位 = capacity（正常席）+ 該桌兒童椅張數（額外加位、不佔正常席）。
+  // 兒童椅與正常席共用座號池，若只畫 capacity 格，兒童椅會吃掉正常席格子，
+  // 使「空位」少於實際可坐的大人數（畫面謊報客滿）。加上兒童椅張數後，
+  // 空位數 =（capacity + 兒椅）−（大人 + 兒椅）= capacity − 大人 = 剩餘正常席，與容量規則一致。
+  // maxSeat 作為保底：資料若因故超出（如舊資料座號膨脹），仍全部畫出、不讓座位憑空消失。
+  // 前提：假設場地桌面夠大、兒童椅可外加（台灣婚宴常見 10+1／10+2）。桌面小的場地
+  // 會要求兒童椅佔一個大人位，此式屆時會高估容量——變通是把該桌 capacity 直接調低。
   function slotCount(table: TableListItem): number {
-    const maxSeat = tableSeats(table.tableId).reduce((m, s) => Math.max(m, s.seatNumber), 0)
-    return Math.max(table.capacity, maxSeat)
+    const seats = tableSeats(table.tableId)
+    const childChairs = seats.filter(s => s.seatType === 'childChair').length
+    const maxSeat = seats.reduce((m, s) => Math.max(m, s.seatNumber), 0)
+    return Math.max(table.capacity + childChairs, maxSeat)
   }
 
   // 該桌已用正常席人頭（兒童椅不計）
