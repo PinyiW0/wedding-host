@@ -1,8 +1,10 @@
 import type { H3Event } from 'h3'
-import type { CreateGiftItemBody, GiftItemCreatedEvent } from '../../../../../../app/types/api/gifts'
+import type { CreateGiftItemBody, GiftCategory, GiftItemCreatedEvent } from '../../../../../../app/types/api/gifts'
 
 import { useDb } from '../../../../../db'
 import { giftItems } from '../../../../../db/schema'
+
+const GIFT_CATEGORIES: readonly GiftCategory[] = ['table', 'second_entrance', 'game', 'send_off', 'room_visit', 'tea_ceremony']
 
 export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -14,6 +16,9 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
   if (!body.category) {
     throw createError({ statusCode: 400, statusMessage: '請選擇禮物類別' })
   }
+  // 六類白名單：category 為 TS-only enum、DB 落 text 無 CHECK 約束，
+  // 毒值會讓 gifts.vue 的 map[item.category].push 擲 TypeError 炸掉整頁，且只能改 DB 救回
+  assertEnum(body.category, GIFT_CATEGORIES, '禮物類別')
 
   const giftItemId = `giftitem-${crypto.randomUUID().slice(0, 8)}`
   const item: GiftItemCreatedEvent = {
