@@ -812,13 +812,13 @@ async function submitCake() {
             <p class="text-caption text-ink-500 dark:text-neutral-400">
               {{ filteredGuests.length }} 位相符
             </p>
-            <!-- OFF 態軌道加深＋加輪廓（ring），灰色 switch 不再糊在背景；ON 態填金 -->
+            <!-- OFF 態軌道底色調深（正常 switch 樣式，不加框/ring），灰態不再糊在背景；ON 態填金 -->
             <USwitch
               v-model="showOnlyUnchecked"
               data-testid="vibe-reception-unchecked-toggle"
               label="只看未報到"
               size="sm"
-              :ui="{ base: 'ring-1 ring-inset ring-ink-300 data-[state=unchecked]:bg-ink-100 dark:ring-neutral-500 dark:data-[state=unchecked]:bg-neutral-700' }"
+              :ui="{ base: 'data-[state=unchecked]:bg-ink-300 dark:data-[state=unchecked]:bg-neutral-600' }"
             />
           </div>
         </div>
