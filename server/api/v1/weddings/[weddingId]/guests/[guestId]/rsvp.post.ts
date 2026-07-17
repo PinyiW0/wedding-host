@@ -4,7 +4,7 @@ import type { RsvpSubmittedEvent, SubmitRsvpBody } from '../../../../../../../ap
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { guests } from '../../../../../../db/schema'
+import { guests, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
@@ -53,6 +53,10 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
     patch.customAnswers = body.customAnswers
 
   await db.update(guests).set(patch).where(eq(guests.guestId, guest.guestId))
+
+  // 婉拒者不進排桌次（issue #96）：釋放先前已被安排的座位
+  if (body.attending === 'declined')
+    await db.delete(seats).where(eq(seats.guestId, guest.guestId))
 
   setResponseStatus(event, 201)
   return {
