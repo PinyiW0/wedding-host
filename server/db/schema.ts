@@ -59,7 +59,8 @@ export const guests = pgTable('guests', {
   name: text().notNull(),
   side: text().$type<'groom' | 'bride'>().notNull(),
   diet: text().$type<'meat' | 'vegetarian'>().notNull(),
-  category: text().notNull(),
+  // 分類改存 id（原為名稱字串外鍵，issue #94）：nullable，空白分類存 null、不在字典造空列
+  categoryId: text(),
   contact: text().notNull(),
   childChairCount: integer().notNull(),
   notes: text(),
@@ -81,13 +82,20 @@ export const guests = pgTable('guests', {
   customAnswers: jsonb().$type<Record<string, string | string[]>>(),
   status: text().$type<GuestStatus>(),
   source: text().$type<GuestSource>(),
-}, t => [index().on(t.weddingId)])
+}, t => [index().on(t.weddingId), index().on(t.categoryId)])
 
+// 婚禮層級分類字典：id 為 PK、(weddingId, name) 唯一（同場不得同名，DB 兜底併發 find-or-create）。
+// tier / isMainTable 為「語意欄位」——座位排序與主桌判定的唯一依據，不再由前端比對名稱字串
+// （建立分類時以名稱推斷初值，見 server/utils/guest-category.ts）。tier：0 新人／1 家屬長輩／
+// 2 主管貴賓摯友／3 一般（預設）。
 export const guestCategories = pgTable('guest_categories', {
   seq: integer().generatedByDefaultAsIdentity(),
+  categoryId: text().primaryKey(),
   weddingId: text().notNull(),
   name: text().notNull(),
-}, t => [primaryKey({ columns: [t.weddingId, t.name] })])
+  tier: integer().notNull().default(3),
+  isMainTable: boolean().notNull().default(false),
+}, t => [uniqueIndex().on(t.weddingId, t.name)])
 
 export const blessings = pgTable('blessings', {
   seq: integer().generatedByDefaultAsIdentity(),

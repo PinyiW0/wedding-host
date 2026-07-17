@@ -1,10 +1,10 @@
 import type { H3Event } from 'h3'
 import type { GuestUpdatedEvent, UpdateGuestBody } from '../../../../../../../app/types/api/guests'
 
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, getTableColumns, inArray } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { guests, seatingTables, seats } from '../../../../../../db/schema'
+import { guestCategories, guests, seatingTables, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
@@ -12,10 +12,16 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
   const body = await readBody<UpdateGuestBody>(event)
 
   const db = useDb()
-  const [existing] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId)))
+  // leftJoin 取分類名稱：一次查詢同時解決回傳的 category（不用再查一次字典）
+  const [existing] = await db
+    .select({ ...getTableColumns(guests), categoryName: guestCategories.name })
+    .from(guests)
+    .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
+    .where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId)))
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
+  const { categoryName: existingCategoryName, ...existingGuest } = existing
 
   // 數字欄與 enum 欄驗證（issue #70 / M4）：patch 的 partySize 會進座位重算，NaN 會靜默污染
   if (body.partySize !== undefined)
@@ -36,8 +42,12 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     patch.side = body.side
   if (body.diet !== undefined)
     patch.diet = body.diet
-  if (body.category !== undefined)
-    patch.category = body.category
+  // 分類 resolve 成 categoryId（在 404 檢查之後才建分類，避免對不存在的賓客留下副作用）；空白 → null
+  let categoryName = existingCategoryName ?? ''
+  if (body.category !== undefined) {
+    categoryName = body.category.trim()
+    patch.categoryId = await resolveCategoryId(db, weddingId, categoryName)
+  }
   if (body.contact !== undefined)
     patch.contact = body.contact
   if (body.partySize !== undefined)
@@ -59,11 +69,11 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
   // 空 patch 時不打 update（drizzle set({}) 會擲錯），直接回現值
   const [guest] = Object.keys(patch).length
     ? await db.update(guests).set(patch).where(eq(guests.guestId, guestId)).returning()
-    : [existing]
+    : [existingGuest]
 
   // 同行人數／兒童椅數變動時同步席位：原桌容得下→就地補齊或釋出；容不下→整組退回待排
-  const partyChanged = guest!.partySize !== existing.partySize
-    || guest!.childChairCount !== existing.childChairCount
+  const partyChanged = guest!.partySize !== existingGuest.partySize
+    || guest!.childChairCount !== existingGuest.childChairCount
   if (partyChanged) {
     const partySeats = await db.select().from(seats).where(eq(seats.guestId, guestId))
     if (partySeats.length) {
@@ -126,7 +136,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     name: guest!.name,
     side: guest!.side,
     diet: guest!.diet,
-    category: guest!.category,
+    category: categoryName,
     contact: guest!.contact,
     partySize: guest!.partySize,
     childChairCount: guest!.childChairCount,

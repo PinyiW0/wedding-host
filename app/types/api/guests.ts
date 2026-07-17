@@ -16,6 +16,9 @@ export interface GuestListItem {
   side: GuestSide
   diet: GuestDiet
   category: string
+  // 分類語意（來自 guest_categories，供座位排序；名稱與語意脫鉤，issue #94）；讀取端 ?? 3 / false 兜底
+  categoryTier?: number
+  categoryIsMainTable?: boolean
   contact: string
   // 需兒童椅的小嬰兒數（不吃大人菜、不佔正常席，該桌額外加位）
   childChairCount: number

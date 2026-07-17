@@ -1,28 +1,19 @@
 import type { H3Event } from 'h3'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
-import { guestCategories, guests } from '../../../../../db/schema'
+import { guestCategories } from '../../../../../db/schema'
 
-// 回傳「儲存清單（維持順序）∪ 未刪除賓客在用分類（補尾）」
+// 回傳該婚禮的分類字典（維持 seq 順序）。
+// 改造前需 union「在用分類」是因為寫入端不回寫字典；改用 categoryId 後寫入端一律 find-or-create
+// ⇒ in-use 必然已 stored，union 為純冗餘（且原本為此掃全表賓客含 base64，改造後只掃小表）（issue #94）。
 export default defineEventHandler(async (event: H3Event): Promise<string[]> => {
   const weddingId = getRouterParam(event, 'weddingId')!
-  const db = useDb()
-
-  const storedRows = await db.select().from(guestCategories).where(eq(guestCategories.weddingId, weddingId)).orderBy(asc(guestCategories.seq))
-  const stored = storedRows.map(c => c.name)
-
-  const seen = new Set(stored)
-  const inUse: string[] = []
-  const guestRows = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), isNull(guests.deletedAt))).orderBy(asc(guests.seq))
-  for (const g of guestRows) {
-    const name = g.category.trim()
-    if (!name || seen.has(name))
-      continue
-    seen.add(name)
-    inUse.push(name)
-  }
-
-  return [...stored, ...inUse]
+  const rows = await useDb()
+    .select({ name: guestCategories.name })
+    .from(guestCategories)
+    .where(eq(guestCategories.weddingId, weddingId))
+    .orderBy(asc(guestCategories.seq))
+  return rows.map(r => r.name)
 })

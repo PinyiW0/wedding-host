@@ -4,6 +4,8 @@
 import type { GuestSource, GuestStatus } from '../../../app/types/api/guests'
 import type { AttendingStatus, InvitationPreference } from '../../../app/types/api/rsvp'
 
+import { categoryIdByName } from './guest-categories'
+
 // 範例手繪小花（120×120 透明底 PNG）：供後台「查看回覆 / 下載花朵」即時示範
 const SAMPLE_FLOWER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAB2klEQVR42u3cwW0CMRRFUdeXZcpgQSPpIMWwSl9BFJBR0Nhj+/1zJa9YIP2jGQFj05okSZIkHfa4ff6aQgjku8vUQmFBF4EFXQQWdCFcyAVwIRfAhVwAFzJg7Y4LGbB2x4UMWLvjQgYswAKcBpkAXB5+ZTBXPFjQYItAAwyGhhaMDCsYGVIwMpxwZDDBwFDCkYEEA+80tJ/vD8gpwC/M/y7AG+G+A7sDNOAOsCtDA+6MuxpyeeARuCshlwYeibsKclngK3BXQHb1uorzkK/EnY1c8hYNOBh4Bu5MZMCAAQMGDHgV5ErA5R4XzsSdgVzyoT9cwIB3Rq4AXHrbLOBw5HRgx1eCf4t2AC0YuO2W58EOgpcHbknZk1Xgz1jsqvRPO/H7ouEWONkAOPxsEtwCpwsBh58PBuwEP2DAgAEDBgwXMmS3aAswYMCAAQMGDBgyXMCAIduyAxhyv3X/usFNA36h/rUAb4x8BDsDulVrFdwrkFvVKgC36q2AOwq5qT/0CsA0B0LPBKY3GPoM7hlkWp3hj14/g3vmfXVRo4AFWCsjmxpg7YpsWqHQphOIbQqA5RatbT5omZJP0fI9WIAFWINwIbuCBViA5XuwOiObUjCy6QRim4IkSRrdE+f3PrB7gDi1AAAAAElFTkSuQmCC'
 
@@ -38,7 +40,7 @@ export interface MockGuest {
   name: string
   side: 'groom' | 'bride'
   diet: 'meat' | 'vegetarian'
-  category: string
+  categoryId: string
   contact: string
   // 兒童椅嬰兒數（不吃大人菜、不佔正常席、該桌額外加位）
   childChairCount: number
@@ -70,9 +72,14 @@ export interface MockGuest {
   source?: GuestSource
 }
 
-function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 'side' | 'diet' | 'category'>): MockGuest {
+// seed 維持用「分類名稱」宣告（可讀），工廠內部轉成 categoryId（issue #94）
+type MockGuestSeed = Omit<Partial<MockGuest>, 'categoryId'> & Pick<MockGuest, 'guestId' | 'name' | 'side' | 'diet'> & { category: string }
+
+function g(partial: MockGuestSeed): MockGuest {
+  const { category, ...rest } = partial
+  const weddingId = rest.weddingId ?? 'wedding-001'
   return {
-    weddingId: 'wedding-001',
+    weddingId,
     contact: '0900000000',
     childChairCount: 0,
     notes: null,
@@ -86,7 +93,8 @@ function g(partial: Partial<MockGuest> & Pick<MockGuest, 'guestId' | 'name' | 's
     partySize: 1,
     tableName: null,
     deletedAt: null,
-    ...partial,
+    ...rest,
+    categoryId: categoryIdByName(weddingId, category),
   }
 }
 
