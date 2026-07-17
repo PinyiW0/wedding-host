@@ -168,9 +168,27 @@ const checkInRate = computed(() => {
 })
 
 // === 報到 ===
-// 報到成功後的大字桌次回饋（issue #25）：賓客報到完第一句話是「我坐哪桌」，
-// 單筆與批量共用；下一次報到覆蓋，不用計時器（避免時序敏感測試）
+// 報到成功後的桌次回饋（issue #25）：賓客報到完第一句話是「我坐哪桌」，單筆與批量共用。
+// 低調細長一行、約 5 秒後自動淡出（不擾民）；下一次報到覆蓋、可手動關閉
 const lastCheckIns = ref<{ name: string, table: string }[]>([])
+let checkInBannerTimer: ReturnType<typeof setTimeout> | null = null
+const CHECKIN_BANNER_MS = 3000
+function showCheckInFeedback(entries: { name: string, table: string }[]) {
+  lastCheckIns.value = entries
+  if (checkInBannerTimer)
+    clearTimeout(checkInBannerTimer)
+  checkInBannerTimer = setTimeout(() => {
+    lastCheckIns.value = []
+    checkInBannerTimer = null
+  }, CHECKIN_BANNER_MS)
+}
+function dismissCheckInFeedback() {
+  lastCheckIns.value = []
+  if (checkInBannerTimer) {
+    clearTimeout(checkInBannerTimer)
+    checkInBannerTimer = null
+  }
+}
 
 const checkingInId = ref<string | null>(null)
 async function checkIn(guest: GuestListItem) {
@@ -180,7 +198,7 @@ async function checkIn(guest: GuestListItem) {
   try {
     await checkInGuest(weddingId.value, guest.guestId)
     ensureStatus(guest.guestId).checkedIn = true
-    lastCheckIns.value = [{ name: guest.name, table: guestTable(guest) }]
+    showCheckInFeedback([{ name: guest.name, table: guestTable(guest) }])
     toast.add({ title: `${guest.name} 報到成功`, color: 'success' })
   }
   catch (error: any) {
@@ -243,7 +261,7 @@ async function batchCheckIn() {
       }
     })
     if (succeeded.length) {
-      lastCheckIns.value = succeeded.map(g => ({ name: g.name, table: guestTable(g) }))
+      showCheckInFeedback(succeeded.map(g => ({ name: g.name, table: guestTable(g) })))
       toast.add({ title: `已報到 ${succeeded.length} 組`, color: 'success' })
     }
     if (failedNames.length) {
@@ -420,6 +438,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollTimer)
     clearInterval(pollTimer)
+  if (checkInBannerTimer)
+    clearTimeout(checkInBannerTimer)
 })
 
 function tableSeats(tableId: string): SeatListItem[] {
@@ -859,35 +879,37 @@ async function submitCake() {
           </div>
         </div>
 
-        <!-- 報到完成大字桌次回饋：賓客一問「我坐哪桌」即答；下一次報到覆蓋 -->
-        <div
-          v-if="lastCheckIns.length"
-          data-testid="vibe-checkin-table-banner"
-          class="mb-4 shrink-0 rounded-lg border border-gold bg-gold-light/20 px-5 py-4"
+        <!-- 報到完成桌次回饋：低調細長一行，約 5 秒後自動淡出（reduced-motion 友善）、可手動關閉 -->
+        <Transition
+          enter-active-class="transition-opacity duration-200"
+          enter-from-class="opacity-0"
+          leave-active-class="transition-opacity duration-500 motion-reduce:transition-none"
+          leave-to-class="opacity-0"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <p class="text-overline uppercase text-gold-deep">
-                報到完成 · 桌次
-              </p>
-              <p
-                v-for="entry in lastCheckIns"
-                :key="entry.name"
-                class="mt-1 truncate font-display text-2xl font-semibold text-ink dark:text-paper"
-              >
-                {{ entry.name }}<span class="mx-2 font-normal text-ink-300">—</span>{{ entry.table }}
-              </p>
-            </div>
+          <div
+            v-if="lastCheckIns.length"
+            data-testid="vibe-checkin-table-banner"
+            class="mb-3 flex shrink-0 items-center gap-2 rounded-md border border-gold/40 bg-gold-light/15 px-3 py-2"
+          >
+            <UIcon name="i-heroicons-check-circle" class="size-4 shrink-0 text-gold-deep" />
+            <p class="min-w-0 flex-1 text-body text-ink dark:text-paper">
+              <span class="text-caption text-gold-deep">報到完成</span>
+              <span v-for="(entry, i) in lastCheckIns" :key="entry.name">
+                <span v-if="i > 0" class="text-ink-300">、</span>
+                <span class="ml-1 font-medium">{{ entry.name }}</span>
+                <span class="mx-1 text-ink-300">·</span>{{ entry.table }}
+              </span>
+            </p>
             <UButton
               icon="i-heroicons-x-mark"
               color="neutral"
               variant="ghost"
               size="xs"
               aria-label="關閉桌次提示"
-              @click="lastCheckIns = []"
+              @click="dismissCheckInFeedback"
             />
           </div>
-        </div>
+        </Transition>
 
         <!-- 結果卡片列表；lg 鎖高內捲、flex-1 讓空狀態撐滿 -->
         <div data-testid="reception-list" class="flex flex-col space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-auto">
