@@ -66,6 +66,7 @@ export {
   updateProjectionSettings,
 } from './projection.api'
 export {
+  cancelCakeBoxDistribution,
   checkInGuest,
   distributeCakeBox,
   getReceptionStatus,

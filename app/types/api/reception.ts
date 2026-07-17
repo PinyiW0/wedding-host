@@ -52,3 +52,8 @@ export interface CakeBoxDistributedEvent {
   guestId: string
   cakeBoxTypeId: string
 }
+
+// 取消喜餅發放（後台由新人／管理者操作；接待台維持單向確認、不可取消）
+export interface CakeBoxDistributionCancelledEvent {
+  guestId: string
+}

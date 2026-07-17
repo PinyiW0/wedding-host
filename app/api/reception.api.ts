@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CakeBoxDistributedEvent,
+  CakeBoxDistributionCancelledEvent,
   DistributeCakeBoxBody,
   GiftMoneyRecordedEvent,
   GiftMoneyUpdatedEvent,
@@ -56,5 +57,13 @@ export function distributeCakeBox(weddingId: string, guestId: string, body: Dist
   return useHttp().post<CakeBoxDistributedEvent>(
     '/api/v1/weddings/{weddingId}/guests/{guestId}/cake-box-distribution',
     { pathParams: { weddingId, guestId }, body },
+  )
+}
+
+// 取消喜餅發放（後台限定；接待員無此權限，由後端 RBAC 擋）
+export function cancelCakeBoxDistribution(weddingId: string, guestId: string) {
+  return useHttp().delete<CakeBoxDistributionCancelledEvent>(
+    '/api/v1/weddings/{weddingId}/guests/{guestId}/cake-box-distribution',
+    { pathParams: { weddingId, guestId } },
   )
 }
