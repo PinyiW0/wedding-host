@@ -92,6 +92,9 @@ export function useSeatingMath(deps: SeatingMathDeps) {
 
   const activeGuests = computed(() => guests.value.filter(g => !g.deletedAt))
 
+  // 可排席名單：RSVP 婉拒者不進排桌次（issue #96）；已入座者的姓名查找仍走 activeGuests
+  const seatableGuests = computed(() => activeGuests.value.filter(g => g.rsvpAttending !== 'declined'))
+
   // 每張桌的座位（key = tableId；每桌保證有 key，無座位為空陣列）
   const seatsByTable = computed<Record<string, SeatListItem[]>>(() => {
     const map: Record<string, SeatListItem[]> = {}
@@ -273,15 +276,16 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     return ids
   })
   const unseatedGuests = computed(() =>
-    activeGuests.value.filter(g => !seatedGuestIds.value.has(g.guestId)),
+    seatableGuests.value.filter(g => !seatedGuestIds.value.has(g.guestId)),
   )
-  const seatedCount = computed(() => activeGuests.value.length - unseatedGuests.value.length)
+  const seatedCount = computed(() => seatableGuests.value.length - unseatedGuests.value.length)
 
   // 側欄固定依男女方→分類分群顯示，方便辨識
   const sidebarGuests = computed(() => [...unseatedGuests.value].sort(bySeatingPriority))
 
   return {
     activeGuests,
+    seatableGuests,
     seatsByTable,
     guestName,
     guestSide,
