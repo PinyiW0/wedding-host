@@ -1077,7 +1077,8 @@ async function submitCake() {
         </div>
 
         <!-- 桌次平面（米色點陣畫布 + 桌卡） -->
-        <div class="min-h-0 flex-1 overflow-auto">
+        <!-- 不在此層捲動：tab bar 固定在頂端，改由 UTabs 內容區（:ui.content）內部捲動 -->
+        <div class="flex min-h-0 flex-1 flex-col">
           <div v-if="(tables ?? []).length === 0" data-testid="vibe-reception-table-empty" class="flex h-full flex-col">
             <EmptyState
               bordered
@@ -1093,6 +1094,8 @@ async function submitCake() {
             color="primary"
             variant="link"
             size="sm"
+            class="flex min-h-0 flex-1 flex-col"
+            :ui="{ content: 'min-h-0 flex-1 overflow-auto' }"
           >
             <!-- 檢視一：桌次圖（現況，預設）——每桌圓圈 + 報到率環 -->
             <template #map>
