@@ -7,7 +7,7 @@ defineProps<{
   /** 待排席賓客（已依男女方→尊卑→分類排序） */
   guests: GuestListItem[]
   seatedCount: number
-  /** 全部有效賓客數（決定空狀態文案） */
+  /** 可排席賓客數（不含 RSVP 婉拒者，決定空狀態文案） */
   activeCount: number
   isAutoSeating: boolean
   isClearing: boolean

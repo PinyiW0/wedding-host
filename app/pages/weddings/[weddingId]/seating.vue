@@ -47,7 +47,7 @@ async function refreshAll() {
 
 // === 座位計算純邏輯（occupant 展開、容量人頭、主桌男左女右、側欄排序）===
 const {
-  activeGuests,
+  seatableGuests,
   seatsByTable,
   guestName,
   guestById,
@@ -304,7 +304,7 @@ async function confirmRemoveTable() {
 
 // === 安排座位（表單 Modal，與拖曳並存：保留可達路徑） ===
 const guestOptions = computed(() =>
-  activeGuests.value.map(g => ({ label: g.name, value: g.guestId })),
+  seatableGuests.value.map(g => ({ label: g.name, value: g.guestId })),
 )
 const tableOptions = computed(() =>
   (tables.value ?? []).map(t => ({ label: t.tableName, value: t.tableId })),
@@ -810,7 +810,7 @@ onMounted(async () => {
       <SeatingGuestSidebar
         :guests="sidebarGuests"
         :seated-count="seatedCount"
-        :active-count="activeGuests.length"
+        :active-count="seatableGuests.length"
         :is-auto-seating="isAutoSeating"
         :is-clearing="isClearing"
         :pending-guest-id="pendingGuestId"

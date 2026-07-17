@@ -26,6 +26,10 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
+  // 婉拒者不進排桌次（issue #96）：API 層也擋，避免繞過 UI 直接入座
+  if (guest.rsvpAttending === 'declined') {
+    throw createError({ statusCode: 409, statusMessage: '賓客已婉拒出席，無法安排座位' })
+  }
   const partySize = guest.partySize
   const childChairCount = guest.childChairCount
   const normalHeads = Math.max(0, partySize - childChairCount)
