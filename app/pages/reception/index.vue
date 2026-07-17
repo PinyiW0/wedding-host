@@ -109,7 +109,7 @@ function guestDetail(g: GuestListItem) {
 const searchTerm = ref('')
 
 // 禮金快速金額（接待確認用）
-const quickAmounts = [1200, 3600, 6000, 12000]
+const quickAmounts = [1200, 1600, 2000, 2200, 2600, 3600, 6000, 6600]
 
 // 接待狀態：報到 / 禮金 / 喜餅
 // GuestListItem 不含接待狀態欄位，改由 reception-status 端點取得，操作後就地更新
