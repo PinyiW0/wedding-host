@@ -1,10 +1,11 @@
 // app/composables/useSeatingChartExport.ts
-// 下載桌次圖（issue #73 自 seating.vue 拆出，行為不變）：
-// 以 canvas 依桌位 positionX/Y 畫圓桌地圖（標餐點分類、不含賓客姓名），匯出 JPEG / PDF
-// 餐廳人員據此知道哪桌在哪、各桌素葷與兒童需求
+// 下載桌次圖（issue #73 自 seating.vue 拆出；issue #101 增賓客名單版）：
+// 以 canvas 依桌位 positionX/Y 畫圓桌地圖，匯出 JPEG / PDF。兩個版本共用版面計算：
+//   - 備餐地圖：圈內標桌名 + 餐點分類（不含賓客姓名），供餐廳人員知道各桌素葷與兒童需求
+//   - 賓客名單：圈內列出該桌所有賓客姓名，供列印／分享的桌位示意圖
 import type { MaybeRefOrGetter } from 'vue'
 import type { SeatingMath } from '~/composables/useSeatingMath'
-import type { TableListItem, VenueMarkerListItem } from '~/types/api/seating'
+import type { SeatListItem, TableListItem, VenueMarkerListItem } from '~/types/api/seating'
 
 // 桌次圖 canvas 配色：對齊 main.css 設計 token，使下載圖與畫面語意色（cls）一致
 const CHART = {
@@ -22,6 +23,25 @@ const CHART = {
 // A4 直式畫布尺寸（pt；下載時整頁縮放讓所有桌次塞進一頁）
 const A4_W = 595
 const A4_H = 842
+const M = 24 // 頁邊距
+const TITLE_H = 70 // 頁首保留高度（抬頭 + 總計 + 圖例）
+const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
+
+// 桌次圓在重排座標系中的幾何：主桌大圓（RM）置頂置中，其餘小圓（R）分兩欄密排
+interface ChartItem { t: TableListItem, cx: number, cy: number, r: number, isMain: boolean }
+// 版面計算結果：items（各桌重排座標）+ 縮放與位移（把重排座標映射到 A4 可用區）
+interface ChartLayout {
+  items: ChartItem[]
+  scale: number
+  baseX: number
+  baseY: number
+  minX: number
+  minY: number
+  maxX: number
+  contentW: number
+  contentH: number
+  stageCx: number
+}
 
 interface ChartExportDeps {
   weddingId: MaybeRefOrGetter<string>
@@ -87,6 +107,11 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     return { veg, meat, child }
   })
 
+  // 全場已入座人數（賓客名單版抬頭）：所有座位數（含兒童椅、含同組展開）
+  const totalSeated = computed(() =>
+    tables.value.reduce((n, t) => n + tableSeats(t.tableId).length, 0),
+  )
+
   // 地圖桌序：主桌排前
   const chartTables = computed(() => {
     const main = mainTable.value
@@ -94,43 +119,18 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     return main ? [main, ...rest] : rest
   })
 
-  function buildChartCanvas(): HTMLCanvasElement {
+  // 座位 → 顯示姓名（兒童椅加「(童)」標記）；同組多席各佔一格、重覆列出對齊實際座位數
+  function occupantName(seat: SeatListItem): string {
+    const name = guestById(seat.guestId)?.name ?? seat.guestId
+    return seat.seatType === 'childChair' ? `${name}(童)` : name
+  }
+
+  // === 共用版面：把各桌重排成「主桌置頂、其餘男左女右兩欄密排」，再等比縮放塞進一頁 A4 ===
+  function computeChartLayout(): ChartLayout | null {
     const list = chartTables.value
-    const M = 24
-    const TITLE_H = 70
-    const dpr = 4 // 高解析，列印清晰
-    const canvas = document.createElement('canvas')
-    canvas.width = A4_W * dpr
-    canvas.height = A4_H * dpr
-    const ctx = canvas.getContext('2d')!
-    ctx.scale(dpr, dpr)
-    ctx.fillStyle = CHART.paper
-    ctx.fillRect(0, 0, A4_W, A4_H)
-    const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
-
-    // 抬頭、總計、圖例（固定於頁首）
-    ctx.fillStyle = CHART.ink
-    ctx.font = `600 16px ${FONT}`
-    ctx.fillText('桌次圖 · 備餐需求', M, 24)
-    ctx.font = `9px ${FONT}`
-    ctx.fillStyle = CHART.inkSoft
-    ctx.fillText(`素食 ${totalMeal.value.veg} 份 · 葷食 ${totalMeal.value.meat} 份 · 兒童椅 ${totalMeal.value.child}`, M, 40)
-    let lx = M
-    for (const item of [{ c: CHART.veg.stroke, t: '全素食桌' }, { c: CHART.mixed.stroke, t: '葷食含素' }, { c: CHART.meat.stroke, t: '全葷食桌' }]) {
-      ctx.fillStyle = item.c
-      ctx.beginPath()
-      ctx.arc(lx + 4, 53, 4, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = CHART.inkSoft
-      ctx.fillText(item.t, lx + 12, 56)
-      lx += 12 + ctx.measureText(item.t).width + 14
-    }
-
     if (list.length === 0)
-      return canvas
+      return null
 
-    // 緊湊重排（桌間距固定縮小、不沿用畫面上的鬆散座標）：
-    // 主桌置頂置中，其餘依「男左女右」分兩欄、各欄依原 Y 序由上而下密排。
     const centerXOf = (t: TableListItem) => t.positionX + (isMainTable(t) ? 100 : 84)
     const main = list.find(t => isMainTable(t)) ?? null
     const others = list.filter(t => !isMainTable(t))
@@ -146,7 +146,6 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     const leftCx = R
     const rightCx = R + colStep
     const STAGE_H = 26
-    interface ChartItem { t: TableListItem, cx: number, cy: number, r: number, isMain: boolean }
     const items: ChartItem[] = []
     if (main)
       items.push({ t: main, cx: (leftCx + rightCx) / 2, cy: STAGE_H + RM, r: RM, isMain: true })
@@ -177,84 +176,203 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     const scale = Math.min(availW / contentW, availH / contentH)
     const baseX = M + (availW - contentW * scale) / 2 - minX * scale
     const baseY = TITLE_H + (availH - contentH * scale) / 2 - minY * scale
-
-    // 舞台（內容頂端置中）
     const stageCx = baseX + ((minX + maxX) / 2) * scale
+
+    return { items, scale, baseX, baseY, minX, minY, maxX, contentW, contentH, stageCx }
+  }
+
+  function drawStage(ctx: CanvasRenderingContext2D, layout: ChartLayout) {
     ctx.strokeStyle = CHART.line
     ctx.setLineDash([4, 3])
-    ctx.strokeRect(stageCx - 30, baseY + 2, 60, 16)
+    ctx.strokeRect(layout.stageCx - 30, layout.baseY + 2, 60, 16)
     ctx.setLineDash([])
     ctx.textAlign = 'center'
     ctx.fillStyle = CHART.inkFaint
     ctx.font = `9px ${FONT}`
-    ctx.fillText('舞台', stageCx, baseY + 13)
+    ctx.fillText('舞台', layout.stageCx, layout.baseY + 13)
+  }
 
-    // 桌次圓（位置、半徑、字級皆隨整體縮放）
-    for (const it of items) {
-      const cx = baseX + it.cx * scale
-      const cy = baseY + it.cy * scale
-      const r = it.r * scale
-      const cat = mealCategory(it.t.tableId)
-      ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.fillStyle = cat.fill
-      ctx.fill()
-      ctx.lineWidth = Math.max(0.8, (it.isMain ? 3 : 2) * scale)
-      ctx.strokeStyle = cat.stroke
-      ctx.stroke()
-      const child = tableMeal(it.t.tableId).child
-      const nameFont = Math.max(8, (it.isMain ? 17 : 14) * scale)
-      const subFont = Math.max(7, 11 * scale)
-      ctx.fillStyle = CHART.ink
-      ctx.font = `600 ${nameFont}px ${FONT}`
-      ctx.fillText(it.t.tableName, cx, cy - (child > 0 ? subFont + 2 : subFont * 0.4), r * 1.7)
-      ctx.font = `${subFont}px ${FONT}`
-      ctx.fillStyle = cat.text
-      ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
-      if (child > 0) {
-        ctx.fillStyle = CHART.veg.stroke
-        ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
-      }
-    }
-
-    // 場地標記：下載圖是緊湊重排、無法 1:1 對位 → 以「螢幕座標正規化 0..1 → chart 內容框映射」
-    // 保留相對方位（右側送客區仍在右側），以虛線矩形＋label 呈現（比照舞台樣式）
+  // 場地標記：下載圖是緊湊重排、無法 1:1 對位 → 以「螢幕座標正規化 0..1 → chart 內容框映射」
+  // 保留相對方位（右側送客區仍在右側），以虛線矩形＋label 呈現（比照舞台樣式）
+  function drawMarkers(ctx: CanvasRenderingContext2D, layout: ChartLayout) {
     const markers = venueMarkers.value
-    if (markers.length > 0) {
-      const SCREEN_BLOCK = 290
-      let sMinX = Infinity
-      let sMinY = Infinity
-      let sMaxX = -Infinity
-      let sMaxY = -Infinity
-      for (const t of list) {
-        const p = deps.tablePos(t)
-        sMinX = Math.min(sMinX, p.x)
-        sMinY = Math.min(sMinY, p.y)
-        sMaxX = Math.max(sMaxX, p.x + SCREEN_BLOCK)
-        sMaxY = Math.max(sMaxY, p.y + SCREEN_BLOCK)
-      }
-      const sW = Math.max(1, sMaxX - sMinX)
-      const sH = Math.max(1, sMaxY - sMinY)
-      ctx.setLineDash([4, 3])
-      ctx.strokeStyle = CHART.line
-      ctx.font = `9px ${FONT}`
-      for (const m of markers) {
-        const p = deps.markerPos(m)
-        const nx = Math.min(1, Math.max(0, (p.x + m.width / 2 - sMinX) / sW))
-        const ny = Math.min(1, Math.max(0, (p.y + m.height / 2 - sMinY) / sH))
-        const mcx = baseX + (minX + nx * contentW) * scale
-        const mcy = baseY + (minY + ny * contentH) * scale
-        const mw = Math.min(80, Math.max(32, m.width * 0.4))
-        const mh = Math.min(28, Math.max(14, m.height * 0.4))
-        ctx.strokeRect(mcx - mw / 2, mcy - mh / 2, mw, mh)
-        ctx.fillStyle = CHART.inkFaint
-        ctx.fillText(m.label, mcx, mcy + 3, mw - 4)
-      }
-      ctx.setLineDash([])
+    if (markers.length === 0)
+      return
+    const list = chartTables.value
+    const SCREEN_BLOCK = 290
+    let sMinX = Infinity
+    let sMinY = Infinity
+    let sMaxX = -Infinity
+    let sMaxY = -Infinity
+    for (const t of list) {
+      const p = deps.tablePos(t)
+      sMinX = Math.min(sMinX, p.x)
+      sMinY = Math.min(sMinY, p.y)
+      sMaxX = Math.max(sMaxX, p.x + SCREEN_BLOCK)
+      sMaxY = Math.max(sMaxY, p.y + SCREEN_BLOCK)
     }
+    const sW = Math.max(1, sMaxX - sMinX)
+    const sH = Math.max(1, sMaxY - sMinY)
+    ctx.setLineDash([4, 3])
+    ctx.strokeStyle = CHART.line
+    ctx.font = `9px ${FONT}`
+    for (const m of markers) {
+      const p = deps.markerPos(m)
+      const nx = Math.min(1, Math.max(0, (p.x + m.width / 2 - sMinX) / sW))
+      const ny = Math.min(1, Math.max(0, (p.y + m.height / 2 - sMinY) / sH))
+      const mcx = layout.baseX + (layout.minX + nx * layout.contentW) * layout.scale
+      const mcy = layout.baseY + (layout.minY + ny * layout.contentH) * layout.scale
+      const mw = Math.min(80, Math.max(32, m.width * 0.4))
+      const mh = Math.min(28, Math.max(14, m.height * 0.4))
+      ctx.strokeRect(mcx - mw / 2, mcy - mh / 2, mw, mh)
+      ctx.fillStyle = CHART.inkFaint
+      ctx.fillText(m.label, mcx, mcy + 3, mw - 4)
+    }
+    ctx.setLineDash([])
+  }
 
+  // 桌次圖繪製骨架：白底 A4 → 抬頭（各版本自訂）→ 舞台 → 逐桌畫圓（各版本自訂）→ 場地標記
+  function renderChart(
+    drawHeader: (ctx: CanvasRenderingContext2D) => void,
+    drawTableCircle: (ctx: CanvasRenderingContext2D, it: ChartItem, layout: ChartLayout) => void,
+  ): HTMLCanvasElement {
+    const dpr = 4 // 高解析，列印清晰
+    const canvas = document.createElement('canvas')
+    canvas.width = A4_W * dpr
+    canvas.height = A4_H * dpr
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(dpr, dpr)
+    ctx.fillStyle = CHART.paper
+    ctx.fillRect(0, 0, A4_W, A4_H)
+
+    drawHeader(ctx) // 抬頭以預設 textAlign='start' 靠左繪製
+    const layout = computeChartLayout()
+    if (!layout)
+      return canvas
+    drawStage(ctx, layout) // 之後 textAlign 切為 'center'，供圓桌與標記置中繪製
+    for (const it of layout.items)
+      drawTableCircle(ctx, it, layout)
+    drawMarkers(ctx, layout)
     ctx.textAlign = 'start'
     return canvas
+  }
+
+  // 備餐地圖：圈內標桌名 + 餐點分類，圓圈依分類上色（行為同 issue #73）
+  function buildChartCanvas(): HTMLCanvasElement {
+    return renderChart(
+      (ctx) => {
+        ctx.fillStyle = CHART.ink
+        ctx.font = `600 16px ${FONT}`
+        ctx.fillText('桌次圖 · 備餐需求', M, 24)
+        ctx.font = `9px ${FONT}`
+        ctx.fillStyle = CHART.inkSoft
+        ctx.fillText(`素食 ${totalMeal.value.veg} 份 · 葷食 ${totalMeal.value.meat} 份 · 兒童椅 ${totalMeal.value.child}`, M, 40)
+        let lx = M
+        for (const item of [{ c: CHART.veg.stroke, t: '全素食桌' }, { c: CHART.mixed.stroke, t: '葷食含素' }, { c: CHART.meat.stroke, t: '全葷食桌' }]) {
+          ctx.fillStyle = item.c
+          ctx.beginPath()
+          ctx.arc(lx + 4, 53, 4, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = CHART.inkSoft
+          ctx.fillText(item.t, lx + 12, 56)
+          lx += 12 + ctx.measureText(item.t).width + 14
+        }
+      },
+      (ctx, it, layout) => {
+        const cx = layout.baseX + it.cx * layout.scale
+        const cy = layout.baseY + it.cy * layout.scale
+        const r = it.r * layout.scale
+        const cat = mealCategory(it.t.tableId)
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.fillStyle = cat.fill
+        ctx.fill()
+        ctx.lineWidth = Math.max(0.8, (it.isMain ? 3 : 2) * layout.scale)
+        ctx.strokeStyle = cat.stroke
+        ctx.stroke()
+        const child = tableMeal(it.t.tableId).child
+        const nameFont = Math.max(8, (it.isMain ? 17 : 14) * layout.scale)
+        const subFont = Math.max(7, 11 * layout.scale)
+        ctx.fillStyle = CHART.ink
+        ctx.font = `600 ${nameFont}px ${FONT}`
+        ctx.fillText(it.t.tableName, cx, cy - (child > 0 ? subFont + 2 : subFont * 0.4), r * 1.7)
+        ctx.font = `${subFont}px ${FONT}`
+        ctx.fillStyle = cat.text
+        ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
+        if (child > 0) {
+          ctx.fillStyle = CHART.veg.stroke
+          ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
+        }
+      },
+    )
+  }
+
+  // 圈內列賓客姓名：桌名置頂、姓名依人數 1～2 欄排列，字級隨圓半徑縮放
+  function drawNamesInCircle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, names: string[]) {
+    if (names.length === 0) {
+      ctx.fillStyle = CHART.inkFaint
+      ctx.font = `${Math.max(7, r * 0.28)}px ${FONT}`
+      ctx.textBaseline = 'middle'
+      ctx.fillText('尚無入座', cx, cy + r * 0.15, r * 1.4)
+      ctx.textBaseline = 'alphabetic'
+      return
+    }
+    const cols = names.length > 5 ? 2 : 1
+    const rows = Math.ceil(names.length / cols)
+    const top = cy - r * 0.28 // 桌名下方起排
+    const bottom = cy + r * 0.8
+    const lineH = (bottom - top) / rows
+    const nameFont = Math.max(6, Math.min(lineH * 0.72, r * (cols === 1 ? 0.32 : 0.24)))
+    ctx.font = `${nameFont}px ${FONT}`
+    ctx.fillStyle = CHART.ink
+    ctx.textBaseline = 'middle'
+    const colGap = r * 0.66 // 兩欄中心間距
+    for (let i = 0; i < names.length; i++) {
+      const col = cols === 1 ? 0 : Math.floor(i / rows) // 欄優先填滿（左欄由上到下、再右欄）
+      const row = cols === 1 ? i : i % rows
+      const nx = cols === 1 ? cx : (col === 0 ? cx - colGap / 2 : cx + colGap / 2)
+      const ny = top + lineH * (row + 0.5)
+      const maxW = cols === 1 ? r * 1.5 : r * 0.72
+      ctx.fillText(names[i]!, nx, ny, maxW)
+    }
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  // 賓客名單版：圈內列出該桌所有賓客姓名（可列印／分享的桌位示意圖）
+  function buildNameChartCanvas(): HTMLCanvasElement {
+    return renderChart(
+      (ctx) => {
+        ctx.fillStyle = CHART.ink
+        ctx.font = `600 16px ${FONT}`
+        ctx.fillText('桌次圖 · 賓客名單', M, 24)
+        ctx.font = `9px ${FONT}`
+        ctx.fillStyle = CHART.inkSoft
+        ctx.fillText(`已入座 ${totalSeated.value} 人 · 共 ${tables.value.length} 桌`, M, 40)
+      },
+      (ctx, it, layout) => {
+        const cx = layout.baseX + it.cx * layout.scale
+        const cy = layout.baseY + it.cy * layout.scale
+        const r = it.r * layout.scale
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.fillStyle = CHART.paper
+        ctx.fill()
+        ctx.lineWidth = Math.max(0.8, (it.isMain ? 3 : 2) * layout.scale)
+        ctx.strokeStyle = it.isMain ? CHART.mixed.stroke : CHART.line
+        ctx.stroke()
+        // 桌名置於圈內頂端
+        const nameFont = Math.max(8, (it.isMain ? 15 : 12) * layout.scale)
+        ctx.fillStyle = it.isMain ? CHART.mixed.text : CHART.ink
+        ctx.font = `600 ${nameFont}px ${FONT}`
+        ctx.fillText(it.t.tableName, cx, cy - r * 0.6, r * 1.6)
+        // 賓客姓名（依座號排序）
+        const names = tableSeats(it.t.tableId)
+          .slice()
+          .sort((a, b) => a.seatNumber - b.seatNumber)
+          .map(occupantName)
+        drawNamesInCircle(ctx, cx, cy, r, names)
+      },
+    )
   }
 
   function triggerDownload(blob: Blob, filename: string) {
@@ -266,11 +384,11 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     URL.revokeObjectURL(url)
   }
 
-  function downloadChartJpeg() {
-    buildChartCanvas().toBlob(
+  function downloadCanvasJpeg(canvas: HTMLCanvasElement, filename: string) {
+    canvas.toBlob(
       (blob) => {
         if (blob)
-          triggerDownload(blob, `桌次圖-${toValue(deps.weddingId)}.jpg`)
+          triggerDownload(blob, filename)
         else
           toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
       },
@@ -280,8 +398,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
   }
 
   // 自製單張影像 PDF：內嵌 canvas 匯出的 JPEG（DCTDecode），免裝套件
-  function downloadChartPdf() {
-    const canvas = buildChartCanvas()
+  function canvasToPdfBlob(canvas: HTMLCanvasElement): Blob {
     const bin = atob(canvas.toDataURL('image/jpeg', 0.92).split(',')[1] ?? '')
     const jpeg = new Uint8Array(bin.length)
     for (let i = 0; i < bin.length; i++)
@@ -321,14 +438,40 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     push(enc(xs))
     push(enc(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`))
 
-    triggerDownload(new Blob(parts as BlobPart[], { type: 'application/pdf' }), `桌次圖-${toValue(deps.weddingId)}.pdf`)
+    return new Blob(parts as BlobPart[], { type: 'application/pdf' })
   }
 
-  // 下載桌次圖下拉選單：JPEG / PDF
-  const downloadItems = [[
-    { label: '下載 JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadChartJpeg() },
-    { label: '下載 PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadChartPdf() },
-  ]]
+  const wid = () => toValue(deps.weddingId)
+  function downloadChartJpeg() {
+    downloadCanvasJpeg(buildChartCanvas(), `桌次圖-${wid()}.jpg`)
+  }
+  function downloadChartPdf() {
+    triggerDownload(canvasToPdfBlob(buildChartCanvas()), `桌次圖-${wid()}.pdf`)
+  }
+  function downloadNameChartJpeg() {
+    downloadCanvasJpeg(buildNameChartCanvas(), `桌位示意圖-${wid()}.jpg`)
+  }
+  function downloadNameChartPdf() {
+    triggerDownload(canvasToPdfBlob(buildNameChartCanvas()), `桌位示意圖-${wid()}.pdf`)
+  }
 
-  return { downloadItems, downloadChartJpeg, downloadChartPdf }
+  // 下載桌次圖下拉選單：備餐地圖（餐點分類）/ 賓客名單（桌位示意圖），各含 JPEG / PDF
+  const downloadItems = [
+    [
+      { label: '備餐地圖 · JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadChartJpeg() },
+      { label: '備餐地圖 · PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadChartPdf() },
+    ],
+    [
+      { label: '賓客名單 · JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadNameChartJpeg() },
+      { label: '賓客名單 · PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadNameChartPdf() },
+    ],
+  ]
+
+  return {
+    downloadItems,
+    downloadChartJpeg,
+    downloadChartPdf,
+    downloadNameChartJpeg,
+    downloadNameChartPdf,
+  }
 }

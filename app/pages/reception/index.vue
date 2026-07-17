@@ -534,6 +534,20 @@ function seatChipClass(seat: SeatListItem): string {
     ? 'border border-success-600 bg-success-500 text-white'
     : 'border border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'
 }
+// 一桌報到率：已報到席 / 總席（含兒童椅加位；同組展開為多席，各佔一格）。空桌 rate=0
+function tableCheckIn(tableId: string): { done: number, total: number, rate: number } {
+  const seats = tableSeats(tableId)
+  const total = seats.length
+  const done = seats.filter(isSeatCheckedIn).length
+  return { done, total, rate: total > 0 ? done / total : 0 }
+}
+
+// 桌次圖檢視切換：桌次圖（平面配置，預設）/ 桌次清單（逐桌展開賓客小圓圈，快速核對整桌）
+const floorView = ref('map')
+const floorViewTabs = [
+  { label: '桌次圖', icon: 'i-heroicons-squares-2x2', slot: 'map', value: 'map' },
+  { label: '桌次清單', icon: 'i-heroicons-list-bullet', slot: 'list', value: 'list' },
+]
 // 此組正常席人頭 = 本人 + 同行
 const newGuestNormalHeads = computed(() => 1 + (Number(newGuestForm.plusOneCount) || 0))
 // 桌次選項：首項為「先不排桌」，其餘標示正常席入座 / 座位數，現場一眼看出哪桌還有空位
@@ -1024,71 +1038,165 @@ async function submitCake() {
               description="點擊「新增桌次」開始安排現場座位"
             />
           </div>
-          <div
+          <UTabs
             v-else
-            data-testid="vibe-reception-floor-plan"
-            class="rounded-lg border border-line bg-paper p-5 shadow-sm"
-            :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
+            v-model="floorView"
+            :items="floorViewTabs"
+            color="neutral"
+            variant="pill"
+            size="sm"
           >
-            <div class="mb-5 flex justify-center">
-              <span class="rounded border border-dashed border-line px-7 py-1.5 text-overline text-ink-300">
-                舞台
-              </span>
-            </div>
-            <!-- 圓桌平面：主桌單獨面對舞台、其餘雙數並列；只標示是哪一桌 + 入座數 -->
-            <div class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+            <!-- 檢視一：桌次圖（現況，預設）——每桌圓圈 + 報到率環 -->
+            <template #map>
               <div
-                v-for="table in orderedTables"
-                :key="table.tableId"
-                :data-testid="`vibe-reception-table-${table.tableId}`"
-                class="flex flex-col items-center"
-                :class="isMainTable(table) && 'sm:col-span-2'"
+                data-testid="vibe-reception-floor-plan"
+                class="rounded-lg border border-line bg-paper p-5 shadow-sm"
+                :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
               >
-                <!-- 圓桌：標示桌名 + 入座數（主桌金色強調、較大、面對舞台） -->
-                <div
-                  class="flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 px-3 text-center transition-colors"
-                  :class="isMainTable(table)
-                    ? 'max-w-[200px] border-gold bg-gold-light/25 dark:border-gold dark:bg-gold-deep/20'
-                    : 'max-w-[150px] border-line bg-paper dark:border-neutral-700 dark:bg-neutral-800'"
-                >
-                  <span
-                    class="line-clamp-2 font-display font-medium leading-tight text-ink dark:text-paper"
-                    :class="isMainTable(table) ? 'text-xl' : 'text-base'"
-                  >{{ table.tableName }}</span>
-                  <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
-                    {{ normalSeatCount(table.tableId) }} / {{ table.capacity }} 位
-                  </span>
-                  <span v-if="childChairCount(table.tableId) > 0" class="text-caption text-gold-deep">
-                    +兒童椅 {{ childChairCount(table.tableId) }}
+                <div class="mb-5 flex justify-center">
+                  <span class="rounded border border-dashed border-line px-7 py-1.5 text-overline text-ink-300">
+                    舞台
                   </span>
                 </div>
-                <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
-                  面對舞台
-                </p>
-                <!-- 展開列出個別席位（名字1 / 名字-兒童1），方便接待現場核對 -->
-                <div
-                  v-if="tableSeats(table.tableId).length > 0"
-                  :data-testid="`vibe-reception-seats-${table.tableId}`"
-                  class="mt-2 flex flex-wrap justify-center gap-1"
-                >
-                  <span
-                    v-for="seat in tableSeats(table.tableId)"
-                    :key="`${seat.guestId}-${seat.seatNumber}`"
-                    class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption transition-colors"
-                    :class="seatChipClass(seat)"
-                    :title="isSeatCheckedIn(seat) ? '已報到' : '未報到'"
+                <!-- 圓桌平面：主桌單獨面對舞台、其餘雙數並列；只標示是哪一桌 + 入座數 -->
+                <div class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                  <div
+                    v-for="table in orderedTables"
+                    :key="table.tableId"
+                    :data-testid="`vibe-reception-table-${table.tableId}`"
+                    class="flex flex-col items-center"
+                    :class="isMainTable(table) && 'sm:col-span-2'"
                   >
-                    <UIcon
-                      v-if="seat.seatType === 'childChair'"
-                      name="i-heroicons-sparkles"
-                      class="size-3 shrink-0"
-                    />
-                    {{ seatLabel(seat) }}
-                  </span>
+                    <!-- 圓桌：標示桌名 + 入座數 + 報到率環（主桌金色強調、較大、面對舞台） -->
+                    <div
+                      class="relative flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 px-3 text-center transition-colors"
+                      :class="isMainTable(table)
+                        ? 'max-w-[200px] border-gold bg-gold-light/25 dark:border-gold dark:bg-gold-deep/20'
+                        : 'max-w-[150px] border-line bg-paper dark:border-neutral-700 dark:bg-neutral-800'"
+                    >
+                      <!-- 報到率環：success 弧線由正上方順時針，弧長 = 已報到席 / 總席；空桌不畫弧 -->
+                      <svg
+                        v-if="tableCheckIn(table.tableId).total > 0"
+                        class="pointer-events-none absolute inset-0 size-full -rotate-90 text-success-500"
+                        viewBox="0 0 100 100"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="48"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="3"
+                          stroke-linecap="round"
+                          :stroke-dasharray="`${(tableCheckIn(table.tableId).rate * 301.6).toFixed(1)} 301.6`"
+                        />
+                      </svg>
+                      <span
+                        class="line-clamp-2 font-display font-medium leading-tight text-ink dark:text-paper"
+                        :class="isMainTable(table) ? 'text-xl' : 'text-base'"
+                      >{{ table.tableName }}</span>
+                      <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
+                        {{ normalSeatCount(table.tableId) }} / {{ table.capacity }} 位
+                      </span>
+                      <span v-if="childChairCount(table.tableId) > 0" class="text-caption text-gold-deep">
+                        +兒童椅 {{ childChairCount(table.tableId) }}
+                      </span>
+                      <span
+                        v-if="tableCheckIn(table.tableId).total > 0"
+                        class="mt-0.5 text-caption font-medium text-success-600 dark:text-success-400"
+                      >
+                        報到 {{ tableCheckIn(table.tableId).done }}/{{ tableCheckIn(table.tableId).total }}
+                      </span>
+                    </div>
+                    <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
+                      面對舞台
+                    </p>
+                    <!-- 展開列出個別席位（名字1 / 名字-兒童1），方便接待現場核對 -->
+                    <div
+                      v-if="tableSeats(table.tableId).length > 0"
+                      :data-testid="`vibe-reception-seats-${table.tableId}`"
+                      class="mt-2 flex flex-wrap justify-center gap-1"
+                    >
+                      <span
+                        v-for="seat in tableSeats(table.tableId)"
+                        :key="`${seat.guestId}-${seat.seatNumber}`"
+                        class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption transition-colors"
+                        :class="seatChipClass(seat)"
+                        :title="isSeatCheckedIn(seat) ? '已報到' : '未報到'"
+                      >
+                        <UIcon
+                          v-if="seat.seatType === 'childChair'"
+                          name="i-heroicons-sparkles"
+                          class="size-3 shrink-0"
+                        />
+                        {{ seatLabel(seat) }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </template>
+
+            <!-- 檢視二：桌次清單——每桌垂直展開、賓客小圓圈依報到狀態（已報到綠、未報到淡） -->
+            <template #list>
+              <div data-testid="vibe-reception-list" class="space-y-4">
+                <div
+                  v-for="table in orderedTables"
+                  :key="table.tableId"
+                  :data-testid="`vibe-reception-list-table-${table.tableId}`"
+                  class="rounded-lg border border-line bg-paper p-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                >
+                  <!-- 桌首：桌名 + 入座數 + 已報到/總數 -->
+                  <div class="flex items-center justify-between gap-2 border-b border-line pb-1.5 dark:border-neutral-800">
+                    <div class="flex items-baseline gap-2">
+                      <span
+                        class="font-display text-base font-medium"
+                        :class="isMainTable(table) ? 'text-gold-deep' : 'text-ink dark:text-paper'"
+                      >{{ table.tableName }}</span>
+                      <span class="text-caption text-ink-500 dark:text-neutral-400">
+                        {{ normalSeatCount(table.tableId) }}/{{ table.capacity }} 位
+                      </span>
+                    </div>
+                    <span
+                      v-if="tableCheckIn(table.tableId).total > 0"
+                      class="text-caption font-medium text-success-600 dark:text-success-400"
+                    >
+                      已報到 {{ tableCheckIn(table.tableId).done }}/{{ tableCheckIn(table.tableId).total }}
+                    </span>
+                  </div>
+                  <!-- 賓客小圓圈：色碼依報到狀態，姓名在下方；同組/兒童椅各佔一格 -->
+                  <div
+                    v-if="tableSeats(table.tableId).length > 0"
+                    class="mt-3 flex flex-wrap gap-x-3 gap-y-2"
+                  >
+                    <div
+                      v-for="seat in tableSeats(table.tableId)"
+                      :key="`${seat.guestId}-${seat.seatNumber}`"
+                      class="flex w-14 flex-col items-center gap-1"
+                      :title="isSeatCheckedIn(seat) ? '已報到' : '未報到'"
+                    >
+                      <div
+                        class="flex size-10 items-center justify-center rounded-full border-2 transition-colors"
+                        :class="isSeatCheckedIn(seat)
+                          ? 'border-success-600 bg-success-500 text-white'
+                          : 'border-dashed border-ink-200 bg-paper text-ink-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'"
+                      >
+                        <UIcon v-if="isSeatCheckedIn(seat)" name="i-heroicons-check" class="size-5" />
+                        <UIcon v-else-if="seat.seatType === 'childChair'" name="i-heroicons-sparkles" class="size-4" />
+                      </div>
+                      <span class="line-clamp-1 max-w-full text-caption text-ink-600 dark:text-neutral-300">
+                        {{ seatLabel(seat) }}
+                      </span>
+                    </div>
+                  </div>
+                  <p v-else class="mt-3 text-caption text-ink-400 dark:text-neutral-500">
+                    尚無入座
+                  </p>
+                </div>
+              </div>
+            </template>
+          </UTabs>
         </div>
       </div>
     </div>

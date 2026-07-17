@@ -420,7 +420,7 @@ onMounted(async () => {
               <span class="size-2.5 rounded-full bg-success-600" />兒童椅
             </span>
           </div>
-          <!-- 下載桌次圖：餐廳備餐用地圖（含餐點分類）；點開下拉選 JPEG / PDF -->
+          <!-- 下載桌次圖：備餐地圖（餐點分類）/ 賓客名單（桌位示意圖），各含 JPEG / PDF -->
           <UDropdownMenu :items="downloadItems" :content="{ align: 'end' }">
             <UButton
               data-testid="vibe-seating-download"
