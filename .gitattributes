@@ -1,0 +1,4 @@
+# 設計系統 UI 參考頁：內嵌大量 CSS/資產的靜態 HTML，
+# 非專案原始碼，不納入 GitHub 語言統計、且在 PR diff 中摺疊
+spec/ui-config/ui-reference/*.html linguist-generated=true
+doc/**/*.html                       linguist-documentation=true
