@@ -11,12 +11,14 @@ import type {
 
 import { z } from 'zod'
 import {
+  cancelCakeBoxDistribution,
   configureCakeBoxAssignment,
   createCakeBoxExtraOrder,
   createCakeBoxType,
   deleteCakeBoxExtraOrder,
   deleteCakeBoxType,
   excludeGuestCakeBox,
+  getReceptionStatus,
   listCakeBoxAssignments,
   listCakeBoxExclusions,
   listCakeBoxExtraOrders,
@@ -73,6 +75,55 @@ const { data: extraOrders, refresh: refreshExtra } = await listCakeBoxExtraOrder
   weddingId,
   { default: () => [] },
 )
+
+// 已發放狀態（後台檢視 + 取消發放）：來源同接待台 reception-status，cakeBoxTypeId != null = 已領喜餅
+const { data: receptionStatus, refresh: refreshReceptionStatus } = await getReceptionStatus(
+  weddingId,
+  { default: () => [] },
+)
+const distributedByGuest = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  for (const s of receptionStatus.value ?? []) {
+    if (s.cakeBoxTypeId)
+      map[s.guestId] = s.cakeBoxTypeId
+  }
+  return map
+})
+// 已發放款式名（供表格徽章；款式若已刪除退回「已發放」）
+function distributedTypeName(guestId: string): string | null {
+  const typeId = distributedByGuest.value[guestId]
+  if (!typeId)
+    return null
+  return (cakeBoxTypes.value ?? []).find(t => t.cakeBoxTypeId === typeId)?.name ?? '已發放'
+}
+
+// 取消喜餅發放（後台由新人／管理者操作；接待員無此權限，由後端 RBAC 擋 403）
+const cancelTarget = ref<{ guestId: string, name: string } | null>(null)
+const isCancelOpen = ref(false)
+const isCancelling = ref(false)
+function openCancelDistribution(guestId: string, name: string) {
+  cancelTarget.value = { guestId, name }
+  isCancelOpen.value = true
+}
+async function confirmCancelDistribution() {
+  const target = cancelTarget.value
+  if (!target || isCancelling.value)
+    return
+  isCancelling.value = true
+  try {
+    await cancelCakeBoxDistribution(weddingId.value, target.guestId)
+    await refreshReceptionStatus()
+    toast.add({ title: `已取消「${target.name}」的喜餅發放`, color: 'success' })
+    isCancelOpen.value = false
+  }
+  catch (error: any) {
+    const message = error?.data?.message || error?.statusMessage || '請稍後再試'
+    toast.add({ title: '取消發放失敗', description: message, color: 'error' })
+  }
+  finally {
+    isCancelling.value = false
+  }
+}
 
 // 款式 CRUD 後同步重抓「款式」與「指派」兩支 GET：
 // 領取清單表格的已指派列讀的是 assignments 的 cakeBoxTypeName（後端依當前款式即時帶出），
@@ -1062,11 +1113,14 @@ async function removeExtraOrder(extraOrderId: string) {
                       <th scope="col" class="px-4 py-2.5 font-medium">
                         禮盒款式
                       </th>
+                      <th scope="col" class="px-4 py-2.5 font-medium">
+                        發放狀態
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-if="filteredPickup.length === 0">
-                      <td colspan="3" class="px-4 py-8 text-center text-caption text-ink-400 dark:text-neutral-500">
+                      <td colspan="4" class="px-4 py-8 text-center text-caption text-ink-400 dark:text-neutral-500">
                         查無符合的賓客
                       </td>
                     </tr>
@@ -1102,6 +1156,27 @@ async function removeExtraOrder(extraOrderId: string) {
                             {{ r.assignmentRule }}
                           </span>
                         </div>
+                      </td>
+                      <!-- 發放狀態：已發放顯示款式徽章 + 取消發放（後台限定）；未發放留空 -->
+                      <td class="px-4 py-2.5">
+                        <div v-if="distributedTypeName(r.guestId)" class="flex flex-wrap items-center gap-2">
+                          <span class="inline-flex items-center gap-1 text-caption font-medium text-success-600 dark:text-success-400">
+                            <UIcon name="i-heroicons-check-circle-20-solid" class="size-4" />
+                            已發放（{{ distributedTypeName(r.guestId) }}）
+                          </span>
+                          <UButton
+                            :data-testid="`vibe-cancel-distribution-${r.guestId}`"
+                            icon="i-heroicons-arrow-uturn-left"
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            :loading="isCancelling && cancelTarget?.guestId === r.guestId"
+                            @click="openCancelDistribution(r.guestId, r.name)"
+                          >
+                            取消發放
+                          </UButton>
+                        </div>
+                        <span v-else class="text-caption text-ink-300">未發放</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1448,6 +1523,16 @@ async function removeExtraOrder(extraOrderId: string) {
       confirm-color="error"
       :loading="isRemoving"
       @confirm="confirmRemove"
+    />
+
+    <ConfirmModal
+      v-model:open="isCancelOpen"
+      title="取消喜餅發放"
+      :description="`確定要取消「${cancelTarget?.name ?? ''}」的喜餅發放嗎？取消後接待台會回到未發放狀態。`"
+      confirm-label="取消發放"
+      confirm-color="error"
+      :loading="isCancelling"
+      @confirm="confirmCancelDistribution"
     />
   </div>
 </template>

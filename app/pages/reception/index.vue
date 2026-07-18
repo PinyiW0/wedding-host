@@ -109,7 +109,7 @@ function guestDetail(g: GuestListItem) {
 const searchTerm = ref('')
 
 // 禮金快速金額（接待確認用）
-const quickAmounts = [1200, 3600, 6000, 12000]
+const quickAmounts = [1200, 1600, 2000, 2200, 2600, 3600, 6000, 6600]
 
 // 接待狀態：報到 / 禮金 / 喜餅
 // GuestListItem 不含接待狀態欄位，改由 reception-status 端點取得，操作後就地更新
@@ -144,6 +144,20 @@ const filteredGuests = computed(() => {
   return list.filter(g => g.name.toLowerCase().includes(t))
 })
 
+// 顯示順序：三項（報到／禮金／喜餅）皆完成者視為已處理，穩定沉到清單最下方；
+// 其餘（含剛報到、尚未登禮金／喜餅者）維持原順序留在上方，避免處理到一半就跳走干擾
+function isFullyServed(g: GuestListItem): boolean {
+  const s = status[g.guestId]
+  return !!s?.checkedIn && s.giftAmount != null && s.cakeBoxTypeId != null
+}
+const displayGuests = computed(() => {
+  const pending: GuestListItem[] = []
+  const served: GuestListItem[] = []
+  for (const g of filteredGuests.value)
+    (isFullyServed(g) ? served : pending).push(g)
+  return [...pending, ...served]
+})
+
 // 已報到人數 + 總報到率（供頂部計數）
 const checkedInCount = computed(
   () => activeGuests.value.filter(g => status[g.guestId]?.checkedIn).length,
@@ -154,9 +168,27 @@ const checkInRate = computed(() => {
 })
 
 // === 報到 ===
-// 報到成功後的大字桌次回饋（issue #25）：賓客報到完第一句話是「我坐哪桌」，
-// 單筆與批量共用；下一次報到覆蓋，不用計時器（避免時序敏感測試）
+// 報到成功後的桌次回饋（issue #25）：賓客報到完第一句話是「我坐哪桌」，單筆與批量共用。
+// 低調細長一行、約 5 秒後自動淡出（不擾民）；下一次報到覆蓋、可手動關閉
 const lastCheckIns = ref<{ name: string, table: string }[]>([])
+let checkInBannerTimer: ReturnType<typeof setTimeout> | null = null
+const CHECKIN_BANNER_MS = 3000
+function showCheckInFeedback(entries: { name: string, table: string }[]) {
+  lastCheckIns.value = entries
+  if (checkInBannerTimer)
+    clearTimeout(checkInBannerTimer)
+  checkInBannerTimer = setTimeout(() => {
+    lastCheckIns.value = []
+    checkInBannerTimer = null
+  }, CHECKIN_BANNER_MS)
+}
+function dismissCheckInFeedback() {
+  lastCheckIns.value = []
+  if (checkInBannerTimer) {
+    clearTimeout(checkInBannerTimer)
+    checkInBannerTimer = null
+  }
+}
 
 const checkingInId = ref<string | null>(null)
 async function checkIn(guest: GuestListItem) {
@@ -166,7 +198,7 @@ async function checkIn(guest: GuestListItem) {
   try {
     await checkInGuest(weddingId.value, guest.guestId)
     ensureStatus(guest.guestId).checkedIn = true
-    lastCheckIns.value = [{ name: guest.name, table: guestTable(guest) }]
+    showCheckInFeedback([{ name: guest.name, table: guestTable(guest) }])
     toast.add({ title: `${guest.name} 報到成功`, color: 'success' })
   }
   catch (error: any) {
@@ -229,7 +261,7 @@ async function batchCheckIn() {
       }
     })
     if (succeeded.length) {
-      lastCheckIns.value = succeeded.map(g => ({ name: g.name, table: guestTable(g) }))
+      showCheckInFeedback(succeeded.map(g => ({ name: g.name, table: guestTable(g) })))
       toast.add({ title: `已報到 ${succeeded.length} 組`, color: 'success' })
     }
     if (failedNames.length) {
@@ -263,6 +295,19 @@ const giftBySide = computed(() => {
     summary[r.guest.side].count++
   }
   return summary
+})
+// 每桌收禮金額（宴後對帳；依 guestTable 分組——實際入座優先、退回預排桌次），金額高到低
+const giftByTable = computed(() => {
+  const map = new Map<string, { amount: number, count: number }>()
+  for (const r of giftRecords.value) {
+    const table = guestTable(r.guest)
+    const cur = map.get(table) ?? { amount: 0, count: 0 }
+    cur.amount += r.amount
+    cur.count++
+    map.set(table, cur)
+  }
+  return Array.from(map.entries(), ([table, v]) => ({ table, ...v }))
+    .sort((a, b) => b.amount - a.amount)
 })
 
 // === 禮金登記 / 更正 ===
@@ -393,6 +438,8 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollTimer)
     clearInterval(pollTimer)
+  if (checkInBannerTimer)
+    clearTimeout(checkInBannerTimer)
 })
 
 function tableSeats(tableId: string): SeatListItem[] {
@@ -515,25 +562,58 @@ const dietOptions = [
 function normalSeatCount(tableId: string): number {
   return tableSeats(tableId).filter(s => s.seatType === 'normal').length
 }
-// 一桌兒童椅嬰兒數
-function childChairCount(tableId: string): number {
-  return tableSeats(tableId).filter(s => s.seatType === 'childChair').length
+// 現場桌次圖以「賓客的桌次指派」為準（實際入座優先、退回預排桌次 tableName），
+// 報到即時反映，也涵蓋尚未用排位工具拖曳入座、僅預排桌次的賓客
+const guestsByTableName = computed<Record<string, GuestListItem[]>>(() => {
+  const map: Record<string, GuestListItem[]> = {}
+  for (const g of activeGuests.value)
+    (map[guestTable(g)] ??= []).push(g)
+  return map
+})
+interface TableInfo {
+  members: GuestListItem[]
+  normalHeads: number // 正常席人頭（不含兒童椅）
+  childChairs: number // 兒童椅嬰兒
+  heads: number // 總人頭（含兒童）
+  checkedHeads: number // 已報到人頭
+  rate: number // 報到率（依人頭）
 }
-// 席位標籤：正常席「名字N」、兒童椅「名字-兒童N」
-function seatLabel(seat: SeatListItem): string {
-  const name = (guests.value ?? []).find(g => g.guestId === seat.guestId)?.name ?? '賓客'
-  return seat.seatType === 'childChair' ? `${name}-兒童${seat.partyIndex}` : `${name}${seat.partyIndex}`
+const tableInfoMap = computed<Record<string, TableInfo>>(() => {
+  const map: Record<string, TableInfo> = {}
+  for (const t of tables.value ?? []) {
+    const members = guestsByTableName.value[t.tableName] ?? []
+    let normalHeads = 0
+    let childChairs = 0
+    let heads = 0
+    let checkedHeads = 0
+    for (const g of members) {
+      const total = Math.max(1, g.partySize)
+      heads += total
+      childChairs += g.childChairCount
+      normalHeads += Math.max(1, total - g.childChairCount)
+      if (status[g.guestId]?.checkedIn)
+        checkedHeads += total
+    }
+    map[t.tableName] = { members, normalHeads, childChairs, heads, checkedHeads, rate: heads > 0 ? checkedHeads / heads : 0 }
+  }
+  return map
+})
+const EMPTY_TABLE_INFO: TableInfo = { members: [], normalHeads: 0, childChairs: 0, heads: 0, checkedHeads: 0, rate: 0 }
+// 某桌的賓客與報到統計（依桌名對應）
+function tableInfo(table: TableListItem): TableInfo {
+  return tableInfoMap.value[table.tableName] ?? EMPTY_TABLE_INFO
 }
-// 此席位的賓客是否已報到（整組共用同一報到狀態）
-function isSeatCheckedIn(seat: SeatListItem): boolean {
-  return status[seat.guestId]?.checkedIn ?? false
+// 賓客是否已報到（供桌次圖名字上色）
+function isGuestCheckedIn(guestId: string): boolean {
+  return status[guestId]?.checkedIn ?? false
 }
-// 桌次圖席位顏色：依報到狀態區分——已報到實心綠、未報到虛線淡，接待一眼看出誰到了
-function seatChipClass(seat: SeatListItem): string {
-  return isSeatCheckedIn(seat)
-    ? 'border border-success-600 bg-success-500 text-white'
-    : 'border border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'
-}
+
+// 桌次圖檢視切換：桌次圖（平面配置，預設）/ 桌次清單（逐桌展開賓客小圓圈，快速核對整桌）
+const floorView = ref('map')
+const floorViewTabs = [
+  { label: '桌次圖', icon: 'i-heroicons-squares-2x2', slot: 'map', value: 'map' },
+  { label: '桌次清單', icon: 'i-heroicons-list-bullet', slot: 'list', value: 'list' },
+]
 // 此組正常席人頭 = 本人 + 同行
 const newGuestNormalHeads = computed(() => 1 + (Number(newGuestForm.plusOneCount) || 0))
 // 桌次選項：首項為「先不排桌」，其餘標示正常席入座 / 座位數，現場一眼看出哪桌還有空位
@@ -752,11 +832,13 @@ async function submitCake() {
             <p class="text-caption text-ink-500 dark:text-neutral-400">
               {{ filteredGuests.length }} 位相符
             </p>
+            <!-- OFF 態軌道底色調深（正常 switch 樣式，不加框/ring），灰態不再糊在背景；ON 態填金 -->
             <USwitch
               v-model="showOnlyUnchecked"
               data-testid="vibe-reception-unchecked-toggle"
               label="只看未報到"
               size="sm"
+              :ui="{ base: 'data-[state=unchecked]:bg-ink-300 dark:data-[state=unchecked]:bg-neutral-600' }"
             />
           </div>
         </div>
@@ -797,40 +879,42 @@ async function submitCake() {
           </div>
         </div>
 
-        <!-- 報到完成大字桌次回饋：賓客一問「我坐哪桌」即答；下一次報到覆蓋 -->
-        <div
-          v-if="lastCheckIns.length"
-          data-testid="vibe-checkin-table-banner"
-          class="mb-4 shrink-0 rounded-lg border border-gold bg-gold-light/20 px-5 py-4"
+        <!-- 報到完成桌次回饋：低調細長一行，約 5 秒後自動淡出（reduced-motion 友善）、可手動關閉 -->
+        <Transition
+          enter-active-class="transition-opacity duration-200"
+          enter-from-class="opacity-0"
+          leave-active-class="transition-opacity duration-500 motion-reduce:transition-none"
+          leave-to-class="opacity-0"
         >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <p class="text-overline uppercase text-gold-deep">
-                報到完成 · 桌次
-              </p>
-              <p
-                v-for="entry in lastCheckIns"
-                :key="entry.name"
-                class="mt-1 truncate font-display text-2xl font-semibold text-ink dark:text-paper"
-              >
-                {{ entry.name }}<span class="mx-2 font-normal text-ink-300">—</span>{{ entry.table }}
-              </p>
-            </div>
+          <div
+            v-if="lastCheckIns.length"
+            data-testid="vibe-checkin-table-banner"
+            class="mb-3 flex shrink-0 items-center gap-2 rounded-md border border-gold/40 bg-gold-light/15 px-3 py-2"
+          >
+            <UIcon name="i-heroicons-check-circle" class="size-4 shrink-0 text-gold-deep" />
+            <p class="min-w-0 flex-1 text-body text-ink dark:text-paper">
+              <span class="text-caption text-gold-deep">報到完成</span>
+              <span v-for="(entry, i) in lastCheckIns" :key="entry.name">
+                <span v-if="i > 0" class="text-ink-300">、</span>
+                <span class="ml-1 font-medium">{{ entry.name }}</span>
+                <span class="mx-1 text-ink-300">·</span>{{ entry.table }}
+              </span>
+            </p>
             <UButton
               icon="i-heroicons-x-mark"
               color="neutral"
               variant="ghost"
               size="xs"
               aria-label="關閉桌次提示"
-              @click="lastCheckIns = []"
+              @click="dismissCheckInFeedback"
             />
           </div>
-        </div>
+        </Transition>
 
         <!-- 結果卡片列表；lg 鎖高內捲、flex-1 讓空狀態撐滿 -->
         <div data-testid="reception-list" class="flex flex-col space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-auto">
           <div
-            v-for="guest in filteredGuests"
+            v-for="guest in displayGuests"
             :key="guest.guestId"
             role="article"
             :aria-label="guest.name"
@@ -1015,7 +1099,8 @@ async function submitCake() {
         </div>
 
         <!-- 桌次平面（米色點陣畫布 + 桌卡） -->
-        <div class="min-h-0 flex-1 overflow-auto">
+        <!-- 不在此層捲動：tab bar 固定在頂端，改由 UTabs 內容區（:ui.content）內部捲動 -->
+        <div class="flex min-h-0 flex-1 flex-col">
           <div v-if="(tables ?? []).length === 0" data-testid="vibe-reception-table-empty" class="flex h-full flex-col">
             <EmptyState
               bordered
@@ -1024,71 +1109,170 @@ async function submitCake() {
               description="點擊「新增桌次」開始安排現場座位"
             />
           </div>
-          <div
+          <UTabs
             v-else
-            data-testid="vibe-reception-floor-plan"
-            class="rounded-lg border border-line bg-paper p-5 shadow-sm"
-            :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
+            v-model="floorView"
+            :items="floorViewTabs"
+            color="primary"
+            variant="link"
+            size="sm"
+            class="flex min-h-0 flex-1 flex-col"
+            :ui="{ content: 'min-h-0 flex-1 overflow-auto' }"
           >
-            <div class="mb-5 flex justify-center">
-              <span class="rounded border border-dashed border-line px-7 py-1.5 text-overline text-ink-300">
-                舞台
-              </span>
-            </div>
-            <!-- 圓桌平面：主桌單獨面對舞台、其餘雙數並列；只標示是哪一桌 + 入座數 -->
-            <div class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+            <!-- 檢視一：桌次圖（現況，預設）——每桌圓圈 + 報到率環 -->
+            <template #map>
               <div
-                v-for="table in orderedTables"
-                :key="table.tableId"
-                :data-testid="`vibe-reception-table-${table.tableId}`"
-                class="flex flex-col items-center"
-                :class="isMainTable(table) && 'sm:col-span-2'"
+                data-testid="vibe-reception-floor-plan"
+                class="rounded-lg border border-line bg-paper p-5 shadow-sm"
+                :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
               >
-                <!-- 圓桌：標示桌名 + 入座數（主桌金色強調、較大、面對舞台） -->
-                <div
-                  class="flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 px-3 text-center transition-colors"
-                  :class="isMainTable(table)
-                    ? 'max-w-[200px] border-gold bg-gold-light/25 dark:border-gold dark:bg-gold-deep/20'
-                    : 'max-w-[150px] border-line bg-paper dark:border-neutral-700 dark:bg-neutral-800'"
-                >
-                  <span
-                    class="line-clamp-2 font-display font-medium leading-tight text-ink dark:text-paper"
-                    :class="isMainTable(table) ? 'text-xl' : 'text-base'"
-                  >{{ table.tableName }}</span>
-                  <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
-                    {{ normalSeatCount(table.tableId) }} / {{ table.capacity }} 位
-                  </span>
-                  <span v-if="childChairCount(table.tableId) > 0" class="text-caption text-gold-deep">
-                    +兒童椅 {{ childChairCount(table.tableId) }}
+                <div class="mb-5 flex justify-center">
+                  <span class="rounded border border-dashed border-line px-7 py-1.5 text-overline text-ink-300">
+                    舞台
                   </span>
                 </div>
-                <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
-                  面對舞台
-                </p>
-                <!-- 展開列出個別席位（名字1 / 名字-兒童1），方便接待現場核對 -->
-                <div
-                  v-if="tableSeats(table.tableId).length > 0"
-                  :data-testid="`vibe-reception-seats-${table.tableId}`"
-                  class="mt-2 flex flex-wrap justify-center gap-1"
-                >
-                  <span
-                    v-for="seat in tableSeats(table.tableId)"
-                    :key="`${seat.guestId}-${seat.seatNumber}`"
-                    class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-caption transition-colors"
-                    :class="seatChipClass(seat)"
-                    :title="isSeatCheckedIn(seat) ? '已報到' : '未報到'"
+                <!-- 圓桌平面：主桌單獨面對舞台、其餘雙數並列；只標示是哪一桌 + 入座數 -->
+                <div class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                  <div
+                    v-for="table in orderedTables"
+                    :key="table.tableId"
+                    :data-testid="`vibe-reception-table-${table.tableId}`"
+                    class="flex flex-col items-center"
+                    :class="isMainTable(table) && 'sm:col-span-2'"
                   >
-                    <UIcon
-                      v-if="seat.seatType === 'childChair'"
-                      name="i-heroicons-sparkles"
-                      class="size-3 shrink-0"
-                    />
-                    {{ seatLabel(seat) }}
-                  </span>
+                    <!-- 圓桌：桌名 + 指派人數 + 報到率環（主桌金色強調、較大、面對舞台） -->
+                    <div
+                      class="relative flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 px-3 text-center transition-colors"
+                      :class="isMainTable(table)
+                        ? 'max-w-[200px] border-gold bg-gold-light/25 dark:border-gold dark:bg-gold-deep/20'
+                        : 'max-w-[150px] border-line bg-paper dark:border-neutral-700 dark:bg-neutral-800'"
+                    >
+                      <!-- 報到率環：柔和 success 弧線由正上方順時針，弧長 = 已報到 / 指派人頭；尚無人報到時不顯示 -->
+                      <svg
+                        v-if="tableInfo(table).checkedHeads > 0"
+                        class="pointer-events-none absolute inset-0 size-full -rotate-90 text-success-400"
+                        viewBox="0 0 100 100"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="48"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                          :stroke-dasharray="`${(tableInfo(table).rate * 301.6).toFixed(1)} 301.6`"
+                        />
+                      </svg>
+                      <span
+                        class="line-clamp-2 font-display font-medium leading-tight text-ink dark:text-paper"
+                        :class="isMainTable(table) ? 'text-xl' : 'text-base'"
+                      >{{ table.tableName }}</span>
+                      <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
+                        {{ tableInfo(table).normalHeads }} / {{ table.capacity }} 位
+                      </span>
+                      <span v-if="tableInfo(table).childChairs > 0" class="text-caption text-gold-deep">
+                        +兒童椅 {{ tableInfo(table).childChairs }}
+                      </span>
+                      <span
+                        v-if="tableInfo(table).heads > 0"
+                        class="mt-0.5 text-caption font-medium text-success-600 dark:text-success-400"
+                      >
+                        報到 {{ tableInfo(table).checkedHeads }}/{{ tableInfo(table).heads }}
+                      </span>
+                    </div>
+                    <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
+                      面對舞台
+                    </p>
+                    <!-- 該桌賓客姓名（依桌次指派）：已報到淡綠、未報到虛線淡，方便現場核對 -->
+                    <div
+                      v-if="tableInfo(table).members.length > 0"
+                      :data-testid="`vibe-reception-seats-${table.tableId}`"
+                      class="mt-2 flex flex-wrap justify-center gap-1"
+                    >
+                      <span
+                        v-for="guest in tableInfo(table).members"
+                        :key="guest.guestId"
+                        class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-caption transition-colors"
+                        :class="isGuestCheckedIn(guest.guestId)
+                          ? 'border-success-300 bg-success-50 text-success-700 dark:border-success-700 dark:bg-success-900/30 dark:text-success-300'
+                          : 'border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'"
+                        :title="isGuestCheckedIn(guest.guestId) ? '已報到' : '未報到'"
+                      >
+                        <UIcon
+                          v-if="guest.childChairCount > 0"
+                          name="i-heroicons-sparkles"
+                          class="size-3 shrink-0 text-gold-deep"
+                        />
+                        {{ guest.name }}<template v-if="guest.partySize > 1">·{{ guest.partySize }}</template>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </template>
+
+            <!-- 檢視二：桌次清單——每桌垂直展開、賓客小圓圈依報到狀態（已報到淡綠、未報到淡） -->
+            <template #list>
+              <div data-testid="vibe-reception-list" class="space-y-4">
+                <div
+                  v-for="table in orderedTables"
+                  :key="table.tableId"
+                  :data-testid="`vibe-reception-list-table-${table.tableId}`"
+                  class="rounded-lg border border-line bg-paper p-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                >
+                  <!-- 桌首：桌名 + 指派人數 + 已報到/總數 -->
+                  <div class="flex items-center justify-between gap-2 border-b border-line pb-1.5 dark:border-neutral-800">
+                    <div class="flex items-baseline gap-2">
+                      <span
+                        class="font-display text-base font-medium"
+                        :class="isMainTable(table) ? 'text-gold-deep' : 'text-ink dark:text-paper'"
+                      >{{ table.tableName }}</span>
+                      <span class="text-caption text-ink-500 dark:text-neutral-400">
+                        {{ tableInfo(table).normalHeads }}/{{ table.capacity }} 位
+                      </span>
+                    </div>
+                    <span
+                      v-if="tableInfo(table).heads > 0"
+                      class="text-caption font-medium text-success-600 dark:text-success-400"
+                    >
+                      已報到 {{ tableInfo(table).checkedHeads }}/{{ tableInfo(table).heads }}
+                    </span>
+                  </div>
+                  <!-- 賓客小圓圈：色碼依報到狀態（已報到淡綠、未報到虛線淡），姓名在下方 -->
+                  <div
+                    v-if="tableInfo(table).members.length > 0"
+                    class="mt-3 flex flex-wrap gap-x-3 gap-y-2"
+                  >
+                    <div
+                      v-for="guest in tableInfo(table).members"
+                      :key="guest.guestId"
+                      class="flex w-14 flex-col items-center gap-1"
+                      :title="isGuestCheckedIn(guest.guestId) ? '已報到' : '未報到'"
+                    >
+                      <div
+                        class="flex size-10 items-center justify-center rounded-full border transition-colors"
+                        :class="isGuestCheckedIn(guest.guestId)
+                          ? 'border-success-300 bg-success-50 text-success-700 dark:border-success-700 dark:bg-success-900/30 dark:text-success-300'
+                          : 'border-dashed border-ink-200 bg-paper text-ink-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'"
+                      >
+                        <UIcon v-if="isGuestCheckedIn(guest.guestId)" name="i-heroicons-check" class="size-5" />
+                        <UIcon v-else-if="guest.childChairCount > 0" name="i-heroicons-sparkles" class="size-4" />
+                        <span v-else class="text-caption">{{ guest.partySize }}</span>
+                      </div>
+                      <span class="line-clamp-1 max-w-full text-caption text-ink-600 dark:text-neutral-300">
+                        {{ guest.name }}
+                      </span>
+                    </div>
+                  </div>
+                  <p v-else class="mt-3 text-caption text-ink-400 dark:text-neutral-500">
+                    尚無賓客
+                  </p>
+                </div>
+              </div>
+            </template>
+          </UTabs>
         </div>
       </div>
     </div>
@@ -1515,6 +1699,29 @@ async function submitCake() {
               </p>
             </div>
           </div>
+
+          <!-- 每桌收禮（依金額高到低；獨立捲動避免擠壓逐筆清單） -->
+          <template v-if="giftByTable.length > 0">
+            <p class="text-overline mb-2 mt-5 shrink-0 uppercase text-gold-deep">
+              每桌收禮
+            </p>
+            <div data-testid="vibe-gift-summary-tables" class="max-h-40 shrink-0 space-y-1.5 overflow-auto">
+              <div
+                v-for="row in giftByTable"
+                :key="row.table"
+                class="flex items-center justify-between gap-3 rounded-md border border-line bg-white px-3 py-2 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <span class="inline-flex min-w-0 items-center gap-1.5 text-body text-ink dark:text-paper">
+                  <UIcon name="i-heroicons-table-cells" class="size-4 shrink-0 text-gold-deep" />
+                  <span class="truncate">{{ row.table }}</span>
+                  <span class="shrink-0 text-caption text-ink-400">{{ row.count }} 筆</span>
+                </span>
+                <span class="shrink-0 font-display text-body-l font-semibold text-ink dark:text-paper">
+                  NT$ {{ row.amount.toLocaleString('en-US') }}
+                </span>
+              </div>
+            </div>
+          </template>
 
           <!-- 逐筆清單 -->
           <p class="text-overline mb-2 mt-5 shrink-0 uppercase text-gold-deep">
