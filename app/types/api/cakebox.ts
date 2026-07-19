@@ -9,6 +9,8 @@ export interface CakeBoxTypeListItem {
   // 縮圖（上傳後存成 base64 data URL）與單價（元），皆可為空
   imageUrl: string | null
   price: number | null
+  // 組合款（issue #106）：內含單款 id 清單；null／空＝一般單款
+  componentTypeIds: string[] | null
 }
 
 export interface CreateCakeBoxTypeBody {
@@ -17,6 +19,8 @@ export interface CreateCakeBoxTypeBody {
   isDefault: boolean
   imageUrl?: string
   price?: number
+  // 有值即為組合款；僅可內含非組合款（單層）
+  componentTypeIds?: string[]
 }
 
 export interface CakeBoxTypeCreatedEvent {
@@ -27,6 +31,7 @@ export interface CakeBoxTypeCreatedEvent {
   isDefault: boolean
   imageUrl: string | null
   price: number | null
+  componentTypeIds: string[] | null
 }
 
 export interface UpdateCakeBoxTypeBody {
@@ -36,6 +41,8 @@ export interface UpdateCakeBoxTypeBody {
   isDefault?: boolean
   imageUrl?: string
   price?: number
+  // 傳空陣列＝解除組合
+  componentTypeIds?: string[]
 }
 
 export interface CakeBoxTypeUpdatedEvent {
@@ -45,6 +52,7 @@ export interface CakeBoxTypeUpdatedEvent {
   isDefault: boolean
   imageUrl: string | null
   price: number | null
+  componentTypeIds: string[] | null
 }
 
 export interface ConfigureCakeBoxAssignmentBody {

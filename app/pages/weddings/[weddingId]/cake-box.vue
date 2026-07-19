@@ -157,6 +157,8 @@ const imageInputRef = ref<HTMLInputElement>()
 // 注意：UInput type="number" 會在 runtime 把值轉成數字回填（型別仍標 string），
 // 故 onSubmit 解析時改用 Number() 並避免呼叫字串專屬方法（如 .trim）
 const priceText = ref('')
+// 組合款內含單款（issue #106）：與縮圖／單價同樣獨立於 zod schema 管理
+const componentTypeIds = ref<string[]>([])
 
 function resetState() {
   state.name = ''
@@ -164,6 +166,7 @@ function resetState() {
   state.isDefault = false
   imageUrl.value = ''
   priceText.value = ''
+  componentTypeIds.value = []
 }
 
 function openCreate() {
@@ -181,6 +184,7 @@ function openEdit(type: CakeBoxTypeListItem) {
   state.isDefault = type.isDefault
   imageUrl.value = type.imageUrl ?? ''
   priceText.value = type.price != null ? String(type.price) : ''
+  componentTypeIds.value = type.componentTypeIds ?? []
   isFormOpen.value = true
 }
 
@@ -252,6 +256,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         isDefault: data.isDefault, // 可事後切換預設款
         imageUrl: uploadedImageUrl,
         price,
+        componentTypeIds: componentTypeIds.value, // 空陣列＝解除組合
       }
       await updateCakeBoxType(weddingId.value, editingId.value, body)
       toast.add({ title: '喜餅款式已更新', color: 'success' })
@@ -263,6 +268,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         isDefault: data.isDefault,
         imageUrl: uploadedImageUrl || undefined,
         price,
+        componentTypeIds: componentTypeIds.value.length ? componentTypeIds.value : undefined,
       }
       await createCakeBoxType(weddingId.value, body)
       toast.add({ title: '喜餅款式新增成功', color: 'success' })
@@ -314,6 +320,16 @@ async function confirmRemove() {
 const typeOptions = computed(() =>
   (cakeBoxTypes.value ?? []).map(t => ({ label: t.name, value: t.cakeBoxTypeId })),
 )
+// 組合款（issue #106）輔助：id → 款式、內含單款選項（僅非組合款且排除編輯中自己，維持單層）
+const typeById = computed(() => new Map((cakeBoxTypes.value ?? []).map(t => [t.cakeBoxTypeId, t])))
+const componentOptions = computed(() =>
+  (cakeBoxTypes.value ?? [])
+    .filter(t => !(t.componentTypeIds ?? []).length && t.cakeBoxTypeId !== editingId.value)
+    .map(t => ({ label: t.name, value: t.cakeBoxTypeId })),
+)
+function comboLabel(type: CakeBoxTypeListItem): string {
+  return (type.componentTypeIds ?? []).map(id => typeById.value.get(id)?.name ?? '').filter(Boolean).join('＋')
+}
 const guestOptions = computed(() =>
   activeGuests.value.map(g => ({ label: g.name, value: g.guestId })),
 )
@@ -572,33 +588,50 @@ async function assignInline(row: PickupRow, typeId: string) {
 // 實際要發的賓客（排除不發放者）
 const includedPickup = computed(() => pickupList.value.filter(r => !r.excluded))
 
-// 訂購總覽：每款 = 賓客需求數 + 額外配發數 = 合計（供下單）
+// 訂購總覽：每款 = 賓客需求數 + 額外配發數 + 組合拆算數 = 合計（供下單）
+// 組合款（issue #106）自動拆算：組合每一份，其內含單款各 +1 盒；組合列自身標示已拆算、不重複計入下單
 const orderSummary = computed(() => {
   const map: Record<string, {
     cakeBoxTypeId: string
     cakeBoxTypeName: string
     guestQty: number
     extraQty: number
+    comboQty: number
+    isCombo: boolean
   }> = {}
-  for (const r of includedPickup.value) {
-    const key = r.cakeBoxTypeId || '__unset__'
-    const g = (map[key] ??= { cakeBoxTypeId: r.cakeBoxTypeId, cakeBoxTypeName: r.cakeBoxTypeName, guestQty: 0, extraQty: 0 })
-    g.guestQty++
+  const ensure = (id: string, name: string) => (map[id || '__unset__'] ??= {
+    cakeBoxTypeId: id,
+    cakeBoxTypeName: name,
+    guestQty: 0,
+    extraQty: 0,
+    comboQty: 0,
+    isCombo: (typeById.value.get(id)?.componentTypeIds ?? []).length > 0,
+  })
+  for (const r of includedPickup.value)
+    ensure(r.cakeBoxTypeId, r.cakeBoxTypeName).guestQty++
+  for (const o of extraOrders.value ?? [])
+    ensure(o.cakeBoxTypeId, o.cakeBoxTypeName).extraQty += o.quantity
+  // 拆算：先快照組合列再展開，避免邊迭代邊新增單款列
+  for (const g of Object.values(map).filter(x => x.isCombo)) {
+    const qty = g.guestQty + g.extraQty
+    if (!qty)
+      continue
+    for (const id of typeById.value.get(g.cakeBoxTypeId)?.componentTypeIds ?? [])
+      ensure(id, typeById.value.get(id)?.name ?? '').comboQty += qty
   }
-  for (const o of extraOrders.value ?? []) {
-    const g = (map[o.cakeBoxTypeId] ??= { cakeBoxTypeId: o.cakeBoxTypeId, cakeBoxTypeName: o.cakeBoxTypeName, guestQty: 0, extraQty: 0 })
-    g.extraQty += o.quantity
-  }
-  return Object.values(map).map(g => ({ ...g, total: g.guestQty + g.extraQty }))
+  // 組合列 total＝份數（一份＝內含單款各一盒）；單款列 total＝實際下單盒數（含拆算）
+  return Object.values(map).map(g => ({ ...g, total: g.guestQty + g.extraQty + (g.isCombo ? 0 : g.comboQty) }))
 })
 const extraTotal = computed(() => (extraOrders.value ?? []).reduce((s, o) => s + o.quantity, 0))
-const orderTotal = computed(() => includedPickup.value.length + extraTotal.value)
+// 共計實體盒數：只加單款列（組合份數已拆算進單款，不重複計）
+const orderTotal = computed(() => orderSummary.value.reduce((s, g) => s + (g.isCombo ? 0 : g.total), 0))
 
-// 訂購金額（vibe）：每款小計 = 單價 × 合計盒數；未定價（price null）排除加總並標示
+// 訂購金額（vibe）：每款小計 = 單價 × 合計盒數；未定價（price null）排除加總並標示。
+// 組合列不計金額——成本已由內含單款的拆算盒數（× 單款單價）計入，避免雙算
 const orderAmountSummary = computed(() => {
   const priceByType = new Map((cakeBoxTypes.value ?? []).map(t => [t.cakeBoxTypeId, t.price]))
   return orderSummary.value.map((g) => {
-    const price = priceByType.get(g.cakeBoxTypeId) ?? null
+    const price = g.isCombo ? null : priceByType.get(g.cakeBoxTypeId) ?? null
     return { ...g, amount: price == null ? null : price * g.total }
   })
 })
@@ -606,7 +639,7 @@ const orderGrandTotal = computed(() =>
   orderAmountSummary.value.reduce((s, g) => s + (g.amount ?? 0), 0),
 )
 const hasUnpricedType = computed(() =>
-  orderAmountSummary.value.some(g => g.amount == null && g.total > 0),
+  orderAmountSummary.value.some(g => g.amount == null && g.total > 0 && !g.isCombo),
 )
 
 // 表格篩選：搜尋姓名 + 分類選擇
@@ -666,11 +699,11 @@ function downloadPickupCsv() {
     for (const o of extraOrders.value ?? [])
       rows.push([o.cakeBoxTypeName, String(o.quantity), o.recipientName ?? '', o.recipientContact ?? '', o.note ?? ''])
   }
-  // 第三段：訂購數量小計（賓客 + 額外 = 合計）+ 總計
-  rows.push([], ['款式', '賓客數量', '額外配發', '合計'])
+  // 第三段：訂購數量小計（賓客 + 額外 + 組合拆算 = 合計）+ 總計；組合列已拆算至單款、不重複下單
+  rows.push([], ['款式', '賓客數量', '額外配發', '組合拆算', '合計'])
   for (const g of orderSummary.value)
-    rows.push([g.cakeBoxTypeName, String(g.guestQty), String(g.extraQty), String(g.total)])
-  rows.push(['共計', '', '', String(orderTotal.value)])
+    rows.push([g.isCombo ? `${g.cakeBoxTypeName}（組合，已拆算至單款）` : g.cakeBoxTypeName, String(g.guestQty), String(g.extraQty), String(g.comboQty), String(g.total)])
+  rows.push(['共計', '', '', '', String(orderTotal.value)])
 
   const csv = rows.map(cols => cols.map(escape).join(',')).join('\r\n')
   const bom = String.fromCharCode(0xFEFF) // UTF-8 BOM，讓 Excel 正確辨識中文
@@ -822,6 +855,9 @@ async function removeExtraOrder(extraOrderId: string) {
                   </div>
                   <p class="truncate text-caption text-ink-500 dark:text-neutral-400">
                     <span v-if="type.description">{{ type.description }} · </span>已指派 {{ assignedCountByType[type.cakeBoxTypeId] ?? 0 }} 位
+                  </p>
+                  <p v-if="(type.componentTypeIds ?? []).length" class="truncate text-caption text-gold-deep">
+                    組合：{{ comboLabel(type) }}
                   </p>
                 </div>
 
@@ -1003,17 +1039,19 @@ async function removeExtraOrder(extraOrderId: string) {
                   <div
                     v-for="grp in orderAmountSummary"
                     :key="grp.cakeBoxTypeId || 'none'"
+                    :data-testid="`vibe-order-row-${grp.cakeBoxTypeId || 'none'}`"
                     class="flex items-baseline gap-1.5"
                   >
                     <span class="size-2 shrink-0 self-center rounded-full bg-gold" />
                     <span class="text-caption text-ink-500 dark:text-neutral-400">{{ grp.cakeBoxTypeName }}</span>
                     <span class="font-display text-body-l font-semibold text-ink dark:text-paper">{{ grp.total }}</span>
-                    <span class="text-caption text-ink-400">盒</span>
-                    <span v-if="grp.extraQty > 0" class="text-caption text-ink-400 dark:text-neutral-500">
-                      （賓客 {{ grp.guestQty }}＋額外 {{ grp.extraQty }}）
+                    <span class="text-caption text-ink-400">{{ grp.isCombo ? '份' : '盒' }}</span>
+                    <span v-if="grp.extraQty > 0 || grp.comboQty > 0" class="text-caption text-ink-400 dark:text-neutral-500">
+                      （賓客 {{ grp.guestQty }}＋額外 {{ grp.extraQty }}<template v-if="grp.comboQty > 0">＋組合拆算 {{ grp.comboQty }}</template>）
                     </span>
+                    <span v-if="grp.isCombo" class="text-caption text-ink-400 dark:text-neutral-500">（組合，已拆算至單款）</span>
                     <span
-                      v-if="grp.amount != null"
+                      v-else-if="grp.amount != null"
                       :data-testid="`vibe-cake-amount-${grp.cakeBoxTypeId}`"
                       class="text-caption font-medium text-gold-deep"
                     >
@@ -1318,6 +1356,22 @@ async function removeExtraOrder(extraOrderId: string) {
                   <span class="text-caption text-ink-400">NT$</span>
                 </template>
               </UInput>
+            </UFormField>
+
+            <UFormField
+              label="組合內容"
+              name="componentTypeIds"
+              help="選了內含單款即成為組合款（同一位賓客一次發兩款）；訂購總覽會自動拆算內含單款的下單數量"
+            >
+              <USelectMenu
+                v-model="componentTypeIds"
+                data-testid="vibe-cake-box-components"
+                :items="componentOptions"
+                value-key="value"
+                multiple
+                placeholder="選擇內含單款（可複選，選填）"
+                class="w-full"
+              />
             </UFormField>
 
             <UFormField name="isDefault">
