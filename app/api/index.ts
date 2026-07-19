@@ -25,6 +25,7 @@ export {
   listCakeBoxExtraOrders,
   listCakeBoxTypes,
   removeCakeBoxExclusion,
+  updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from './cakebox.api'
 export { getDashboardStats } from './dashboard.api'

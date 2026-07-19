@@ -3,6 +3,7 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
+  CakeBoxExtraOrderListItem,
   CakeBoxTypeListItem,
   ConfigureCakeBoxAssignmentBody,
   CreateCakeBoxTypeBody,
@@ -26,6 +27,7 @@ import {
   listGuestCategories,
   listGuests,
   removeCakeBoxExclusion,
+  updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from '~/api'
 
@@ -691,7 +693,38 @@ const extraNote = ref('')
 const isAddingExtra = ref(false)
 const extraError = ref('')
 
-async function addExtraOrder() {
+// 編輯中的額外配發（issue #108）：點列選單「編輯」帶回上方表單，送出鈕轉為「更新」
+const editingExtraId = ref<string | null>(null)
+
+function resetExtraForm() {
+  editingExtraId.value = null
+  extraTypeId.value = ''
+  extraQtyText.value = ''
+  extraName.value = ''
+  extraContact.value = ''
+  extraNote.value = ''
+  extraError.value = ''
+}
+
+function startEditExtraOrder(order: CakeBoxExtraOrderListItem) {
+  editingExtraId.value = order.extraOrderId
+  extraTypeId.value = order.cakeBoxTypeId
+  extraQtyText.value = String(order.quantity)
+  extraName.value = order.recipientName ?? ''
+  extraContact.value = order.recipientContact ?? ''
+  extraNote.value = order.note ?? ''
+  extraError.value = ''
+}
+
+// 每列「⋯」選單：編輯／刪除
+function extraOrderMenuItems(order: CakeBoxExtraOrderListItem) {
+  return [[
+    { label: '編輯', icon: 'i-heroicons-pencil', onSelect: () => startEditExtraOrder(order) },
+    { label: '刪除', icon: 'i-heroicons-trash', color: 'error' as const, onSelect: () => removeExtraOrder(order.extraOrderId) },
+  ]]
+}
+
+async function submitExtraOrder() {
   if (isAddingExtra.value)
     return
   const qty = Math.floor(Number(extraQtyText.value))
@@ -706,23 +739,32 @@ async function addExtraOrder() {
   isAddingExtra.value = true
   extraError.value = ''
   try {
-    await createCakeBoxExtraOrder(weddingId.value, {
-      cakeBoxTypeId: extraTypeId.value,
-      quantity: qty,
-      recipientName: extraName.value.trim() || undefined,
-      recipientContact: extraContact.value.trim() || undefined,
-      note: extraNote.value.trim() || undefined,
-    })
+    if (editingExtraId.value) {
+      // 編輯：選填欄清空要能存回 null
+      await updateCakeBoxExtraOrder(weddingId.value, editingExtraId.value, {
+        cakeBoxTypeId: extraTypeId.value,
+        quantity: qty,
+        recipientName: extraName.value.trim() || null,
+        recipientContact: extraContact.value.trim() || null,
+        note: extraNote.value.trim() || null,
+      })
+      toast.add({ title: '已更新額外配發', color: 'success' })
+    }
+    else {
+      await createCakeBoxExtraOrder(weddingId.value, {
+        cakeBoxTypeId: extraTypeId.value,
+        quantity: qty,
+        recipientName: extraName.value.trim() || undefined,
+        recipientContact: extraContact.value.trim() || undefined,
+        note: extraNote.value.trim() || undefined,
+      })
+      toast.add({ title: '已新增額外配發', color: 'success' })
+    }
     await refreshExtra()
-    extraTypeId.value = ''
-    extraQtyText.value = ''
-    extraName.value = ''
-    extraContact.value = ''
-    extraNote.value = ''
-    toast.add({ title: '已新增額外配發', color: 'success' })
+    resetExtraForm()
   }
   catch (error: any) {
-    extraError.value = error?.data?.message || error?.statusMessage || '新增失敗，請稍後再試'
+    extraError.value = error?.data?.message || error?.statusMessage || (editingExtraId.value ? '更新失敗，請稍後再試' : '新增失敗，請稍後再試')
   }
   finally {
     isAddingExtra.value = false
@@ -732,6 +774,9 @@ async function addExtraOrder() {
 async function removeExtraOrder(extraOrderId: string) {
   try {
     await deleteCakeBoxExtraOrder(weddingId.value, extraOrderId)
+    // 正在編輯的那筆被刪除時，一併清掉編輯狀態
+    if (editingExtraId.value === extraOrderId)
+      resetExtraForm()
     await refreshExtra()
     toast.add({ title: '已移除額外配發', color: 'success' })
   }
@@ -880,31 +925,7 @@ async function removeExtraOrder(extraOrderId: string) {
               發給非賓客的對象（公司同事、合作廠商等），可逐人填姓名／聯絡；只併入上方訂購總數、不進賓客名單。
             </p>
 
-            <!-- 已新增的額外配發：扁平列 -->
-            <div v-if="(extraOrders ?? []).length > 0" class="mb-4 divide-y divide-line/60 dark:divide-neutral-800">
-              <div
-                v-for="o in extraOrders"
-                :key="o.extraOrderId"
-                class="flex flex-wrap items-center gap-3 py-3 first:pt-0"
-              >
-                <span class="font-medium text-ink dark:text-paper">{{ o.cakeBoxTypeName }}</span>
-                <span class="font-display text-body-l font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
-                <span v-if="o.recipientName" class="text-body font-medium text-ink dark:text-paper">{{ o.recipientName }}</span>
-                <span v-if="o.recipientContact" class="text-caption text-ink-400 dark:text-neutral-500">{{ o.recipientContact }}</span>
-                <span v-if="o.note" class="text-caption text-ink-500 dark:text-neutral-400">{{ o.note }}</span>
-                <UButton
-                  icon="i-heroicons-trash"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  class="ml-auto"
-                  :aria-label="`移除額外配發 ${o.cakeBoxTypeName}`"
-                  @click="removeExtraOrder(o.extraOrderId)"
-                />
-              </div>
-            </div>
-
-            <!-- 加入一筆：款式 + 數量 + 備註（細邊框白底成一組，不加色塊；避免冷灰與暖色品牌打架） -->
+            <!-- 加入／編輯一筆：款式 + 數量 + 備註（細邊框白底成一組，不加色塊；避免冷灰與暖色品牌打架） -->
             <div class="rounded-lg border border-line p-4 dark:border-neutral-800">
               <UAlert
                 v-if="extraError"
@@ -962,16 +983,87 @@ async function removeExtraOrder(extraOrderId: string) {
                 </UFormField>
                 <UButton
                   data-testid="cake-box-extra-add"
-                  icon="i-heroicons-plus"
+                  :icon="editingExtraId ? 'i-heroicons-check' : 'i-heroicons-plus'"
                   color="neutral"
-                  variant="outline"
+                  :variant="editingExtraId ? 'solid' : 'outline'"
                   :loading="isAddingExtra"
                   :disabled="(cakeBoxTypes ?? []).length === 0"
-                  @click="addExtraOrder"
+                  @click="submitExtraOrder"
                 >
-                  加入
+                  {{ editingExtraId ? '更新' : '加入' }}
+                </UButton>
+                <UButton
+                  v-if="editingExtraId"
+                  data-testid="vibe-extra-edit-cancel"
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="isAddingExtra"
+                  @click="resetExtraForm"
+                >
+                  取消
                 </UButton>
               </div>
+            </div>
+
+            <!-- 已新增的額外配發：簡易表格（表單下方；每列「⋯」選單可編輯／刪除，issue #108） -->
+            <div v-if="(extraOrders ?? []).length > 0" class="mt-4 overflow-x-auto">
+              <table class="w-full text-left text-body">
+                <thead>
+                  <tr class="border-b border-line text-caption text-ink-400 dark:border-neutral-800">
+                    <th class="py-2 pr-3 font-normal">
+                      款式
+                    </th>
+                    <th class="py-2 pr-3 font-normal">
+                      數量
+                    </th>
+                    <th class="py-2 pr-3 font-normal">
+                      姓名
+                    </th>
+                    <th class="py-2 pr-3 font-normal">
+                      聯絡
+                    </th>
+                    <th class="py-2 pr-3 font-normal">
+                      備註
+                    </th>
+                    <th class="w-10 py-2" />
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-line/60 dark:divide-neutral-800">
+                  <tr
+                    v-for="o in extraOrders"
+                    :key="o.extraOrderId"
+                    :data-testid="`vibe-extra-row-${o.extraOrderId}`"
+                  >
+                    <td class="py-2.5 pr-3 font-medium text-ink dark:text-paper">
+                      {{ o.cakeBoxTypeName }}
+                    </td>
+                    <td class="py-2.5 pr-3 font-display font-semibold text-gold-deep">
+                      {{ o.quantity }}
+                    </td>
+                    <td class="py-2.5 pr-3 text-ink dark:text-paper">
+                      {{ o.recipientName ?? '—' }}
+                    </td>
+                    <td class="py-2.5 pr-3 text-caption text-ink-500 dark:text-neutral-400">
+                      {{ o.recipientContact ?? '—' }}
+                    </td>
+                    <td class="py-2.5 pr-3 text-caption text-ink-500 dark:text-neutral-400">
+                      {{ o.note ?? '—' }}
+                    </td>
+                    <td class="py-2.5 text-right">
+                      <UDropdownMenu :items="extraOrderMenuItems(o)" :content="{ align: 'end' }">
+                        <UButton
+                          :data-testid="`vibe-extra-menu-${o.extraOrderId}`"
+                          icon="i-heroicons-ellipsis-horizontal"
+                          color="neutral"
+                          variant="ghost"
+                          size="sm"
+                          :aria-label="`${o.cakeBoxTypeName} 額外配發操作`"
+                        />
+                      </UDropdownMenu>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
         </aside>

@@ -107,3 +107,21 @@ export interface CakeBoxExtraOrderCreatedEvent {
   recipientContact: string | null
   note: string | null
 }
+
+// 編輯一筆額外配發（issue #108）：選填欄傳 null＝清空
+export interface UpdateCakeBoxExtraOrderBody {
+  cakeBoxTypeId?: string
+  quantity?: number
+  recipientName?: string | null
+  recipientContact?: string | null
+  note?: string | null
+}
+
+export interface CakeBoxExtraOrderUpdatedEvent {
+  extraOrderId: string
+  cakeBoxTypeId: string
+  quantity: number
+  recipientName: string | null
+  recipientContact: string | null
+  note: string | null
+}
