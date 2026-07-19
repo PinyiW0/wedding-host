@@ -762,10 +762,11 @@ async function removeExtraOrder(extraOrderId: string) {
       </template>
     </PageHeader>
 
-    <div class="min-h-0 flex-1 overflow-auto pr-4">
-      <div class="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <!-- lg 以上左右兩欄各自獨立捲動（issue #107）：外層停止捲動、grid 撐滿高度，欄內自捲；< lg 維持整頁單捲 -->
+    <div class="min-h-0 flex-1 overflow-auto pr-4 lg:overflow-hidden">
+      <div class="grid items-stretch gap-6 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
         <!-- 右欄（設定型內容）：source 在前以滿足 findEntity 順序，視覺用 grid 擺右並常駐 -->
-        <aside class="space-y-6 self-start lg:col-start-2 lg:row-start-1 lg:sticky lg:top-0">
+        <aside class="space-y-6 self-start lg:col-start-2 lg:row-start-1 lg:min-h-0 lg:self-stretch lg:overflow-y-auto lg:pr-1">
           <!-- 喜餅款式 — 面板：扁平款式清單 -->
           <section class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <div class="mb-2 flex items-center gap-3">
@@ -779,7 +780,7 @@ async function removeExtraOrder(extraOrderId: string) {
             <div
               v-if="(cakeBoxTypes ?? []).length > 0"
               data-testid="cake-box-list"
-              class="divide-y divide-line/60 lg:max-h-[60vh] lg:overflow-y-auto lg:pr-1 dark:divide-neutral-800"
+              class="divide-y divide-line/60 dark:divide-neutral-800"
             >
               <!-- 扁平列：小縮圖 + 主資訊 + 動作；預設款以名稱前金星標記，減少白塊與顏色 -->
               <div
@@ -977,7 +978,7 @@ async function removeExtraOrder(extraOrderId: string) {
         </aside>
 
         <!-- 主欄：賓客分配（訂購總覽 + 百人表格），視覺擺左 -->
-        <div class="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
+        <div class="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <!-- 賓客分配：訂購總覽 + 全賓客表（款式欄就地下拉改款）；testid 供持久化測試定位 -->
           <section
             data-testid="cake-box-assignment-list"
