@@ -14,14 +14,14 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
   const db = useDb()
   // leftJoin 取分類名稱：一次查詢同時解決回傳的 category（不用再查一次字典）
   const [existing] = await db
-    .select({ ...getTableColumns(guests), categoryName: guestCategories.name })
+    .select({ ...getTableColumns(guests), categoryName: guestCategories.name, categoryTier: guestCategories.tier })
     .from(guests)
     .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
     .where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId)))
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
-  const { categoryName: existingCategoryName, ...existingGuest } = existing
+  const { categoryName: existingCategoryName, categoryTier: existingCategoryTier, ...existingGuest } = existing
 
   // 數字欄與 enum 欄驗證（issue #70 / M4）：patch 的 partySize 會進座位重算，NaN 會靜默污染
   if (body.partySize !== undefined)
@@ -44,9 +44,12 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     patch.diet = body.diet
   // 分類 resolve 成 categoryId（在 404 檢查之後才建分類，避免對不存在的賓客留下副作用）；空白 → null
   let categoryName = existingCategoryName ?? ''
+  let categoryTier = existingCategoryTier
   if (body.category !== undefined) {
     categoryName = body.category.trim()
-    patch.categoryId = await resolveCategoryId(db, weddingId, categoryName)
+    const resolvedCategory = await resolveCategory(db, weddingId, categoryName)
+    patch.categoryId = resolvedCategory?.categoryId ?? null
+    categoryTier = resolvedCategory?.tier ?? null
   }
   if (body.contact !== undefined)
     patch.contact = body.contact
@@ -129,6 +132,15 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
       }
     }
   }
+
+  // 男方親屬預設不發放喜餅（issue #105）：僅在「進入／離開」判定轉換時同步，保住手動覆寫
+  await syncGroomRelativeNoBox(
+    db,
+    weddingId,
+    guestId,
+    isGroomRelative(existingGuest.side, existingCategoryTier),
+    isGroomRelative(guest!.side, categoryTier),
+  )
 
   return {
     guestId: guest!.guestId,

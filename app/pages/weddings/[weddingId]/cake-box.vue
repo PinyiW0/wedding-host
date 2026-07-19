@@ -8,6 +8,7 @@ import type {
   CreateCakeBoxTypeBody,
   UpdateCakeBoxTypeBody,
 } from '~/types/api/cakebox'
+import type { GuestListItem } from '~/types/api/guests'
 
 import { z } from 'zod'
 import {
@@ -415,6 +416,13 @@ function existingTypeByCategory(): Record<string, string> {
   return m
 }
 
+// 男方親屬（男方 × 家屬層分類 tier=1）依台灣婚俗預設不發放喜餅（issue #105）
+function isGroomRelativeGuest(g: GuestListItem): boolean {
+  return g.side === 'groom' && g.categoryTier === 1
+}
+const groomRelativeCount = computed(() => activeGuests.value.filter(g => isGroomRelativeGuest(g)).length)
+const excludeGroomRelatives = ref(true)
+
 const isAutoOpen = ref(false)
 const isApplying = ref(false)
 const autoError = ref('')
@@ -422,6 +430,7 @@ const categoryRule = reactive<Record<string, string>>({})
 
 function openAutoAssign() {
   autoError.value = ''
+  excludeGroomRelatives.value = true
   const byCat = existingTypeByCategory()
   for (const cat of distinctCategories.value)
     categoryRule[cat] = byCat[cat] ?? defaultType.value?.cakeBoxTypeId ?? ''
@@ -436,7 +445,15 @@ async function applyByCategory() {
   try {
     let applied = 0
     let skipped = 0
+    let excludedCount = 0
     for (const g of activeGuests.value) {
+      // 勾選時男方親屬跳過款式指派、直接標不發放（已排除者不重打）
+      if (excludeGroomRelatives.value && isGroomRelativeGuest(g)) {
+        if (!(exclusions.value ?? []).some(e => e.guestId === g.guestId))
+          await excludeGuestCakeBox(weddingId.value, { guestId: g.guestId })
+        excludedCount++
+        continue
+      }
       const cat = guestCategory(g.category)
       const typeId = categoryRule[cat] || defaultType.value?.cakeBoxTypeId || ''
       if (!typeId) {
@@ -449,10 +466,15 @@ async function applyByCategory() {
       })
       applied++
     }
-    await refreshAssignments()
+    await Promise.all([refreshAssignments(), refreshExclusions()])
+    const descriptionParts: string[] = []
+    if (excludedCount > 0)
+      descriptionParts.push(`男方親屬 ${excludedCount} 位設為不發放`)
+    if (skipped > 0)
+      descriptionParts.push(`${skipped} 位未對到規則且無預設款`)
     toast.add({
       title: `已依分類帶入 ${applied} 位`,
-      description: skipped > 0 ? `${skipped} 位未對到規則且無預設款` : '可於下方逐位再微調',
+      description: descriptionParts.length ? descriptionParts.join('，') : '可於下方逐位再微調',
       color: 'success',
     })
     isAutoOpen.value = false
@@ -1460,6 +1482,14 @@ async function removeExtraOrder(extraOrderId: string) {
             color="error"
             variant="soft"
             :title="autoError"
+            class="mb-4"
+          />
+
+          <UCheckbox
+            v-model="excludeGroomRelatives"
+            data-testid="vibe-exclude-groom-relatives"
+            label="男方親屬設為不發放"
+            :description="`目前符合 ${groomRelativeCount} 位——台灣婚俗喜餅發女方親友；套用後仍可於表格逐位改回`"
             class="mb-4"
           />
 
