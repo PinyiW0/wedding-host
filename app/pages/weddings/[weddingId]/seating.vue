@@ -35,14 +35,23 @@ const markersAsync = listVenueMarkers(weddingId, { default: () => [] })
 // 全婚禮座位一次抓（取代逐桌 N 請求）
 const seatsAsync = listWeddingSeats(weddingId, { default: () => [] })
 await Promise.all([tablesAsync, guestsAsync, venueAsync, markersAsync, seatsAsync])
-const { data: tables, refresh: refreshTables } = tablesAsync
-const { data: guests } = guestsAsync
-const { data: venueLayout, refresh: refreshVenue } = venueAsync
-const { data: venueMarkers, refresh: refreshMarkers } = markersAsync
-const { data: allSeats, refresh: refreshSeats } = seatsAsync
+const { data: tables, error: tablesError, refresh: refreshTables } = tablesAsync
+const { data: guests, error: guestsError, refresh: refreshGuests } = guestsAsync
+const { data: venueLayout, error: venueError, refresh: refreshVenue } = venueAsync
+const { data: venueMarkers, error: markersError, refresh: refreshMarkers } = markersAsync
+const { data: allSeats, error: seatsError, refresh: refreshSeats } = seatsAsync
 
 async function refreshAll() {
   await Promise.all([refreshTables(), refreshSeats()])
+}
+
+// 讀取失敗（issue #103）：任一讀取失敗即顯示故障＋重試，
+// 不得因 default 值以「無賓客／無桌次」樣貌呈現（座位會全變 guestId、名單空白）
+const loadError = computed(() =>
+  tablesError.value ?? guestsError.value ?? seatsError.value ?? venueError.value ?? markersError.value ?? null,
+)
+async function retryLoad() {
+  await Promise.all([refreshTables(), refreshGuests(), refreshVenue(), refreshMarkers(), refreshSeats()])
 }
 
 // === 座位計算純邏輯（occupant 展開、容量人頭、主桌男左女右、側欄排序）===
@@ -375,6 +384,9 @@ const DEFAULT_TABLES: CreateTableBody[] = [
 const isSeedingDefault = ref(false)
 
 onMounted(async () => {
+  // 讀取失敗時「看起來沒桌次」是故障不是全新婚禮，不得觸發預設佈局寫入（issue #103）
+  if (loadError.value)
+    return
   if ((tables.value ?? []).length > 0 || venueLayout.value || isSeedingDefault.value)
     return
   isSeedingDefault.value = true
@@ -445,8 +457,33 @@ onMounted(async () => {
       </template>
     </PageHeader>
 
+    <!-- 讀取失敗（issue #103）：明確顯示故障＋可重試，不得以「無賓客／無桌次」樣貌呈現 -->
+    <div
+      v-if="loadError"
+      data-testid="vibe-seating-load-error"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4"
+    >
+      <UAlert
+        icon="i-heroicons-exclamation-triangle"
+        color="error"
+        variant="soft"
+        title="桌次資料載入失敗"
+        description="無法取得賓客或桌次資料，請重新載入或稍後再試"
+        class="max-w-md"
+      />
+      <UButton
+        data-testid="vibe-seating-retry"
+        icon="i-heroicons-arrow-path"
+        color="neutral"
+        variant="outline"
+        @click="retryLoad"
+      >
+        重新載入
+      </UButton>
+    </div>
+
     <!-- 兩欄：左 圓桌平面（寬） / 右 賓客名單（窄） -->
-    <div class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+    <div v-else class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
       <!-- 左欄：圓桌現場平面圖（min-w-0 讓寬畫布於內部捲動，不把右側名單推出邊界） -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
         <!-- 畫布工具列：操控下方桌次圖的工具（舞台、參考圖、標記）；主要動作（新增桌子、下載）留在頁首 -->

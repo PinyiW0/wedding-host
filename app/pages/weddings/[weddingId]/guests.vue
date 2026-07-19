@@ -41,7 +41,8 @@ const toast = useToast()
 const weddingId = computed(() => String(route.params.weddingId))
 
 // 賓客名單（API 仍回傳已軟刪除者，一律於前端濾掉——已移除賓客不呈現於畫面）
-const { data: guests, refresh } = await listGuests(weddingId, {
+// error 需消費（issue #103）：讀取失敗要顯示故障，不得因 default 值與空清單同貌
+const { data: guests, refresh, error: guestsLoadError } = await listGuests(weddingId, {
   default: () => [],
 })
 
@@ -182,6 +183,11 @@ const { data: pendingGuests, refresh: refreshPending } = await listPendingGuests
   default: () => [],
 })
 const pendingList = computed(() => pendingGuests.value ?? [])
+
+// 讀取失敗重試（issue #103）：待確認回覆與主名單通常同場故障，一併重抓避免恢復後殘留空資料
+async function retryLoad() {
+  await Promise.all([refresh(), refreshPending()])
+}
 
 // 姓名提示候選（永不自動合併）：以正式名單比對每筆待確認回覆
 function candidatesFor(pending: GuestListItem) {
@@ -712,8 +718,34 @@ async function confirmImport() {
       </template>
     </PageHeader>
 
+    <!-- 讀取失敗（issue #103）：明確顯示故障＋可重試，不得與空清單同貌（曾致正式站排查困難） -->
+    <div
+      v-if="guestsLoadError"
+      data-testid="vibe-guests-load-error"
+      class="flex flex-1 flex-col items-center justify-center gap-4"
+    >
+      <UAlert
+        icon="i-heroicons-exclamation-triangle"
+        color="error"
+        variant="soft"
+        title="賓客名單載入失敗"
+        description="無法取得賓客資料，請重新載入或稍後再試"
+        class="max-w-md"
+      />
+      <UButton
+        data-testid="vibe-guests-retry"
+        icon="i-heroicons-arrow-path"
+        color="neutral"
+        variant="outline"
+        @click="retryLoad"
+      >
+        重新載入
+      </UButton>
+    </div>
+
     <!-- 出席統計總覽（vibe：依 RSVP 出席回覆即時計算，與下方名單同資料源） -->
     <div
+      v-if="!guestsLoadError"
       data-testid="vibe-guest-stats"
       class="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4 dark:border-neutral-800 dark:bg-neutral-800"
     >
@@ -733,7 +765,7 @@ async function confirmImport() {
     </div>
 
     <!-- 搜尋 + 篩選膠囊（編輯式工具列；純前端篩選） -->
-    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="!guestsLoadError" class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <UInput
         v-model="search"
         data-testid="vibe-guests-search"
@@ -773,7 +805,7 @@ async function confirmImport() {
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 space-y-8 overflow-auto">
+    <div v-if="!guestsLoadError" class="min-h-0 flex-1 space-y-8 overflow-auto">
       <!-- 待確認區（公開自助回覆，人工併入；系統永不自動合併） -->
       <template v-if="filter === 'review'">
         <EmptyState

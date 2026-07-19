@@ -24,6 +24,19 @@ type ImperativeMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 const colonParam = /:(\w+)/g
 const braceParam = /\{(\w+)\}/g
 
+// 讀取錯誤集中回饋（issue #103）：GET 失敗時 toast 提示，
+// 避免頁面 default 值把「後端掛了」靜默吞成「沒資料」（畫面與空清單無法區分）。
+// 同一短窗只提示一次：同頁多支 API 同時失敗不轟炸。
+const READ_ERROR_TOAST_WINDOW_MS = 2000
+let lastReadErrorAt = 0
+function notifyReadError(toast: ReturnType<typeof useToast>) {
+  const now = Date.now()
+  if (now - lastReadErrorAt < READ_ERROR_TOAST_WINDOW_MS)
+    return
+  lastReadErrorAt = now
+  toast.add({ title: '資料載入失敗', description: '請重新整理或稍後再試', color: 'error' })
+}
+
 // 將 /users/:id、/users/{id} 內的佔位符換成實際值；未提供的佔位符原樣保留（方便發現漏帶參數）
 function withPathParams(url: string, params?: PathParams): string {
   if (!params)
@@ -81,12 +94,22 @@ export function useHttp() {
   function get<T>(url: MaybeRefOrGetter<string>, options?: HttpGetOptions<T>) {
     const { pathParams, headers, ...rest } = options ?? {}
     // useFetch 泛型包裝的已知型別限制：不帶 <T>、改以斷言收斂 options 與回傳（沿用參考專案做法）
-    return useFetch(() => withPathParams(toValue(url), pathParams), {
+    const result = useFetch(() => withPathParams(toValue(url), pathParams), {
       baseURL,
       headers: { ...authHeaders(), ...sigHeaders(), ...(headers as Record<string, string> | undefined) },
       onResponseError: ({ response }: { response: { status: number } }) => handleUnauthorized(response.status),
       ...rest,
     } as unknown as UseFetchOptions<unknown>) as AsyncData<T | undefined, FetchError | undefined>
+    // client 監看 error 冒出 toast（immediate 涵蓋 SSR 失敗序列化回 client 的情況）；
+    // 401 交由 handleUnauthorized 清 auth 導回登入，不重複提示
+    if (import.meta.client) {
+      const toast = useToast()
+      watch(result.error, (e) => {
+        if (e && e.statusCode !== 401)
+          notifyReadError(toast)
+      }, { immediate: true })
+    }
+    return result
   }
 
   // imperative：$fetch（getOnce 與寫入共用）
