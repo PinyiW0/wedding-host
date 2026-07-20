@@ -43,11 +43,13 @@ test.describe('vibe：額外配發清單與編輯', () => {
     await expect(row).toContainText('公關丙')
     await expect(row).toContainText('額外配發')
 
-    // 「⋯」選單 → 編輯 → 右欄控制面板帶回舊值，送出鈕轉為「更新」
+    // 「⋯」選單 → 編輯 → 右欄控制面板帶回舊值，送出鈕轉為「更新」；
+    // 可視連結：面板標題顯示編輯對象、表格對應列 highlight
     await page.getByTestId(`vibe-extra-menu-${created.extraOrderId}`).click()
     await page.getByRole('menuitem', { name: '編輯' }).click()
     await expect(page.getByTestId('cake-box-extra-qty')).toHaveValue('2')
     await expect(page.getByTestId('cake-box-extra-add')).toContainText('更新')
+    await expect(page.getByTestId('vibe-extra-editing-label')).toContainText('公關丙')
 
     // 改數量與姓名 → 更新 → 列同步、表單回到「加入」狀態
     await page.getByTestId('cake-box-extra-qty').fill('4')
@@ -58,6 +60,8 @@ test.describe('vibe：額外配發清單與編輯', () => {
     await expect(row).toContainText('公關丁')
     await expect(row).toContainText('×4 盒')
     await expect(page.getByTestId('cake-box-extra-add')).toContainText('加入')
+    // 編輯結束 → 「編輯中」標示消失
+    await expect(page.getByTestId('vibe-extra-editing-label')).toHaveCount(0)
   })
 
   test('UI：分類 filter 選「額外配發」→ 只剩額外列', async ({ page }) => {

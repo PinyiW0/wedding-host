@@ -751,6 +751,16 @@ function startEditExtraOrder(order: CakeBoxExtraOrderListItem) {
   extraError.value = ''
 }
 
+// 編輯中的收餅對象名稱：右欄面板顯示「編輯中：誰」、左表對應列 highlight（可視連結）
+const editingExtraLabel = computed(() => {
+  if (!editingExtraId.value)
+    return ''
+  const order = (extraOrders.value ?? []).find(o => o.extraOrderId === editingExtraId.value)
+  if (!order)
+    return ''
+  return order.recipientName?.trim() || `未具名（${order.cakeBoxTypeName}）`
+})
+
 // 每列「⋯」選單：編輯／刪除（表格列只有 id，回原始清單取完整資料）
 function extraOrderMenuItems(extraOrderId: string) {
   const order = (extraOrders.value ?? []).find(o => o.extraOrderId === extraOrderId)
@@ -955,7 +965,12 @@ async function removeExtraOrder(extraOrderId: string) {
           >
             <div class="mb-2 flex flex-wrap items-center gap-3">
               <span class="text-overline uppercase text-gold-deep">額外配發（公關用）</span>
-              <span v-if="extraTotal > 0" class="text-caption text-ink-400 dark:text-neutral-500">共 {{ extraTotal }} 盒</span>
+              <span
+                v-if="editingExtraLabel"
+                data-testid="vibe-extra-editing-label"
+                class="text-caption font-medium text-gold-deep"
+              >編輯中：{{ editingExtraLabel }}</span>
+              <span v-else-if="extraTotal > 0" class="text-caption text-ink-400 dark:text-neutral-500">共 {{ extraTotal }} 盒</span>
               <span class="h-px flex-1 bg-line" />
             </div>
             <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
@@ -1198,7 +1213,8 @@ async function removeExtraOrder(extraOrderId: string) {
                       v-for="r in pagedPickupList"
                       :key="r.kind === 'extra' ? r.extraOrderId : r.guestId"
                       :data-testid="r.kind === 'extra' ? `vibe-extra-row-${r.extraOrderId}` : undefined"
-                      class="border-b border-line/60 last:border-0 dark:border-neutral-800"
+                      class="border-b border-line/60 transition-colors last:border-0 dark:border-neutral-800"
+                      :class="r.kind === 'extra' && r.extraOrderId === editingExtraId ? 'bg-cream dark:bg-neutral-800/40' : ''"
                     >
                       <!-- 額外配發列（issue #108）：收餅人非賓客，聯絡／備註為次行說明、操作走「⋯」選單 -->
                       <template v-if="r.kind === 'extra'">
