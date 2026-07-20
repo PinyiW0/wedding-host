@@ -1210,16 +1210,16 @@ async function removeExtraOrder(extraOrderId: string) {
                             {{ r.detail }}
                           </p>
                         </td>
-                        <td class="px-4 py-2.5">
-                          <span class="inline-flex items-center rounded-full bg-cream px-2 py-0.5 text-caption text-gold-deep dark:bg-neutral-800">額外配發</span>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-gold-deep">
+                          額外配發
                         </td>
-                        <td class="px-4 py-2.5 text-ink-500 dark:text-neutral-400">
-                          {{ r.cakeBoxTypeName }}
-                          <span class="ml-1 text-caption font-medium text-gold-deep">×{{ r.quantity }} 盒</span>
+                        <!-- pl-2.5 對齊賓客列下拉框的文字起點（USelectMenu sm 內距），欄位左緣視覺一致 -->
+                        <td class="whitespace-nowrap px-4 py-2.5 text-ink-500 dark:text-neutral-400">
+                          <span class="pl-2.5">{{ r.cakeBoxTypeName }}<span class="ml-1 text-caption font-medium text-gold-deep">×{{ r.quantity }} 盒</span></span>
                         </td>
                         <td class="px-4 py-2.5">
-                          <div class="flex items-center justify-between gap-2">
-                            <span class="text-caption text-ink-300">不經接待發放</span>
+                          <div class="flex items-center gap-1">
+                            <span class="whitespace-nowrap text-caption text-ink-300">不經接待發放</span>
                             <UDropdownMenu :items="extraOrderMenuItems(r.extraOrderId)" :content="{ align: 'end' }">
                               <UButton
                                 :data-testid="`vibe-extra-menu-${r.extraOrderId}`"
