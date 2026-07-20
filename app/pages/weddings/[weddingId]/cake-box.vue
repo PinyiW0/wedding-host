@@ -981,6 +981,19 @@ async function removeExtraOrder(extraOrderId: string) {
                     class="w-full"
                   />
                 </UFormField>
+              </div>
+              <!-- 送出／取消獨立一排（不接在欄位後，避免窄欄擠壓換行） -->
+              <div class="mt-3 flex items-center justify-end gap-2">
+                <UButton
+                  v-if="editingExtraId"
+                  data-testid="vibe-extra-edit-cancel"
+                  color="neutral"
+                  variant="ghost"
+                  :disabled="isAddingExtra"
+                  @click="resetExtraForm"
+                >
+                  取消
+                </UButton>
                 <UButton
                   data-testid="cake-box-extra-add"
                   :icon="editingExtraId ? 'i-heroicons-check' : 'i-heroicons-plus'"
@@ -992,78 +1005,39 @@ async function removeExtraOrder(extraOrderId: string) {
                 >
                   {{ editingExtraId ? '更新' : '加入' }}
                 </UButton>
-                <UButton
-                  v-if="editingExtraId"
-                  data-testid="vibe-extra-edit-cancel"
-                  color="neutral"
-                  variant="ghost"
-                  :disabled="isAddingExtra"
-                  @click="resetExtraForm"
-                >
-                  取消
-                </UButton>
               </div>
             </div>
 
-            <!-- 已新增的額外配發：簡易表格（表單下方；每列「⋯」選單可編輯／刪除，issue #108） -->
-            <div v-if="(extraOrders ?? []).length > 0" class="mt-4 overflow-x-auto">
-              <table class="w-full text-left text-body">
-                <thead>
-                  <tr class="border-b border-line text-caption text-ink-400 dark:border-neutral-800">
-                    <th class="py-2 pr-3 font-normal">
-                      款式
-                    </th>
-                    <th class="py-2 pr-3 font-normal">
-                      數量
-                    </th>
-                    <th class="py-2 pr-3 font-normal">
-                      姓名
-                    </th>
-                    <th class="py-2 pr-3 font-normal">
-                      聯絡
-                    </th>
-                    <th class="py-2 pr-3 font-normal">
-                      備註
-                    </th>
-                    <th class="w-10 py-2" />
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-line/60 dark:divide-neutral-800">
-                  <tr
-                    v-for="o in extraOrders"
-                    :key="o.extraOrderId"
-                    :data-testid="`vibe-extra-row-${o.extraOrderId}`"
-                  >
-                    <td class="py-2.5 pr-3 font-medium text-ink dark:text-paper">
-                      {{ o.cakeBoxTypeName }}
-                    </td>
-                    <td class="py-2.5 pr-3 font-display font-semibold text-gold-deep">
-                      {{ o.quantity }}
-                    </td>
-                    <td class="py-2.5 pr-3 text-ink dark:text-paper">
-                      {{ o.recipientName ?? '—' }}
-                    </td>
-                    <td class="py-2.5 pr-3 text-caption text-ink-500 dark:text-neutral-400">
-                      {{ o.recipientContact ?? '—' }}
-                    </td>
-                    <td class="py-2.5 pr-3 text-caption text-ink-500 dark:text-neutral-400">
-                      {{ o.note ?? '—' }}
-                    </td>
-                    <td class="py-2.5 text-right">
-                      <UDropdownMenu :items="extraOrderMenuItems(o)" :content="{ align: 'end' }">
-                        <UButton
-                          :data-testid="`vibe-extra-menu-${o.extraOrderId}`"
-                          icon="i-heroicons-ellipsis-horizontal"
-                          color="neutral"
-                          variant="ghost"
-                          size="sm"
-                          :aria-label="`${o.cakeBoxTypeName} 額外配發操作`"
-                        />
-                      </UDropdownMenu>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            <!-- 已新增的額外配發：兩行列式（表單下方；右欄僅 22rem，多欄表格必擠壓破版故不用 table）
+                 第一行＝款式＋數量＋「⋯」選單，第二行＝姓名 · 聯絡 · 備註（過長 truncate），issue #108 -->
+            <div v-if="(extraOrders ?? []).length > 0" class="mt-4 divide-y divide-line/60 dark:divide-neutral-800">
+              <div
+                v-for="o in extraOrders"
+                :key="o.extraOrderId"
+                :data-testid="`vibe-extra-row-${o.extraOrderId}`"
+                class="py-3 first:pt-0 last:pb-0"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="min-w-0 flex-1 truncate font-medium text-ink dark:text-paper">{{ o.cakeBoxTypeName }}</span>
+                  <span class="shrink-0 font-display font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
+                  <UDropdownMenu :items="extraOrderMenuItems(o)" :content="{ align: 'end' }">
+                    <UButton
+                      :data-testid="`vibe-extra-menu-${o.extraOrderId}`"
+                      icon="i-heroicons-ellipsis-horizontal"
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      :aria-label="`${o.cakeBoxTypeName} 額外配發操作`"
+                    />
+                  </UDropdownMenu>
+                </div>
+                <p
+                  v-if="o.recipientName || o.recipientContact || o.note"
+                  class="mt-0.5 truncate text-caption text-ink-500 dark:text-neutral-400"
+                >
+                  {{ [o.recipientName, o.recipientContact, o.note].filter(Boolean).join(' · ') }}
+                </p>
+              </div>
             </div>
           </section>
         </aside>
