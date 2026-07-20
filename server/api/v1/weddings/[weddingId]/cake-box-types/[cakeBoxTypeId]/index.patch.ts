@@ -21,7 +21,22 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
   if (body.price !== undefined && body.price !== null)
     assertPositiveInt(body.price, '款式價格', 100_000_000)
 
+  // 組合款驗證（issue #106）需在任何 mutation 之前（含下方取消其他預設的 update）
+  let componentTypeIds: string[] | null | undefined
+  if (body.componentTypeIds !== undefined) {
+    componentTypeIds = await resolveComboComponents(db, weddingId, body.componentTypeIds, cakeBoxTypeId)
+    // 已被其他組合引用的單款不可自己變組合（維持單層）
+    if (componentTypeIds) {
+      const refs = await findReferencingCombos(db, weddingId, cakeBoxTypeId)
+      if (refs.length) {
+        throw createError({ statusCode: 400, statusMessage: `此款式已是組合「${refs[0]}」的內含款，不可再設為組合` })
+      }
+    }
+  }
+
   const patch: Partial<typeof cakeBoxTypes.$inferInsert> = {}
+  if (componentTypeIds !== undefined)
+    patch.componentTypeIds = componentTypeIds
   if (body.name !== undefined)
     patch.name = body.name
   if (body.description !== undefined)
@@ -50,5 +65,6 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
     isDefault: cakeBoxType!.isDefault,
     imageUrl: cakeBoxType!.imageUrl,
     price: cakeBoxType!.price,
+    componentTypeIds: cakeBoxType!.componentTypeIds ?? null,
   }
 })

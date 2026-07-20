@@ -137,6 +137,8 @@ export const cakeBoxTypes = pgTable('cake_box_types', {
   isDefault: boolean().notNull(),
   imageUrl: text(),
   price: integer(),
+  // 組合款（issue #106）：內含單款 id 清單；null／空＝一般單款。僅可內含非組合款（單層，防巢狀）
+  componentTypeIds: jsonb().$type<string[]>(),
 }, t => [index().on(t.weddingId)])
 
 // 一位賓客只保留一筆喜餅指派：guestId 設 unique，讓指派改用單語句 upsert（ON CONFLICT）

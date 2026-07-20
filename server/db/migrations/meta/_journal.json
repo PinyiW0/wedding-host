@@ -64,6 +64,13 @@
       "when": 1784195924512,
       "tag": "0008_bright_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784472339134,
+      "tag": "0009_bizarre_cargill",
+      "breakpoints": true
     }
   ]
 }

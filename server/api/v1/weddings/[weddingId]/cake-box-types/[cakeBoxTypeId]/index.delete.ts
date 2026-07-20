@@ -13,6 +13,11 @@ export default defineEventHandler(async (event: H3Event) => {
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
   }
+  // 組合引用守門（issue #106）：被組合內含的單款不可刪，先於組合款解除引用
+  const referencingCombos = await findReferencingCombos(db, weddingId, cakeBoxTypeId)
+  if (referencingCombos.length) {
+    throw createError({ statusCode: 409, statusMessage: `此款式為組合「${referencingCombos[0]}」的內含款，請先解除引用` })
+  }
   // 既成事實不可因刪款式而湮滅：已發放（賓客已領餅）與額外配發（已下訂的數量）一律擋下。
   // 指派（cake_box_assignments）則屬「預定發哪款」的計畫，款式沒了即無意義 → 隨款式一併清除
   // （凍結 spec 06-cakebox「成功移除喜餅款式」刪的 cakeboxtype-001 在 seed 即帶指派且須成功）。

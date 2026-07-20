@@ -1,0 +1,1 @@
+ALTER TABLE "cake_box_types" ADD COLUMN "component_type_ids" jsonb;
