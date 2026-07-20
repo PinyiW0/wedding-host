@@ -34,8 +34,12 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   if (body.relationship)
     patch.side = body.relationship
   // 有填才動分類（保留空值不覆寫的現行語意）；find-or-create 成 categoryId
-  if (body.relationCategory?.trim())
-    patch.categoryId = await resolveCategoryId(db, weddingId, body.relationCategory.trim())
+  let resolvedCategoryTier: number | null = null
+  if (body.relationCategory?.trim()) {
+    const resolvedCategory = await resolveCategory(db, weddingId, body.relationCategory.trim())
+    patch.categoryId = resolvedCategory?.categoryId ?? null
+    resolvedCategoryTier = resolvedCategory?.tier ?? null
+  }
   if (body.phone)
     patch.contact = body.phone
   if (body.invitation !== undefined)
@@ -58,6 +62,19 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   // 婉拒者不進排桌次（issue #96）：釋放先前已被安排的座位
   if (body.attending === 'declined')
     await db.delete(seats).where(eq(seats.guestId, guest.guestId))
+
+  // 男方親屬預設不發放喜餅（issue #105）：RSVP 可補側別／分類，判定轉換時同步排除列
+  if (body.relationship || body.relationCategory?.trim()) {
+    const oldTier = await getCategoryTier(db, guest.categoryId)
+    const newTier = body.relationCategory?.trim() ? resolvedCategoryTier : oldTier
+    await syncGroomRelativeNoBox(
+      db,
+      weddingId,
+      guest.guestId,
+      isGroomRelative(guest.side, oldTier),
+      isGroomRelative(patch.side ?? guest.side, newTier),
+    )
+  }
 
   setResponseStatus(event, 201)
   return {

@@ -24,16 +24,17 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
 
   // 分類 find-or-create（weddings 存在檢查已在前，不為不存在的婚禮建分類）；未填一律落「其他」
   const categoryName = body.relationCategory?.trim() || '其他'
-  const categoryId = await resolveCategoryId(db, weddingId, categoryName)
+  const resolvedCategory = await resolveCategory(db, weddingId, categoryName)
 
   const guestId = `guest-${crypto.randomUUID().slice(0, 8)}`
+  const side = body.relationship ?? 'groom'
   await db.insert(guests).values({
     guestId,
     weddingId,
     name: body.guestName.trim(),
-    side: body.relationship ?? 'groom',
+    side,
     diet: body.diet,
-    categoryId,
+    categoryId: resolvedCategory?.categoryId ?? null,
     contact: body.phone || '',
     childChairCount: body.childChairCount,
     notes: null,
@@ -56,6 +57,9 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     source: 'rsvp',
     invitationSent: false,
   })
+
+  // 男方親屬預設不發放喜餅（issue #105）；審核通過進正式名單後即生效
+  await syncGroomRelativeNoBox(db, weddingId, guestId, false, isGroomRelative(side, resolvedCategory?.tier))
 
   setResponseStatus(event, 201)
   return { guestId, weddingId, status: 'pending_review' }

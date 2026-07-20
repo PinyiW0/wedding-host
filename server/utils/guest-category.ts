@@ -25,15 +25,16 @@ export function inferCategoryDefaults(name: string): { tier: number, isMainTable
 // set { name } 是刻意的 no-op（值不變），只為觸發 RETURNING，且不覆寫既有 tier / isMainTable
 // （日後人工調過的語意不會被推斷值打回去）。空白名稱回 null：對齊 guests.categoryId nullable 的
 // 「未分類」語意，不在字典造空列。名稱一律 trim 存入（(weddingId,name) unique 索引的意義所在）。
-export async function resolveCategoryId(db: Db, weddingId: string, rawName: string | null | undefined): Promise<string | null> {
+// 回傳含 tier：供「男方親屬預設不發放喜餅」判定（issue #105），以欄位為準而非名稱正則。
+export async function resolveCategory(db: Db, weddingId: string, rawName: string | null | undefined): Promise<{ categoryId: string, tier: number } | null> {
   const name = (rawName ?? '').trim()
   if (!name)
     return null
   const [row] = await db.insert(guestCategories)
     .values({ categoryId: `gcat-${crypto.randomUUID().slice(0, 8)}`, weddingId, name, ...inferCategoryDefaults(name) })
     .onConflictDoUpdate({ target: [guestCategories.weddingId, guestCategories.name], set: { name } })
-    .returning({ categoryId: guestCategories.categoryId })
-  return row!.categoryId
+    .returning({ categoryId: guestCategories.categoryId, tier: guestCategories.tier })
+  return row!
 }
 
 // 讀取端點共用的 join 欄位組：合約回名稱，tier / isMainTable 供座位排序（名稱與語意脫鉤）。

@@ -26,14 +26,14 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
   const db = useDb()
   // 分類名稱 find-or-create 成 categoryId（合約仍收發名稱，儲存改 id，issue #94）；空白 → null
   const categoryName = (body.category ?? '').trim()
-  const categoryId = await resolveCategoryId(db, weddingId, categoryName)
+  const resolvedCategory = await resolveCategory(db, weddingId, categoryName)
   await db.insert(guests).values({
     guestId,
     weddingId,
     name: body.name,
     side: body.side,
     diet: body.diet,
-    categoryId,
+    categoryId: resolvedCategory?.categoryId ?? null,
     contact: body.contact,
     childChairCount,
     notes,
@@ -47,6 +47,9 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
     deletedAt: null,
     invitationSent: false,
   })
+
+  // 男方親屬預設不發放喜餅（issue #105）；可於喜餅頁手動改回
+  await syncGroomRelativeNoBox(db, weddingId, guestId, false, isGroomRelative(body.side, resolvedCategory?.tier))
 
   setResponseStatus(event, 201)
   return {
