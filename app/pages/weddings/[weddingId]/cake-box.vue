@@ -730,8 +730,6 @@ const extraError = ref('')
 
 // 編輯中的額外配發（issue #108）：點列選單「編輯」帶回上方表單，送出鈕轉為「更新」
 const editingExtraId = ref<string | null>(null)
-// 新增／編輯統一走 modal（入口在賓客分配工具列；清單併入左表後右欄不再有表單）
-const isExtraOpen = ref(false)
 
 function resetExtraForm() {
   editingExtraId.value = null
@@ -743,11 +741,6 @@ function resetExtraForm() {
   extraError.value = ''
 }
 
-function openExtraCreate() {
-  resetExtraForm()
-  isExtraOpen.value = true
-}
-
 function startEditExtraOrder(order: CakeBoxExtraOrderListItem) {
   editingExtraId.value = order.extraOrderId
   extraTypeId.value = order.cakeBoxTypeId
@@ -756,7 +749,6 @@ function startEditExtraOrder(order: CakeBoxExtraOrderListItem) {
   extraContact.value = order.recipientContact ?? ''
   extraNote.value = order.note ?? ''
   extraError.value = ''
-  isExtraOpen.value = true
 }
 
 // 每列「⋯」選單：編輯／刪除（表格列只有 id，回原始清單取完整資料）
@@ -808,7 +800,6 @@ async function submitExtraOrder() {
     }
     await refreshExtra()
     resetExtraForm()
-    isExtraOpen.value = false
   }
   catch (error: any) {
     extraError.value = error?.data?.message || error?.statusMessage || (editingExtraId.value ? '更新失敗，請稍後再試' : '新增失敗，請稍後再試')
@@ -957,6 +948,102 @@ async function removeExtraOrder(extraOrderId: string) {
               />
             </div>
           </section>
+          <!-- 額外配發控制面板（issue #108）：表單留右欄，清單資料併入左側賓客分配表 -->
+          <section
+            data-testid="cake-box-extra-list"
+            class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+          >
+            <div class="mb-2 flex flex-wrap items-center gap-3">
+              <span class="text-overline uppercase text-gold-deep">額外配發（公關用）</span>
+              <span v-if="extraTotal > 0" class="text-caption text-ink-400 dark:text-neutral-500">共 {{ extraTotal }} 盒</span>
+              <span class="h-px flex-1 bg-line" />
+            </div>
+            <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
+              發給非賓客的對象（公司同事、合作廠商等）；加入後顯示於左側賓客分配表（分類篩「額外配發」），只併入訂購總數、不進賓客名單。
+            </p>
+
+            <UAlert
+              v-if="extraError"
+              data-testid="cake-box-extra-error"
+              icon="i-heroicons-exclamation-triangle"
+              color="error"
+              variant="soft"
+              :title="extraError"
+              class="mb-3"
+            />
+            <div class="space-y-3">
+              <div class="flex flex-wrap items-end gap-3">
+                <UFormField label="款式" class="min-w-40 flex-1">
+                  <USelectMenu
+                    v-model="extraTypeId"
+                    data-testid="cake-box-extra-type"
+                    :items="typeOptions"
+                    value-key="value"
+                    placeholder="選擇款式"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="數量" class="w-28">
+                  <UInput
+                    v-model="extraQtyText"
+                    data-testid="cake-box-extra-qty"
+                    type="number"
+                    min="1"
+                    placeholder="數量"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+              <UFormField label="姓名">
+                <UInput
+                  v-model="extraName"
+                  data-testid="cake-box-extra-name"
+                  placeholder="收餅人姓名（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="聯絡">
+                <UInput
+                  v-model="extraContact"
+                  data-testid="cake-box-extra-contact"
+                  placeholder="電話／地址（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="備註">
+                <UInput
+                  v-model="extraNote"
+                  data-testid="cake-box-extra-note"
+                  placeholder="如：公司同事（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <!-- 送出／取消獨立一排（不接在欄位後） -->
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <UButton
+                v-if="editingExtraId"
+                data-testid="vibe-extra-edit-cancel"
+                color="neutral"
+                variant="ghost"
+                :disabled="isAddingExtra"
+                @click="resetExtraForm"
+              >
+                取消
+              </UButton>
+              <UButton
+                data-testid="cake-box-extra-add"
+                :icon="editingExtraId ? 'i-heroicons-check' : 'i-heroicons-plus'"
+                color="neutral"
+                :variant="editingExtraId ? 'solid' : 'outline'"
+                :loading="isAddingExtra"
+                :disabled="(cakeBoxTypes ?? []).length === 0"
+                @click="submitExtraOrder"
+              >
+                {{ editingExtraId ? '更新' : '加入' }}
+              </UButton>
+            </div>
+          </section>
         </aside>
 
         <!-- 主欄：賓客分配（訂購總覽 + 百人表格），視覺擺左 -->
@@ -1044,16 +1131,6 @@ async function removeExtraOrder(extraOrderId: string) {
                   @click="openAssign"
                 >
                   設定指派
-                </UButton>
-                <UButton
-                  data-testid="vibe-extra-create"
-                  icon="i-heroicons-gift-top"
-                  color="neutral"
-                  variant="outline"
-                  size="sm"
-                  @click="openExtraCreate"
-                >
-                  額外配發
                 </UButton>
                 <div class="hidden grow sm:block" />
                 <UInput
@@ -1537,99 +1614,6 @@ async function removeExtraOrder(extraOrderId: string) {
               @click="applyByCategory"
             >
               套用
-            </UButton>
-          </div>
-        </div>
-      </template>
-    </UModal>
-
-    <!-- 額外配發新增／編輯 Modal（issue #108：清單併入賓客分配表，入口在工具列） -->
-    <UModal v-model:open="isExtraOpen">
-      <template #content>
-        <div data-testid="cake-box-extra-modal" class="p-6">
-          <h3 class="mb-1 text-body-l font-semibold text-ink dark:text-paper">
-            {{ editingExtraId ? '編輯額外配發' : '新增額外配發' }}
-          </h3>
-          <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
-            發給非賓客的對象（公司同事、合作廠商等）；只併入訂購總數，不進賓客名單與接待發放。
-          </p>
-
-          <UAlert
-            v-if="extraError"
-            data-testid="cake-box-extra-error"
-            icon="i-heroicons-exclamation-triangle"
-            color="error"
-            variant="soft"
-            :title="extraError"
-            class="mb-4"
-          />
-
-          <div class="space-y-4">
-            <UFormField label="款式">
-              <USelectMenu
-                v-model="extraTypeId"
-                data-testid="cake-box-extra-type"
-                :items="typeOptions"
-                value-key="value"
-                placeholder="選擇款式"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="數量">
-              <UInput
-                v-model="extraQtyText"
-                data-testid="cake-box-extra-qty"
-                type="number"
-                min="1"
-                placeholder="數量"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="姓名">
-              <UInput
-                v-model="extraName"
-                data-testid="cake-box-extra-name"
-                placeholder="收餅人姓名（選填）"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="聯絡">
-              <UInput
-                v-model="extraContact"
-                data-testid="cake-box-extra-contact"
-                placeholder="電話／地址（選填）"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="備註">
-              <UInput
-                v-model="extraNote"
-                data-testid="cake-box-extra-note"
-                placeholder="如：公司同事（選填）"
-                class="w-full"
-              />
-            </UFormField>
-          </div>
-
-          <div class="flex justify-end gap-3 pt-5">
-            <UButton
-              data-testid="vibe-extra-edit-cancel"
-              color="neutral"
-              variant="outline"
-              :disabled="isAddingExtra"
-              @click="isExtraOpen = false"
-            >
-              取消
-            </UButton>
-            <UButton
-              data-testid="cake-box-extra-add"
-              color="neutral"
-              variant="solid"
-              :loading="isAddingExtra"
-              :disabled="(cakeBoxTypes ?? []).length === 0"
-              @click="submitExtraOrder"
-            >
-              {{ editingExtraId ? '更新' : '加入' }}
             </UButton>
           </div>
         </div>
