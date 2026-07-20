@@ -3,6 +3,7 @@
 import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
+  CakeBoxExtraOrderListItem,
   CakeBoxTypeListItem,
   ConfigureCakeBoxAssignmentBody,
   CreateCakeBoxTypeBody,
@@ -27,6 +28,7 @@ import {
   listGuestCategories,
   listGuests,
   removeCakeBoxExclusion,
+  updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from '~/api'
 
@@ -667,19 +669,54 @@ const hasUnpricedType = computed(() =>
 // 表格篩選：搜尋姓名 + 分類選擇
 // 「全部分類」用哨兵值（不可用空字串：Reka Combobox/USelectMenu 禁止空字串 value，否則整個下拉 render 失敗）
 const ALL_CATEGORIES = '__all__'
+// 額外配發併入賓客分配表（issue #108）：單一視角核對所有發放對象；filter 選此值篩出額外列
+const EXTRA_CATEGORY = '__extra__'
 const nameQuery = ref('')
 const categoryFilter = ref(ALL_CATEGORIES)
 const categoryFilterOptions = computed(() => [
   { label: '全部分類', value: ALL_CATEGORIES },
   ...distinctCategories.value.map(c => ({ label: c, value: c })),
+  { label: '額外配發', value: EXTRA_CATEGORY },
 ])
+
+// 額外配發列（收餅人非賓客，不經接待發放；聯絡與備註併成次行說明）
+interface ExtraPickupRow {
+  kind: 'extra'
+  extraOrderId: string
+  name: string
+  cakeBoxTypeId: string
+  cakeBoxTypeName: string
+  quantity: number
+  detail: string
+}
+const extraPickupRows = computed<ExtraPickupRow[]>(() =>
+  (extraOrders.value ?? []).map(o => ({
+    kind: 'extra',
+    extraOrderId: o.extraOrderId,
+    name: o.recipientName?.trim() ? o.recipientName : '未具名',
+    cakeBoxTypeId: o.cakeBoxTypeId,
+    cakeBoxTypeName: o.cakeBoxTypeName,
+    quantity: o.quantity,
+    detail: [o.recipientContact, o.note].filter(Boolean).join(' · '),
+  })),
+)
+
 const filteredPickup = computed(() => {
   const q = nameQuery.value.trim().toLowerCase()
-  return pickupList.value.filter((r) => {
+  const guestRows = pickupList.value
+    .filter((r) => {
+      const matchName = !q || r.name.toLowerCase().includes(q)
+      const matchCat = categoryFilter.value === ALL_CATEGORIES || r.category === categoryFilter.value
+      return matchName && matchCat
+    })
+    .map(r => ({ ...r, kind: 'guest' as const }))
+  const extraRows = extraPickupRows.value.filter((r) => {
     const matchName = !q || r.name.toLowerCase().includes(q)
-    const matchCat = categoryFilter.value === ALL_CATEGORIES || r.category === categoryFilter.value
+    const matchCat = categoryFilter.value === ALL_CATEGORIES || categoryFilter.value === EXTRA_CATEGORY
     return matchName && matchCat
   })
+  // 額外配發列固定附在賓客列之後
+  return [...guestRows, ...extraRows]
 })
 
 // 領取清單分頁（賓客可能逾百筆；分頁套用在篩選後清單上）
@@ -746,7 +783,51 @@ const extraNote = ref('')
 const isAddingExtra = ref(false)
 const extraError = ref('')
 
-async function addExtraOrder() {
+// 編輯中的額外配發（issue #108）：點列選單「編輯」帶回上方表單，送出鈕轉為「更新」
+const editingExtraId = ref<string | null>(null)
+
+function resetExtraForm() {
+  editingExtraId.value = null
+  extraTypeId.value = ''
+  extraQtyText.value = ''
+  extraName.value = ''
+  extraContact.value = ''
+  extraNote.value = ''
+  extraError.value = ''
+}
+
+function startEditExtraOrder(order: CakeBoxExtraOrderListItem) {
+  editingExtraId.value = order.extraOrderId
+  extraTypeId.value = order.cakeBoxTypeId
+  extraQtyText.value = String(order.quantity)
+  extraName.value = order.recipientName ?? ''
+  extraContact.value = order.recipientContact ?? ''
+  extraNote.value = order.note ?? ''
+  extraError.value = ''
+}
+
+// 編輯中的收餅對象名稱：右欄面板顯示「編輯中：誰」、左表對應列 highlight（可視連結）
+const editingExtraLabel = computed(() => {
+  if (!editingExtraId.value)
+    return ''
+  const order = (extraOrders.value ?? []).find(o => o.extraOrderId === editingExtraId.value)
+  if (!order)
+    return ''
+  return order.recipientName?.trim() || `未具名（${order.cakeBoxTypeName}）`
+})
+
+// 每列「⋯」選單：編輯／刪除（表格列只有 id，回原始清單取完整資料）
+function extraOrderMenuItems(extraOrderId: string) {
+  const order = (extraOrders.value ?? []).find(o => o.extraOrderId === extraOrderId)
+  if (!order)
+    return []
+  return [[
+    { label: '編輯', icon: 'i-heroicons-pencil', onSelect: () => startEditExtraOrder(order) },
+    { label: '刪除', icon: 'i-heroicons-trash', color: 'error' as const, onSelect: () => removeExtraOrder(order.extraOrderId) },
+  ]]
+}
+
+async function submitExtraOrder() {
   if (isAddingExtra.value)
     return
   const qty = Math.floor(Number(extraQtyText.value))
@@ -761,23 +842,32 @@ async function addExtraOrder() {
   isAddingExtra.value = true
   extraError.value = ''
   try {
-    await createCakeBoxExtraOrder(weddingId.value, {
-      cakeBoxTypeId: extraTypeId.value,
-      quantity: qty,
-      recipientName: extraName.value.trim() || undefined,
-      recipientContact: extraContact.value.trim() || undefined,
-      note: extraNote.value.trim() || undefined,
-    })
+    if (editingExtraId.value) {
+      // 編輯：選填欄清空要能存回 null
+      await updateCakeBoxExtraOrder(weddingId.value, editingExtraId.value, {
+        cakeBoxTypeId: extraTypeId.value,
+        quantity: qty,
+        recipientName: extraName.value.trim() || null,
+        recipientContact: extraContact.value.trim() || null,
+        note: extraNote.value.trim() || null,
+      })
+      toast.add({ title: '已更新額外配發', color: 'success' })
+    }
+    else {
+      await createCakeBoxExtraOrder(weddingId.value, {
+        cakeBoxTypeId: extraTypeId.value,
+        quantity: qty,
+        recipientName: extraName.value.trim() || undefined,
+        recipientContact: extraContact.value.trim() || undefined,
+        note: extraNote.value.trim() || undefined,
+      })
+      toast.add({ title: '已新增額外配發', color: 'success' })
+    }
     await refreshExtra()
-    extraTypeId.value = ''
-    extraQtyText.value = ''
-    extraName.value = ''
-    extraContact.value = ''
-    extraNote.value = ''
-    toast.add({ title: '已新增額外配發', color: 'success' })
+    resetExtraForm()
   }
   catch (error: any) {
-    extraError.value = error?.data?.message || error?.statusMessage || '新增失敗，請稍後再試'
+    extraError.value = error?.data?.message || error?.statusMessage || (editingExtraId.value ? '更新失敗，請稍後再試' : '新增失敗，請稍後再試')
   }
   finally {
     isAddingExtra.value = false
@@ -787,6 +877,9 @@ async function addExtraOrder() {
 async function removeExtraOrder(extraOrderId: string) {
   try {
     await deleteCakeBoxExtraOrder(weddingId.value, extraOrderId)
+    // 正在編輯的那筆被刪除時，一併清掉編輯狀態
+    if (editingExtraId.value === extraOrderId)
+      resetExtraForm()
     await refreshExtra()
     toast.add({ title: '已移除額外配發', color: 'success' })
   }
@@ -924,56 +1017,35 @@ async function removeExtraOrder(extraOrderId: string) {
               />
             </div>
           </section>
-
-          <!-- 額外配發（公關／公司公餅，非賓客）：款式 × 數量 × 備註，只計入訂購總數 -->
+          <!-- 額外配發控制面板（issue #108）：表單留右欄，清單資料併入左側賓客分配表 -->
           <section
             data-testid="cake-box-extra-list"
             class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
           >
             <div class="mb-2 flex flex-wrap items-center gap-3">
               <span class="text-overline uppercase text-gold-deep">額外配發（公關用）</span>
-              <span v-if="extraTotal > 0" class="text-caption text-ink-400 dark:text-neutral-500">共 {{ extraTotal }} 盒</span>
+              <span
+                v-if="editingExtraLabel"
+                data-testid="vibe-extra-editing-label"
+                class="text-caption font-medium text-gold-deep"
+              >編輯中：{{ editingExtraLabel }}</span>
+              <span v-else-if="extraTotal > 0" class="text-caption text-ink-400 dark:text-neutral-500">共 {{ extraTotal }} 盒</span>
               <span class="h-px flex-1 bg-line" />
             </div>
             <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
-              發給非賓客的對象（公司同事、合作廠商等），可逐人填姓名／聯絡；只併入上方訂購總數、不進賓客名單。
+              發給非賓客的對象（公司同事、合作廠商等）；加入後顯示於左側賓客分配表（分類篩「額外配發」），只併入訂購總數、不進賓客名單。
             </p>
 
-            <!-- 已新增的額外配發：扁平列 -->
-            <div v-if="(extraOrders ?? []).length > 0" class="mb-4 divide-y divide-line/60 dark:divide-neutral-800">
-              <div
-                v-for="o in extraOrders"
-                :key="o.extraOrderId"
-                class="flex flex-wrap items-center gap-3 py-3 first:pt-0"
-              >
-                <span class="font-medium text-ink dark:text-paper">{{ o.cakeBoxTypeName }}</span>
-                <span class="font-display text-body-l font-semibold text-gold-deep">{{ o.quantity }} 盒</span>
-                <span v-if="o.recipientName" class="text-body font-medium text-ink dark:text-paper">{{ o.recipientName }}</span>
-                <span v-if="o.recipientContact" class="text-caption text-ink-400 dark:text-neutral-500">{{ o.recipientContact }}</span>
-                <span v-if="o.note" class="text-caption text-ink-500 dark:text-neutral-400">{{ o.note }}</span>
-                <UButton
-                  icon="i-heroicons-trash"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  class="ml-auto"
-                  :aria-label="`移除額外配發 ${o.cakeBoxTypeName}`"
-                  @click="removeExtraOrder(o.extraOrderId)"
-                />
-              </div>
-            </div>
-
-            <!-- 加入一筆：款式 + 數量 + 備註（細邊框白底成一組，不加色塊；避免冷灰與暖色品牌打架） -->
-            <div class="rounded-lg border border-line p-4 dark:border-neutral-800">
-              <UAlert
-                v-if="extraError"
-                data-testid="cake-box-extra-error"
-                icon="i-heroicons-exclamation-triangle"
-                color="error"
-                variant="soft"
-                :title="extraError"
-                class="mb-3"
-              />
+            <UAlert
+              v-if="extraError"
+              data-testid="cake-box-extra-error"
+              icon="i-heroicons-exclamation-triangle"
+              color="error"
+              variant="soft"
+              :title="extraError"
+              class="mb-3"
+            />
+            <div class="space-y-3">
               <div class="flex flex-wrap items-end gap-3">
                 <UFormField label="款式" class="min-w-40 flex-1">
                   <USelectMenu
@@ -995,42 +1067,55 @@ async function removeExtraOrder(extraOrderId: string) {
                     class="w-full"
                   />
                 </UFormField>
-                <UFormField label="姓名" class="min-w-36 flex-1">
-                  <UInput
-                    v-model="extraName"
-                    data-testid="cake-box-extra-name"
-                    placeholder="收餅人姓名（選填）"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="聯絡" class="min-w-36 flex-1">
-                  <UInput
-                    v-model="extraContact"
-                    data-testid="cake-box-extra-contact"
-                    placeholder="電話／地址（選填）"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField label="備註" class="min-w-36 flex-1">
-                  <UInput
-                    v-model="extraNote"
-                    data-testid="cake-box-extra-note"
-                    placeholder="如：公司同事（選填）"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UButton
-                  data-testid="cake-box-extra-add"
-                  icon="i-heroicons-plus"
-                  color="neutral"
-                  variant="outline"
-                  :loading="isAddingExtra"
-                  :disabled="(cakeBoxTypes ?? []).length === 0"
-                  @click="addExtraOrder"
-                >
-                  加入
-                </UButton>
               </div>
+              <UFormField label="姓名">
+                <UInput
+                  v-model="extraName"
+                  data-testid="cake-box-extra-name"
+                  placeholder="收餅人姓名（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="聯絡">
+                <UInput
+                  v-model="extraContact"
+                  data-testid="cake-box-extra-contact"
+                  placeholder="電話／地址（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="備註">
+                <UInput
+                  v-model="extraNote"
+                  data-testid="cake-box-extra-note"
+                  placeholder="如：公司同事（選填）"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+            <!-- 送出／取消獨立一排（不接在欄位後） -->
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <UButton
+                v-if="editingExtraId"
+                data-testid="vibe-extra-edit-cancel"
+                color="neutral"
+                variant="ghost"
+                :disabled="isAddingExtra"
+                @click="resetExtraForm"
+              >
+                取消
+              </UButton>
+              <UButton
+                data-testid="cake-box-extra-add"
+                :icon="editingExtraId ? 'i-heroicons-check' : 'i-heroicons-plus'"
+                color="neutral"
+                :variant="editingExtraId ? 'solid' : 'outline'"
+                :loading="isAddingExtra"
+                :disabled="(cakeBoxTypes ?? []).length === 0"
+                @click="submitExtraOrder"
+              >
+                {{ editingExtraId ? '更新' : '加入' }}
+              </UButton>
             </div>
           </section>
         </aside>
@@ -1187,58 +1272,95 @@ async function removeExtraOrder(extraOrderId: string) {
                     </tr>
                     <tr
                       v-for="r in pagedPickupList"
-                      :key="r.guestId"
-                      class="border-b border-line/60 last:border-0 dark:border-neutral-800"
+                      :key="r.kind === 'extra' ? r.extraOrderId : r.guestId"
+                      :data-testid="r.kind === 'extra' ? `vibe-extra-row-${r.extraOrderId}` : undefined"
+                      class="border-b border-line/60 transition-colors last:border-0 dark:border-neutral-800"
+                      :class="r.kind === 'extra' && r.extraOrderId === editingExtraId ? 'bg-cream dark:bg-neutral-800/40' : ''"
                     >
-                      <td class="px-4 py-2.5 font-medium text-ink dark:text-paper">
-                        {{ r.name }}
-                      </td>
-                      <td class="px-4 py-2.5 text-ink-500 dark:text-neutral-400">
-                        {{ r.category }}
-                      </td>
-                      <td class="px-4 py-2.5">
-                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <USelectMenu
-                            :model-value="rowStyleValue(r)"
-                            :items="styleOptionsWithNone"
-                            value-key="value"
-                            :data-testid="`vibe-row-style-${r.guestId}`"
-                            :loading="inlineSavingId === r.guestId"
-                            size="sm"
-                            class="w-40"
-                            @update:model-value="(v: string) => onRowStyleChange(r, v)"
-                          />
-                          <span v-if="r.excluded" class="text-caption text-ink-300">不計入訂購</span>
-                          <span v-else-if="r.isFallback" class="text-caption text-ink-300">（預設）</span>
-                          <span
-                            v-else-if="r.assignmentRule"
-                            class="text-caption text-ink-400 dark:text-neutral-500"
-                          >
-                            {{ r.assignmentRule }}
-                          </span>
-                        </div>
-                      </td>
-                      <!-- 發放狀態：已發放顯示款式徽章 + 取消發放（後台限定）；未發放留空 -->
-                      <td class="px-4 py-2.5">
-                        <div v-if="distributedTypeName(r.guestId)" class="flex flex-wrap items-center gap-2">
-                          <span class="inline-flex items-center gap-1 text-caption font-medium text-success-600 dark:text-success-400">
-                            <UIcon name="i-heroicons-check-circle-20-solid" class="size-4" />
-                            已發放（{{ distributedTypeName(r.guestId) }}）
-                          </span>
-                          <UButton
-                            :data-testid="`vibe-cancel-distribution-${r.guestId}`"
-                            icon="i-heroicons-arrow-uturn-left"
-                            color="neutral"
-                            variant="ghost"
-                            size="xs"
-                            :loading="isCancelling && cancelTarget?.guestId === r.guestId"
-                            @click="openCancelDistribution(r.guestId, r.name)"
-                          >
-                            取消發放
-                          </UButton>
-                        </div>
-                        <span v-else class="text-caption text-ink-300">未發放</span>
-                      </td>
+                      <!-- 額外配發列（issue #108）：收餅人非賓客，聯絡／備註為次行說明、操作走「⋯」選單 -->
+                      <template v-if="r.kind === 'extra'">
+                        <td class="px-4 py-2.5">
+                          <div class="font-medium text-ink dark:text-paper">
+                            {{ r.name }}
+                          </div>
+                          <p v-if="r.detail" class="mt-0.5 break-words text-caption leading-relaxed text-ink-500 dark:text-neutral-400">
+                            {{ r.detail }}
+                          </p>
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-gold-deep">
+                          額外配發
+                        </td>
+                        <!-- pl-2.5 對齊賓客列下拉框的文字起點（USelectMenu sm 內距），欄位左緣視覺一致 -->
+                        <td class="whitespace-nowrap px-4 py-2.5 text-ink-500 dark:text-neutral-400">
+                          <span class="pl-2.5">{{ r.cakeBoxTypeName }}<span class="ml-1 text-caption font-medium text-gold-deep">×{{ r.quantity }} 盒</span></span>
+                        </td>
+                        <td class="px-4 py-2.5">
+                          <div class="flex items-center gap-1">
+                            <span class="whitespace-nowrap text-caption text-ink-300">不經接待發放</span>
+                            <UDropdownMenu :items="extraOrderMenuItems(r.extraOrderId)" :content="{ align: 'end' }">
+                              <UButton
+                                :data-testid="`vibe-extra-menu-${r.extraOrderId}`"
+                                icon="i-heroicons-ellipsis-horizontal"
+                                color="neutral"
+                                variant="ghost"
+                                size="sm"
+                                :aria-label="`${r.cakeBoxTypeName} 額外配發操作`"
+                              />
+                            </UDropdownMenu>
+                          </div>
+                        </td>
+                      </template>
+                      <template v-else>
+                        <td class="px-4 py-2.5 font-medium text-ink dark:text-paper">
+                          {{ r.name }}
+                        </td>
+                        <td class="px-4 py-2.5 text-ink-500 dark:text-neutral-400">
+                          {{ r.category }}
+                        </td>
+                        <td class="px-4 py-2.5">
+                          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <USelectMenu
+                              :model-value="rowStyleValue(r)"
+                              :items="styleOptionsWithNone"
+                              value-key="value"
+                              :data-testid="`vibe-row-style-${r.guestId}`"
+                              :loading="inlineSavingId === r.guestId"
+                              size="sm"
+                              class="w-40"
+                              @update:model-value="(v: string) => onRowStyleChange(r, v)"
+                            />
+                            <span v-if="r.excluded" class="text-caption text-ink-300">不計入訂購</span>
+                            <span v-else-if="r.isFallback" class="text-caption text-ink-300">（預設）</span>
+                            <span
+                              v-else-if="r.assignmentRule"
+                              class="text-caption text-ink-400 dark:text-neutral-500"
+                            >
+                              {{ r.assignmentRule }}
+                            </span>
+                          </div>
+                        </td>
+                        <!-- 發放狀態：已發放顯示款式徽章 + 取消發放（後台限定）；未發放留空 -->
+                        <td class="px-4 py-2.5">
+                          <div v-if="distributedTypeName(r.guestId)" class="flex flex-wrap items-center gap-2">
+                            <span class="inline-flex items-center gap-1 text-caption font-medium text-success-600 dark:text-success-400">
+                              <UIcon name="i-heroicons-check-circle-20-solid" class="size-4" />
+                              已發放（{{ distributedTypeName(r.guestId) }}）
+                            </span>
+                            <UButton
+                              :data-testid="`vibe-cancel-distribution-${r.guestId}`"
+                              icon="i-heroicons-arrow-uturn-left"
+                              color="neutral"
+                              variant="ghost"
+                              size="xs"
+                              :loading="isCancelling && cancelTarget?.guestId === r.guestId"
+                              @click="openCancelDistribution(r.guestId, r.name)"
+                            >
+                              取消發放
+                            </UButton>
+                          </div>
+                          <span v-else class="text-caption text-ink-300">未發放</span>
+                        </td>
+                      </template>
                     </tr>
                   </tbody>
                 </table>

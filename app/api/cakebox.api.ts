@@ -6,6 +6,7 @@ import type {
   CakeBoxExclusionListItem,
   CakeBoxExtraOrderCreatedEvent,
   CakeBoxExtraOrderListItem,
+  CakeBoxExtraOrderUpdatedEvent,
   CakeBoxGuestExcludedEvent,
   CakeBoxTypeCreatedEvent,
   CakeBoxTypeListItem,
@@ -14,6 +15,7 @@ import type {
   CreateCakeBoxExtraOrderBody,
   CreateCakeBoxTypeBody,
   ExcludeGuestCakeBoxBody,
+  UpdateCakeBoxExtraOrderBody,
   UpdateCakeBoxTypeBody,
 } from '~/types/api/cakebox'
 import { useHttp } from '~/composables/useHttp'
@@ -110,6 +112,13 @@ export function createCakeBoxExtraOrder(weddingId: string, body: CreateCakeBoxEx
   return useHttp().post<CakeBoxExtraOrderCreatedEvent>(
     '/api/v1/weddings/{weddingId}/cake-box-extra-orders',
     { pathParams: { weddingId }, body },
+  )
+}
+
+export function updateCakeBoxExtraOrder(weddingId: string, extraOrderId: string, body: UpdateCakeBoxExtraOrderBody) {
+  return useHttp().patch<CakeBoxExtraOrderUpdatedEvent>(
+    '/api/v1/weddings/{weddingId}/cake-box-extra-orders/{extraOrderId}',
+    { pathParams: { weddingId, extraOrderId }, body },
   )
 }
 
