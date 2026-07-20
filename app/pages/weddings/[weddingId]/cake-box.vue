@@ -1033,7 +1033,7 @@ async function removeExtraOrder(extraOrderId: string) {
                 </div>
                 <p
                   v-if="o.recipientName || o.recipientContact || o.note"
-                  class="mt-0.5 truncate text-caption text-ink-500 dark:text-neutral-400"
+                  class="mt-0.5 break-words text-caption leading-relaxed text-ink-500 dark:text-neutral-400"
                 >
                   {{ [o.recipientName, o.recipientContact, o.note].filter(Boolean).join(' · ') }}
                 </p>
