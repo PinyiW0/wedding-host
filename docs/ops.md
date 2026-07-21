@@ -52,6 +52,17 @@ update users set password_hash = '貼上雜湊' where username = 'andrea' and de
 
 設定：Cloudflare → R2 → `wedding-host` → Settings → CORS Policy，貼上 [`r2-cors.json`](r2-cors.json)。**新增前端部署網址（如 Vercel preview）時，把該 origin 加進 `AllowedOrigins` 再重貼。**
 
+## 部署自動 migrate（issue #116）
+
+`vercel.json` 的 `buildCommand` 在 build 前執行 `scripts/deploy-migrate.mjs`：
+
+- `NUXT_DATABASE_URL_MIGRATE` **有值** → 對該 DB 套用 migrations；失敗即中止部署（不會出現「程式碼新、結構舊」的中間態）
+- **未設定**（preview／本機 build）→ 印訊息跳過，不阻擋部署
+
+Vercel 需設定環境變數 `NUXT_DATABASE_URL_MIGRATE`（**限 Production 環境**）＝ Neon **direct** DSN（pooled 主機名去掉 `-pooler`）。Preview 環境不設，preview build 就不會動到正式庫。
+
+回滾注意：drizzle migrations 只前進不回退——帶 DROP 的 migration 合併前先確認影響（同 stacked PR 慣例）。此機制根治 0008／0009 兩次「部署了程式碼、漏了手動 migrate」事故。
+
 ## 常見故障排查
 
 | 症狀 | 原因 | 處置 |
@@ -60,6 +71,7 @@ update users set password_hash = '貼上雜湊' where username = 'andrea' and de
 | 按 Redeploy 沒帶到新程式碼 | Redeploy 是重部署「該筆」的舊 build | 對最新 main 的 deployment 操作，或 push 空 commit 觸發 |
 | 上線後 API 全 500 | secrets 環境變數缺漏或 `.env` 留空值覆蓋預設（如 `NUXT_JWT_SECRET=` 空字串） | 檢查 Vercel env：`NUXT_JWT_SECRET`／`NUXT_GUEST_LINK_SECRET`／`NUXT_DATABASE_URL`；`.env` 範本未填的 secret 必須註解掉不能留空值 |
 | DB 連線錯誤 | pooled / direct 用途混用 | runtime 用 Neon pooled URL；migration 與腳本（db:migrate、db:create-admin）用 direct URL |
+| 部署後名單／清單變空、桌次圖只剩 ID | schema 落後程式碼（自動 migrate 上線前的舊部署，或 build log 中 migrate 失敗） | 查 Vercel build log 的 `[deploy-migrate]` 段；必要時從 origin/main 的 worktree 手動 `NUXT_DATABASE_URL='<direct>' npm run db:migrate`，跑完查 `drizzle.__drizzle_migrations` 筆數複驗 |
 | 圖片上傳失敗 | R2 四項環境變數不全 | `NUXT_R2_*` 四項 + `NUXT_PUBLIC_R2_PUBLIC_URL` 全填才啟用 presigned 直傳，否則退回 dataURL |
 | 圖片上傳失敗、Console 報 CORS（`No 'Access-Control-Allow-Origin'`、`net::ERR_FAILED`） | R2 bucket 未設 CORS policy，跨來源 PUT 被 preflight 擋 | 見上節「R2 圖片直傳 CORS」，套用 [`r2-cors.json`](r2-cors.json) |
 | 本機 push 卡 6 分鐘後失敗 | pre-push Docker gate 期間 SSH 閒置被 GitHub 斷線 | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |
