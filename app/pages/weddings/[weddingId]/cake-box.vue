@@ -100,6 +100,10 @@ function distributedTypeName(guestId: string): string | null {
   return (cakeBoxTypes.value ?? []).find(t => t.cakeBoxTypeId === typeId)?.name ?? '已發放'
 }
 
+// 區塊收合（vibe）：喜餅款式面板與訂購總覽明細，預設展開
+const isTypesPanelOpen = ref(true)
+const isOrderSummaryOpen = ref(true)
+
 // 取消喜餅發放（後台由新人／管理者操作；接待員無此權限，由後端 RBAC 擋 403）
 const cancelTarget = ref<{ guestId: string, name: string } | null>(null)
 const isCancelOpen = ref(false)
@@ -919,14 +923,26 @@ async function removeExtraOrder(extraOrderId: string) {
           <section class="rounded-xl border border-line bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <div class="mb-2 flex items-center gap-3">
               <span class="text-overline uppercase text-gold-deep">喜餅款式</span>
+              <span v-if="!isTypesPanelOpen" class="text-caption text-ink-400 dark:text-neutral-500">{{ (cakeBoxTypes ?? []).length }} 款</span>
               <span class="h-px flex-1 bg-line" />
+              <UButton
+                data-testid="vibe-cake-types-toggle"
+                :icon="isTypesPanelOpen ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                :aria-label="isTypesPanelOpen ? '收合喜餅款式面板' : '展開喜餅款式面板'"
+                :aria-expanded="isTypesPanelOpen"
+                @click="isTypesPanelOpen = !isTypesPanelOpen"
+              />
             </div>
-            <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
+            <p v-show="isTypesPanelOpen" class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
               設一款為<span class="font-medium text-ink dark:text-paper">預設</span>，沒指定的賓客都拿這款；下方「賓客分配」再依分類或個人調整。
             </p>
 
             <div
               v-if="(cakeBoxTypes ?? []).length > 0"
+              v-show="isTypesPanelOpen"
               data-testid="cake-box-list"
               class="divide-y divide-line/60 dark:divide-neutral-800"
             >
@@ -1010,7 +1026,7 @@ async function removeExtraOrder(extraOrderId: string) {
               </div>
             </div>
 
-            <div v-else data-testid="cake-box-list">
+            <div v-else v-show="isTypesPanelOpen" data-testid="cake-box-list">
               <EmptyState
                 title="目前沒有喜餅款式"
                 description="點擊「新增喜餅款式」建立第一個款式"
@@ -1143,7 +1159,7 @@ async function removeExtraOrder(extraOrderId: string) {
             <template v-else>
               <!-- 訂購總覽：暖色 cream 摘要列（與灰色工具面板區隔：摘要暖、工具灰），每款 inline 合計 + 句末總計 -->
               <div class="mb-4 rounded-lg bg-cream p-4 dark:bg-neutral-800/40">
-                <div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+                <div v-show="isOrderSummaryOpen" class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
                   <div
                     v-for="grp in orderAmountSummary"
                     :key="grp.cakeBoxTypeId || 'none'"
@@ -1168,7 +1184,10 @@ async function removeExtraOrder(extraOrderId: string) {
                     <span v-else class="text-caption text-ink-400 dark:text-neutral-500">（未定價）</span>
                   </div>
                 </div>
-                <div class="mt-3 flex flex-wrap items-baseline justify-end gap-x-1.5 gap-y-1 border-t border-line/70 pt-2 dark:border-neutral-700">
+                <div
+                  class="flex flex-wrap items-baseline justify-end gap-x-1.5 gap-y-1"
+                  :class="isOrderSummaryOpen ? 'mt-3 border-t border-line/70 pt-2 dark:border-neutral-700' : ''"
+                >
                   <span class="text-caption text-ink-500 dark:text-neutral-400">共計</span>
                   <span class="font-display text-xl font-semibold text-gold-deep">{{ orderTotal }}</span>
                   <span class="text-caption text-ink-400">盒</span>
@@ -1183,6 +1202,17 @@ async function removeExtraOrder(extraOrderId: string) {
                   <span v-if="hasUnpricedType" class="text-caption font-normal text-ink-400">
                     （未定價款未計入）
                   </span>
+                  <UButton
+                    data-testid="vibe-order-summary-toggle"
+                    :icon="isOrderSummaryOpen ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    class="self-center"
+                    :aria-label="isOrderSummaryOpen ? '收合各款明細' : '展開各款明細'"
+                    :aria-expanded="isOrderSummaryOpen"
+                    @click="isOrderSummaryOpen = !isOrderSummaryOpen"
+                  />
                 </div>
               </div>
 
