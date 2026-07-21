@@ -56,6 +56,13 @@ const categoryOptions = GIFT_CATEGORIES.map(c => ({ label: c.label, value: c.val
 // 類別篩選膠囊（issue #117）：'all' 顯示六類總覽；選單類只看該類（採買參考與全部總額不隨篩選變動）
 const activeCategory = ref<'all' | GiftCategory>('all')
 
+// 膠囊配色（低調）：未選＝中性細框灰字；選中＝白底金字單一強調，不與內容搶焦點
+function chipClass(active: boolean): string {
+  return active
+    ? 'border-gold-deep/40 bg-white font-medium text-gold-deep shadow-sm dark:border-gold/40 dark:bg-neutral-900 dark:text-gold'
+    : 'border-line text-ink-500 hover:bg-white/60 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800/60'
+}
+
 const itemsByCategory = computed(() => {
   const map = {} as Record<GiftCategory, GiftItemListItem[]>
   for (const c of GIFT_CATEGORIES)
@@ -313,66 +320,79 @@ async function confirmRemove() {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto pr-4">
-      <!-- 採買參考：單一凹陷條，三個 inline 數字（testid 容器需含數字，勿拆離） -->
-      <div class="mb-8 flex flex-wrap gap-y-3 divide-x divide-line rounded-lg bg-paper p-4 dark:divide-neutral-800 dark:bg-neutral-800/60">
-        <div data-testid="gift-ref-adults" class="min-w-32 flex-1 px-5 first:pl-1">
-          <p class="text-overline uppercase text-gold-deep">
-            出席大人
-          </p>
-          <p class="mt-1 flex items-baseline gap-1">
-            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refAdults }}</span>
-            <span class="text-caption text-ink-300">位（已扣兒童椅）</span>
-          </p>
+      <!-- 採買參考（左）＋全部總額（右，獨立區塊）：同列固定於頂部，位置不隨內容長度跳動 -->
+      <div class="mb-8 flex flex-wrap items-stretch gap-4">
+        <!-- 採買參考：單一凹陷條，三個 inline 數字（testid 容器需含數字，勿拆離） -->
+        <div class="flex min-w-0 flex-[3] flex-wrap gap-y-3 divide-x divide-line rounded-lg bg-paper p-4 dark:divide-neutral-800 dark:bg-neutral-800/60">
+          <div data-testid="gift-ref-adults" class="min-w-32 flex-1 px-5 first:pl-1">
+            <p class="text-overline uppercase text-gold-deep">
+              出席大人
+            </p>
+            <p class="mt-1 flex items-baseline gap-1">
+              <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refAdults }}</span>
+              <span class="text-caption text-ink-300">位（已扣兒童椅）</span>
+            </p>
+          </div>
+          <div data-testid="gift-ref-children" class="min-w-32 flex-1 px-5">
+            <p class="text-overline uppercase text-gold-deep">
+              兒童椅
+            </p>
+            <p class="mt-1 flex items-baseline gap-1">
+              <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refChildren }}</span>
+              <span class="text-caption text-ink-300">位</span>
+            </p>
+          </div>
+          <div data-testid="gift-ref-tables" class="min-w-32 flex-1 px-5">
+            <p class="text-overline uppercase text-gold-deep">
+              桌數
+            </p>
+            <p class="mt-1 flex items-baseline gap-1">
+              <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refTables }}</span>
+              <span class="text-caption text-ink-300">桌</span>
+            </p>
+          </div>
         </div>
-        <div data-testid="gift-ref-children" class="min-w-32 flex-1 px-5">
+
+        <!-- 全部總額：獨立區塊、與採買參考同量感的低調配色（原頁尾深色卡上移，issue #117 回饋） -->
+        <div class="min-w-56 flex-1 rounded-lg border border-gold/30 bg-paper p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p class="text-overline uppercase text-gold-deep">
-            兒童椅
+            全部總額
           </p>
-          <p class="mt-1 flex items-baseline gap-1">
-            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refChildren }}</span>
-            <span class="text-caption text-ink-300">位</span>
+          <p class="mt-1">
+            <span data-testid="gift-grand-total" class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ formatPrice(grandTotal) }}</span>
           </p>
-        </div>
-        <div data-testid="gift-ref-tables" class="min-w-32 flex-1 px-5">
-          <p class="text-overline uppercase text-gold-deep">
-            桌數
-          </p>
-          <p class="mt-1 flex items-baseline gap-1">
-            <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refTables }}</span>
-            <span class="text-caption text-ink-300">桌</span>
+          <p class="mt-0.5 text-caption text-ink-300">
+            六類品項總計（含運費與其他費用）
           </p>
         </div>
       </div>
 
-      <!-- 類別篩選膠囊（issue #117）：全部＋六類，帶數量與小計；空類別顯示 0 保持六類全貌 -->
+      <!-- 類別篩選膠囊（issue #117）：全部＋六類，帶數量與小計；低調配色，選中白底金字 -->
       <div class="mb-6 flex flex-wrap items-center gap-2">
-        <UButton
+        <button
+          type="button"
           data-testid="vibe-gift-filter-all"
-          :variant="activeCategory === 'all' ? 'solid' : 'outline'"
-          color="neutral"
-          size="sm"
-          class="rounded-full"
+          class="rounded-full border px-3 py-1 text-caption transition-colors"
+          :class="chipClass(activeCategory === 'all')"
           :aria-pressed="activeCategory === 'all'"
           @click="activeCategory = 'all'"
         >
           全部 {{ (giftItems ?? []).length }}
-        </UButton>
-        <UButton
+        </button>
+        <button
           v-for="cat in GIFT_CATEGORIES"
           :key="cat.value"
+          type="button"
           :data-testid="`vibe-gift-filter-${cat.value}`"
-          :variant="activeCategory === cat.value ? 'solid' : 'outline'"
-          color="neutral"
-          size="sm"
-          class="rounded-full"
+          class="rounded-full border px-3 py-1 text-caption transition-colors"
+          :class="chipClass(activeCategory === cat.value)"
           :aria-pressed="activeCategory === cat.value"
           @click="activeCategory = cat.value"
         >
-          {{ cat.label }} {{ itemsByCategory[cat.value].length }}
-          <span v-if="subtotalByCategory[cat.value] > 0" class="text-caption font-normal text-ink-400 dark:text-neutral-500">
+          {{ cat.label }} {{ itemsByCategory[cat.value].length }}<template v-if="subtotalByCategory[cat.value] > 0">
             · {{ formatPrice(subtotalByCategory[cat.value]) }}
-          </span>
-        </UButton>
+          </template>
+        </button>
       </div>
 
       <!-- 六類固定區塊：類別為「章節」直接落在頁面底色上，品項才是卡片；依膠囊篩選顯示 -->
@@ -497,19 +517,6 @@ async function confirmRemove() {
             </span>
           </div>
         </section>
-      </div>
-
-      <!-- 全部總額卡 -->
-      <div class="my-6 rounded-xl bg-ink p-6 text-cream">
-        <div class="flex flex-wrap items-baseline justify-between gap-3">
-          <span class="text-overline uppercase text-gold">全部總額</span>
-          <span data-testid="gift-grand-total" class="font-display text-h2 font-semibold text-gold">
-            {{ formatPrice(grandTotal) }}
-          </span>
-        </div>
-        <p class="mt-2 text-caption text-ink-300">
-          六類品項總計加總（含運費與其他費用）
-        </p>
       </div>
     </div>
 
