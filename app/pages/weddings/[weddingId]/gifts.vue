@@ -53,6 +53,9 @@ const GIFT_CATEGORIES: { value: GiftCategory, label: string }[] = [
 ]
 const categoryOptions = GIFT_CATEGORIES.map(c => ({ label: c.label, value: c.value }))
 
+// 類別篩選膠囊（issue #117）：'all' 顯示六類總覽；選單類只看該類（採買參考與全部總額不隨篩選變動）
+const activeCategory = ref<'all' | GiftCategory>('all')
+
 const itemsByCategory = computed(() => {
   const map = {} as Record<GiftCategory, GiftItemListItem[]>
   for (const c of GIFT_CATEGORIES)
@@ -341,10 +344,42 @@ async function confirmRemove() {
         </div>
       </div>
 
-      <!-- 六類固定區塊：類別為「章節」直接落在頁面底色上，品項才是卡片 -->
+      <!-- 類別篩選膠囊（issue #117）：全部＋六類，帶數量與小計；空類別顯示 0 保持六類全貌 -->
+      <div class="mb-6 flex flex-wrap items-center gap-2">
+        <UButton
+          data-testid="vibe-gift-filter-all"
+          :variant="activeCategory === 'all' ? 'solid' : 'outline'"
+          color="neutral"
+          size="sm"
+          class="rounded-full"
+          :aria-pressed="activeCategory === 'all'"
+          @click="activeCategory = 'all'"
+        >
+          全部 {{ (giftItems ?? []).length }}
+        </UButton>
+        <UButton
+          v-for="cat in GIFT_CATEGORIES"
+          :key="cat.value"
+          :data-testid="`vibe-gift-filter-${cat.value}`"
+          :variant="activeCategory === cat.value ? 'solid' : 'outline'"
+          color="neutral"
+          size="sm"
+          class="rounded-full"
+          :aria-pressed="activeCategory === cat.value"
+          @click="activeCategory = cat.value"
+        >
+          {{ cat.label }} {{ itemsByCategory[cat.value].length }}
+          <span v-if="subtotalByCategory[cat.value] > 0" class="text-caption font-normal text-ink-400 dark:text-neutral-500">
+            · {{ formatPrice(subtotalByCategory[cat.value]) }}
+          </span>
+        </UButton>
+      </div>
+
+      <!-- 六類固定區塊：類別為「章節」直接落在頁面底色上，品項才是卡片；依膠囊篩選顯示 -->
       <div class="space-y-8">
         <section
           v-for="cat in GIFT_CATEGORIES"
+          v-show="activeCategory === 'all' || activeCategory === cat.value"
           :key="cat.value"
           :data-testid="`gift-category-${cat.value}`"
         >
