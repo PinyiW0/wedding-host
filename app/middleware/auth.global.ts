@@ -32,15 +32,27 @@ export default defineNuxtRouteMiddleware((to) => {
   // 登入狀態存在 cookie（pinia-plugin-persistedstate/nuxt 預設 storage），SSR 讀得到，
   // 因此守衛全端執行——兩端讀同一份狀態，SSR 不會渲染出與 client 不一致的畫面
 
-  // 根路由交給 index.vue 依登入狀態自行導向
-  if (to.path === '/' || PUBLIC_PATTERNS.some(re => re.test(to.path)))
+  if (PUBLIC_PATTERNS.some(re => re.test(to.path)))
     return
 
   const auth = useAuthStore()
+
+  // 根路由：依登入狀態與角色導向（SSR 直接 302——若留給 index.vue 在 client 導向，
+  // 首屏會先渲染 default layout 空殼，hydration 中的 navigateTo 只換 URL 不換畫面，卡在空白頁）
+  if (to.path === '/') {
+    if (!auth.isAuthenticated)
+      return navigateTo('/login', { replace: true })
+    if (auth.isReceptionist)
+      return navigateTo(`/reception?weddingId=${auth.weddingId ?? 'wedding-001'}`, { replace: true })
+    if (auth.isCouple)
+      return navigateTo(`/weddings/${auth.weddingId ?? 'wedding-001'}`, { replace: true })
+    return navigateTo('/weddings', { replace: true })
+  }
+
   if (!auth.isAuthenticated)
     return navigateTo('/login')
 
-  // 接待員：只能進接待台與投影祝福審核（公開頁與根路由已於上方放行），其餘後台導回接待台
+  // 接待員：只能進接待台與投影祝福審核（公開頁已於上方放行、根路由已於上方導向），其餘後台導回接待台
   if (auth.isReceptionist && !RECEPTIONIST_PATTERNS.some(re => re.test(to.path))) {
     const target = `/reception?weddingId=${auth.weddingId ?? 'wedding-001'}`
     if (to.fullPath !== target)
