@@ -425,7 +425,7 @@ async function confirmRemove() {
               v-for="item in itemsByCategory[cat.value]"
               :key="item.giftItemId"
               :aria-label="item.description"
-              class="flex flex-wrap gap-4 rounded-lg border border-line bg-white p-4 shadow-sm transition-colors hover:bg-cream dark:border-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800/40"
+              class="flex flex-wrap gap-4 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
             >
               <!-- 縮圖（無圖以禮物 icon 佔位） -->
               <div class="size-16 shrink-0 overflow-hidden rounded-md border border-line bg-white dark:border-neutral-700 dark:bg-neutral-800">
