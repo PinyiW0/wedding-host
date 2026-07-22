@@ -615,7 +615,7 @@ async function removeCategory(categoryId: string) {
     >
       <template #content>
         <div data-testid="gift-form-modal" class="max-h-[85vh] overflow-y-auto p-6">
-          <h3 class="mb-4 font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingId ? '編輯禮物品項' : '新增禮物品項' }}
           </h3>
 
@@ -676,7 +676,7 @@ async function removeCategory(categoryId: string) {
               </UFormField>
             </div>
 
-            <div class="grid grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <UFormField label="運費一" name="shippingFee1">
                 <UInput
                   v-model="draft.shippingFee1"

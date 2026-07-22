@@ -433,7 +433,7 @@ async function confirmRemove() {
       description="查看、匯出與覆寫賓客回覆"
     >
       <template #actions>
-        <div class="flex items-center gap-5">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
           <UButton
             data-testid="rsvp-view-flowers"
             icon="i-heroicons-sparkles"
@@ -486,7 +486,7 @@ async function confirmRemove() {
         </StatCard>
 
         <div class="rounded-lg border border-line bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="flex flex-wrap gap-y-3 divide-x divide-line dark:divide-neutral-800">
+          <div class="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:gap-3 sm:gap-x-0 sm:divide-x sm:divide-line dark:sm:divide-neutral-800">
             <div class="min-w-24 flex-1 px-4 first:pl-1">
               <p class="text-overline uppercase text-gold-deep">
                 不出席
@@ -625,7 +625,7 @@ async function confirmRemove() {
                 <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   已寄送
                 </th>
-                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-right font-medium">
+                <th class="sticky right-0 top-0 z-20 border-b border-l border-line bg-cream px-3 py-3.5 text-right font-medium dark:bg-neutral-950">
                   操作
                 </th>
               </tr>
@@ -684,7 +684,7 @@ async function confirmRemove() {
                     @update:model-value="toggleInvitationSent(guest, $event)"
                   />
                 </td>
-                <td class="border-b border-line px-3 py-3 text-right dark:border-neutral-800">
+                <td class="sticky right-0 border-b border-l border-line bg-cream px-3 py-3 text-right dark:border-neutral-800 dark:bg-neutral-950">
                   <div class="flex justify-end gap-1">
                     <UButton
                       data-testid="rsvp-detail"

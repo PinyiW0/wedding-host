@@ -122,7 +122,7 @@ async function save() {
       description="開關系統題、調整標籤與順序，或新增自訂題；右側即時預覽賓客看到的表單"
     >
       <template #actions>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <UButton
             icon="i-heroicons-paint-brush"
             color="neutral"

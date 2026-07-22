@@ -747,7 +747,7 @@ async function submitFallback() {
     <UModal v-model:open="isBatchOpen">
       <template #content>
         <div data-testid="batch-modal" class="p-6">
-          <h3 class="font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="text-body-l font-semibold text-ink dark:text-paper">
             群發感謝訊息
           </h3>
           <p class="mt-2 text-neutral-500 dark:text-neutral-400">
@@ -804,7 +804,7 @@ async function submitFallback() {
     <UModal v-model:open="isFallbackOpen">
       <template #content>
         <div data-testid="fallback-modal" class="p-6">
-          <h3 class="mb-4 font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             發送替代感謝
           </h3>
 

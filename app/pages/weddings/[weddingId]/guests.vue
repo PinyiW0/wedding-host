@@ -676,7 +676,7 @@ async function confirmImport() {
       description="管理此婚禮的賓客資料與批次匯入"
     >
       <template #actions>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <UButton
             data-testid="guest-public-link"
             icon="i-heroicons-link"

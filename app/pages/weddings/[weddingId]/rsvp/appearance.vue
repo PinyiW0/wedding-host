@@ -85,7 +85,7 @@ async function save() {
       description="選擇表單模板與主視覺 banner；右側即時預覽賓客看到的表單"
     >
       <template #actions>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <UButton
             icon="i-heroicons-queue-list"
             color="neutral"
