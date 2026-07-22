@@ -190,13 +190,28 @@ api_contract:
     FlowerWallItem:
       file: flowers.ts
       fields: { guestId: string, name: string, flowerDrawing: string }
-    # --- gifts.ts（婚禮小物；金額為讀模型：小計=unitPrice×quantity、總計=小計+三費用） ---
+    # --- gifts.ts（婚禮小物；金額為讀模型：小計=unitPrice×quantity、總計=小計+三費用；類別為婚禮字典 issue #124） ---
+    GiftCategoryItem:
+      file: gifts.ts
+      fields: { categoryId: string, weddingId: string, name: string, sortOrder: number }
+    CreateGiftCategoryBody:
+      file: gifts.ts
+      fields: { name: string }
+    GiftCategoryCreatedEvent:
+      file: gifts.ts
+      fields: 'extends GiftCategoryItem'
+    UpdateGiftCategoryBody:
+      file: gifts.ts
+      fields: { name: string }
+    GiftCategoryUpdatedEvent:
+      file: gifts.ts
+      fields: 'extends GiftCategoryItem'
     GiftItemListItem:
       file: gifts.ts
-      fields: { giftItemId: string, weddingId: string, category: GiftCategory, description: string, imageUrl: 'string | null', unitPrice: number, quantity: number, purchaseUrl: 'string | null', distributionTime: 'string | null', shippingFee1: number, shippingFee2: number, otherFee: number, note: 'string | null' }
+      fields: { giftItemId: string, weddingId: string, category: string, description: string, imageUrl: 'string | null', unitPrice: number, quantity: number, purchaseUrl: 'string | null', distributionTime: 'string | null', shippingFee1: number, shippingFee2: number, otherFee: number, note: 'string | null' }
     CreateGiftItemBody:
       file: gifts.ts
-      fields: { category: GiftCategory, description: string, unitPrice: number, quantity: number, 'imageUrl?': string, 'purchaseUrl?': string, 'distributionTime?': string, 'shippingFee1?': number, 'shippingFee2?': number, 'otherFee?': number, 'note?': string }
+      fields: { category: string, description: string, unitPrice: number, quantity: number, 'imageUrl?': string, 'purchaseUrl?': string, 'distributionTime?': string, 'shippingFee1?': number, 'shippingFee2?': number, 'otherFee?': number, 'note?': string }
     GiftItemCreatedEvent:
       file: gifts.ts
       fields: 'extends GiftItemListItem'
@@ -417,6 +432,10 @@ api_contract:
     # --- line oa ---
     - { method: POST, path: /api/v1/weddings/{weddingId}/line-oa, request: ConnectLineOaBody, response: LineOaConnectedEvent }
     # --- gifts（婚禮小物） ---
+    - { method: GET, path: /api/v1/weddings/{weddingId}/gift-categories, request: '{}', response: 'GiftCategoryItem[]' }
+    - { method: POST, path: /api/v1/weddings/{weddingId}/gift-categories, request: CreateGiftCategoryBody, response: GiftCategoryCreatedEvent }
+    - { method: PATCH, path: /api/v1/weddings/{weddingId}/gift-categories/{categoryId}, request: UpdateGiftCategoryBody, response: GiftCategoryUpdatedEvent }
+    - { method: DELETE, path: /api/v1/weddings/{weddingId}/gift-categories/{categoryId}, request: '{}', response: void }
     - { method: GET, path: /api/v1/weddings/{weddingId}/gift-items, request: '{}', response: 'GiftItemListItem[]' }
     - { method: POST, path: /api/v1/weddings/{weddingId}/gift-items, request: CreateGiftItemBody, response: GiftItemCreatedEvent }
     - { method: PATCH, path: /api/v1/weddings/{weddingId}/gift-items/{giftItemId}, request: UpdateGiftItemBody, response: GiftItemUpdatedEvent }
@@ -683,6 +702,10 @@ routes:
       - POST /api/v1/weddings/{weddingId}/gift-items
       - PATCH /api/v1/weddings/{weddingId}/gift-items/{giftItemId}
       - DELETE /api/v1/weddings/{weddingId}/gift-items/{giftItemId}
+      - GET /api/v1/weddings/{weddingId}/gift-categories
+      - POST /api/v1/weddings/{weddingId}/gift-categories
+      - PATCH /api/v1/weddings/{weddingId}/gift-categories/{categoryId}
+      - DELETE /api/v1/weddings/{weddingId}/gift-categories/{categoryId}
       - GET /api/v1/weddings/{weddingId}/guests
       - GET /api/v1/weddings/{weddingId}/tables
     components: [PageHeader, ConfirmModal, EmptyState]

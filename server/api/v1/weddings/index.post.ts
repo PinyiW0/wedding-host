@@ -12,7 +12,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingCreated
   }
 
   const weddingId = `wedding-${crypto.randomUUID().slice(0, 8)}`
-  await useDb().insert(weddings).values({
+  const db = useDb()
+  await db.insert(weddings).values({
     weddingId,
     title: body.title,
     venue: body.venue,
@@ -26,6 +27,8 @@ export default defineEventHandler(async (event: H3Event): Promise<WeddingCreated
     ownerId: getRequestUser(event).userId,
     deletedAt: null,
   })
+  // 婚禮小物預設六類（issue #124）：新婚禮開站即有類別可用，之後可自行增刪改名
+  await seedDefaultGiftCategories(db, weddingId)
 
   setResponseStatus(event, 201)
   return { weddingId, title: body.title, venue: body.venue, address: body.address, date: body.date }

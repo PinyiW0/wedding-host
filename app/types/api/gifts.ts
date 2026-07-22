@@ -1,18 +1,30 @@
-// 婚禮小物規劃：六類禮物品項 CRUD
+// 婚禮小物規劃：類別可自訂（預設六類）＋禮物品項 CRUD
 // 金額為讀模型（前端計算不落庫）：小計＝unitPrice×quantity；品項總計＝小計＋shippingFee1＋shippingFee2＋otherFee
 
-export type GiftCategory
-  = | 'table' // 桌上禮
-    | 'second_entrance' // 二進禮
-    | 'game' // 遊戲禮
-    | 'send_off' // 送客禮
-    | 'room_visit' // 探房禮
-    | 'tea_ceremony' // 喝茶禮
+// 婚禮層級類別字典（issue #124）：category 欄存 categoryId（預設類沿用 slug：table…tea_ceremony）
+export interface GiftCategoryItem {
+  categoryId: string
+  weddingId: string
+  name: string
+  sortOrder: number
+}
+
+export interface CreateGiftCategoryBody {
+  name: string
+}
+
+export interface GiftCategoryCreatedEvent extends GiftCategoryItem {}
+
+export interface UpdateGiftCategoryBody {
+  name: string
+}
+
+export interface GiftCategoryUpdatedEvent extends GiftCategoryItem {}
 
 export interface GiftItemListItem {
   giftItemId: string
   weddingId: string
-  category: GiftCategory
+  category: string
   // 款式說明（識別欄位，必填）
   description: string
   // 縮圖（上傳後存成 base64 data URL）
@@ -29,7 +41,7 @@ export interface GiftItemListItem {
 }
 
 export interface CreateGiftItemBody {
-  category: GiftCategory
+  category: string
   description: string
   unitPrice: number
   quantity: number
@@ -45,7 +57,7 @@ export interface CreateGiftItemBody {
 export interface GiftItemCreatedEvent extends GiftItemListItem {}
 
 export interface UpdateGiftItemBody {
-  category?: GiftCategory
+  category?: string
   description?: string
   unitPrice?: number
   quantity?: number

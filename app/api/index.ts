@@ -31,9 +31,13 @@ export {
 export { getDashboardStats } from './dashboard.api'
 export { listFlowers } from './flowers.api'
 export {
+  createGiftCategory,
   createGiftItem,
+  deleteGiftCategory,
   deleteGiftItem,
+  listGiftCategories,
   listGiftItems,
+  updateGiftCategory,
   updateGiftItem,
 } from './gifts.api'
 export {

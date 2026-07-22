@@ -1,10 +1,10 @@
 import type { H3Event } from 'h3'
-import type { CreateGiftItemBody, GiftCategory, GiftItemCreatedEvent } from '../../../../../../app/types/api/gifts'
+import type { CreateGiftItemBody, GiftItemCreatedEvent } from '../../../../../../app/types/api/gifts'
+
+import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
-import { giftItems } from '../../../../../db/schema'
-
-const GIFT_CATEGORIES: readonly GiftCategory[] = ['table', 'second_entrance', 'game', 'send_off', 'room_visit', 'tea_ceremony']
+import { giftCategories, giftItems } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
@@ -16,9 +16,13 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
   if (!body.category) {
     throw createError({ statusCode: 400, statusMessage: '請選擇禮物類別' })
   }
-  // 六類白名單：category 為 TS-only enum、DB 落 text 無 CHECK 約束，
-  // 毒值會讓 gifts.vue 的 map[item.category].push 擲 TypeError 炸掉整頁，且只能改 DB 救回
-  assertEnum(body.category, GIFT_CATEGORIES, '禮物類別')
+  const db = useDb()
+  // 類別需存在於本婚禮字典（issue #124 起可自訂）：DB 無 FK 約束，
+  // 毒值品項不會落在任何類別區塊、金額也對不上，一律 400 擋在入口
+  const [category] = await db.select({ categoryId: giftCategories.categoryId }).from(giftCategories).where(and(eq(giftCategories.weddingId, weddingId), eq(giftCategories.categoryId, body.category)))
+  if (!category) {
+    throw createError({ statusCode: 400, statusMessage: '禮物類別不存在' })
+  }
 
   const giftItemId = `giftitem-${crypto.randomUUID().slice(0, 8)}`
   const item: GiftItemCreatedEvent = {
@@ -42,7 +46,6 @@ export default defineEventHandler(async (event: H3Event): Promise<GiftItemCreate
   assertPositiveInt(item.shippingFee1, '運費', 100_000_000)
   assertPositiveInt(item.shippingFee2, '運費', 100_000_000)
   assertPositiveInt(item.otherFee, '其他費用', 100_000_000)
-  const db = useDb()
   await db.insert(giftItems).values(item)
 
   setResponseStatus(event, 201)
