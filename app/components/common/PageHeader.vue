@@ -15,8 +15,9 @@ withDefaults(
 
 <template>
   <!-- 壓低 header 高度（issue #115）：主標在左，eyebrow＋說明併一塊放標題右側；lg 以下回落標題下方 -->
+  <!-- 手機（issue #126）：標題整列在上、動作鈕移到下方，避免 justify-between 把 CJK 標題壓成逐字直排 -->
   <div class="mb-6 shrink-0">
-    <div class="flex items-start justify-between gap-4">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div class="flex min-w-0 flex-1 flex-col gap-1.5 lg:flex-row lg:items-center lg:gap-5">
         <h2 class="shrink-0 font-display text-h2 font-semibold text-ink dark:text-paper">
           {{ title }}

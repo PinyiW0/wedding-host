@@ -280,7 +280,7 @@ async function submitReject() {
       description="審核賓客提交的祝福留言（通過 / 拒絕），並推到投影即時牆"
     >
       <template #actions>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <UButton
             data-testid="vibe-shared-blessing-qr"
             icon="i-heroicons-qr-code"
