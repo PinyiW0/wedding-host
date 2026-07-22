@@ -1423,7 +1423,7 @@ async function removeExtraOrder(extraOrderId: string) {
     >
       <template #content>
         <div data-testid="cake-box-form-modal" class="p-6">
-          <h3 class="mb-4 font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingId ? '編輯喜餅款式' : '新增喜餅款式' }}
           </h3>
 
@@ -1585,7 +1585,7 @@ async function removeExtraOrder(extraOrderId: string) {
     <UModal v-model:open="isAssignOpen">
       <template #content>
         <div data-testid="cake-box-assign-modal" class="p-6">
-          <h3 class="mb-1 font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="mb-1 text-body-l font-semibold text-ink dark:text-paper">
             設定喜餅指派規則
           </h3>
           <p class="mb-4 text-caption text-ink-500 dark:text-neutral-400">
@@ -1666,7 +1666,7 @@ async function removeExtraOrder(extraOrderId: string) {
     <UModal v-model:open="isAutoOpen">
       <template #content>
         <div data-testid="cake-box-auto-modal" class="p-6">
-          <h3 class="mb-1 font-display text-body-l font-semibold text-ink dark:text-paper">
+          <h3 class="mb-1 text-body-l font-semibold text-ink dark:text-paper">
             依分類帶入喜餅
           </h3>
           <p class="mb-4 text-body text-ink-500 dark:text-neutral-400">
