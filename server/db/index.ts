@@ -4,7 +4,7 @@ import { drizzle as drizzleNeonHttp } from 'drizzle-orm/neon-http'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import * as schema from './schema'
-import { seedDbIfEmpty } from './seed'
+import { seedMissingTables } from './seed'
 
 // 單例 DB 客戶端，依連線目標自動選 driver（見 issue #4 / #9）：
 //   *.neon.tech → neon-http（serverless 走 HTTP，無 TCP 連線池問題）
@@ -12,9 +12,13 @@ import { seedDbIfEmpty } from './seed'
 // 注意：neon-http 不支援 db.transaction()，handler 層不得使用（現況全數為單一查詢）
 let _db: NodePgDatabase<typeof schema> | undefined
 
+function isNeonUrl(url: string): boolean {
+  return new URL(url).hostname.endsWith('.neon.tech')
+}
+
 function createDb(): NodePgDatabase<typeof schema> {
   const url = useRuntimeConfig().databaseUrl
-  if (new URL(url).hostname.endsWith('.neon.tech')) {
+  if (isNeonUrl(url)) {
     // 兩個 driver 的查詢 API 相同，型別以 node-postgres 版為準收斂
     return drizzleNeonHttp(neon(url), { schema, casing: 'snake_case' }) as unknown as NodePgDatabase<typeof schema>
   }
@@ -38,7 +42,10 @@ export function ensureDbReady(): Promise<void> {
       return
     const db = useDb()
     await migrate(db, { migrationsFolder: 'server/db/migrations' })
-    await seedDbIfEmpty(db)
+    // 只對本機 seed 資料庫自癒（issue #100）：dev 連 Neon（正式庫）時絕不塞 mock seed，
+    // 且 neon-http 不支援 seed 所依賴的 db.transaction()
+    if (!isNeonUrl(useRuntimeConfig().databaseUrl))
+      await seedMissingTables(db)
   })()
   return _ready
 }
