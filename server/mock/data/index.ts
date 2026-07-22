@@ -4,7 +4,7 @@
 export { mockReceptionAccounts } from './accounts'
 export { mockBlessings } from './blessings'
 export { mockCakeBoxAssignments, mockCakeBoxExclusions, mockCakeBoxExtraOrders, mockCakeBoxTypes } from './cakebox'
-export { mockGiftItems } from './gifts'
+export { mockGiftCategories, mockGiftItems } from './gifts'
 export { mockGuestCategories } from './guest-categories'
 export { mockGuests } from './guests'
 export { mockLineOas } from './line'

@@ -1,5 +1,4 @@
 import type { BlessingStatus, BlessingWallStatus } from '../../app/types/api/blessings'
-import type { GiftCategory } from '../../app/types/api/gifts'
 import type { GuestSource, GuestStatus } from '../../app/types/api/guests'
 import type { ProjectionMediaType } from '../../app/types/api/projection'
 import type { AttendingStatus, InvitationPreference } from '../../app/types/api/rsvp'
@@ -111,11 +110,23 @@ export const blessings = pgTable('blessings', {
   wallStatus: text().$type<BlessingWallStatus>(),
 }, t => [index().on(t.weddingId)])
 
+// 婚禮小物類別字典（issue #124）：預設六類 seed、可自訂新增／改名／刪除。
+// categoryId 婚禮內唯一即可（預設類沿用語意 slug：table…tea_ceremony，與既有 gift_items.category
+// 存值相容、資料免搬移），跨婚禮可重複 → 複合 PK (weddingId, categoryId)；(weddingId, name) 唯一防同名
+export const giftCategories = pgTable('gift_categories', {
+  seq: integer().generatedByDefaultAsIdentity(),
+  weddingId: text().notNull(),
+  categoryId: text().notNull(),
+  name: text().notNull(),
+  sortOrder: integer().notNull(),
+}, t => [primaryKey({ columns: [t.weddingId, t.categoryId] }), uniqueIndex().on(t.weddingId, t.name)])
+
 export const giftItems = pgTable('gift_items', {
   seq: integer().generatedByDefaultAsIdentity(),
   giftItemId: text().primaryKey(),
   weddingId: text().notNull(),
-  category: text().$type<GiftCategory>().notNull(),
+  // 存 giftCategories.categoryId（無 FK 約束，孤兒防護由類別刪除的擋刪守門承擔）
+  category: text().notNull(),
   description: text().notNull(),
   imageUrl: text(),
   unitPrice: integer().notNull(),

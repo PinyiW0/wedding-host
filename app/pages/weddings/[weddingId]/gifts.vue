@@ -4,18 +4,21 @@ import type { FormSubmitEvent } from '@nuxt/ui'
 
 import type {
   CreateGiftItemBody,
-  GiftCategory,
   GiftItemListItem,
   UpdateGiftItemBody,
 } from '~/types/api/gifts'
 
 import { z } from 'zod'
 import {
+  createGiftCategory,
   createGiftItem,
+  deleteGiftCategory,
   deleteGiftItem,
+  listGiftCategories,
   listGiftItems,
   listGuests,
   listTables,
+  updateGiftCategory,
   updateGiftItem,
 } from '~/api'
 
@@ -42,19 +45,22 @@ const { data: tables } = await listTables(
   { default: () => [] },
 )
 
-// === 六類固定區塊（中文 label map）===
-const GIFT_CATEGORIES: { value: GiftCategory, label: string }[] = [
-  { value: 'table', label: '桌上禮' },
-  { value: 'second_entrance', label: '二進禮' },
-  { value: 'game', label: '遊戲禮' },
-  { value: 'send_off', label: '送客禮' },
-  { value: 'room_visit', label: '探房禮' },
-  { value: 'tea_ceremony', label: '喝茶禮' },
-]
-const categoryOptions = GIFT_CATEGORIES.map(c => ({ label: c.label, value: c.value }))
+// === 類別區塊（issue #124 起為婚禮字典：預設六類、可自訂增刪改名）===
+const { data: giftCategoriesData, refresh: refreshCategories } = await listGiftCategories(
+  weddingId,
+  { default: () => [] },
+)
+const categories = computed(() =>
+  (giftCategoriesData.value ?? []).map(c => ({ value: c.categoryId, label: c.name })),
+)
 
-// 類別篩選膠囊（issue #117）：'all' 顯示六類總覽；選單類只看該類（採買參考與全部總額不隨篩選變動）
-const activeCategory = ref<'all' | GiftCategory>('all')
+// 類別篩選膠囊（issue #117）：'all' 顯示全類別總覽；選單類只看該類（採買參考與全部總額不隨篩選變動）
+const activeCategory = ref<string>('all')
+// 篩選中的類別被刪除時退回「全部」
+watch(categories, (list) => {
+  if (activeCategory.value !== 'all' && !list.some(c => c.value === activeCategory.value))
+    activeCategory.value = 'all'
+})
 
 // 膠囊配色（低調）：未選＝中性細框灰字；選中＝白底金字單一強調，不與內容搶焦點
 function chipClass(active: boolean): string {
@@ -64,13 +70,16 @@ function chipClass(active: boolean): string {
 }
 
 const itemsByCategory = computed(() => {
-  const map = {} as Record<GiftCategory, GiftItemListItem[]>
-  for (const c of GIFT_CATEGORIES)
+  const map: Record<string, GiftItemListItem[]> = {}
+  for (const c of categories.value)
     map[c.value] = []
   for (const item of giftItems.value ?? [])
-    map[item.category].push(item)
+    map[item.category]?.push(item)
   return map
 })
+function categoryItems(categoryId: string): GiftItemListItem[] {
+  return itemsByCategory.value[categoryId] ?? []
+}
 
 // === 金額讀模型（前端計算不落庫）===
 // 小計＝單價×數量；品項總計＝小計＋運費一＋運費二＋其他費用
@@ -81,14 +90,11 @@ function itemTotal(item: GiftItemListItem): number {
   return itemSubtotal(item) + item.shippingFee1 + item.shippingFee2 + item.otherFee
 }
 
-const subtotalByCategory = computed(() => {
-  const map = {} as Record<GiftCategory, number>
-  for (const c of GIFT_CATEGORIES)
-    map[c.value] = itemsByCategory.value[c.value].reduce((sum, item) => sum + itemTotal(item), 0)
-  return map
-})
+function categorySubtotal(categoryId: string): number {
+  return categoryItems(categoryId).reduce((sum, item) => sum + itemTotal(item), 0)
+}
 const grandTotal = computed(() =>
-  Object.values(subtotalByCategory.value).reduce((sum, n) => sum + n, 0),
+  (giftItems.value ?? []).reduce((sum, item) => sum + itemTotal(item), 0),
 )
 
 function formatPrice(n: number): string {
@@ -122,7 +128,7 @@ const editingId = ref<string | null>(null)
 const state = reactive<Schema>({ description: '' })
 // 數字欄以文字暫存（UInput type=number 會在 runtime 回填數字），送出時 Number() 收斂；未填費用預設 0
 const draft = reactive({
-  category: 'table' as GiftCategory,
+  category: '',
   unitPrice: '',
   quantity: '',
   shippingFee1: '',
@@ -143,7 +149,7 @@ function toNumber(value: string | number): number {
 
 function resetDraft() {
   state.description = ''
-  draft.category = 'table'
+  draft.category = categories.value[0]?.value ?? ''
   draft.unitPrice = ''
   draft.quantity = ''
   draft.shippingFee1 = ''
@@ -297,6 +303,69 @@ async function confirmRemove() {
     isRemoving.value = false
   }
 }
+
+// === 類別管理（issue #124）：新增／改名／刪除，仍有品項的類別由後端 409 擋刪 ===
+const isCategoryManageOpen = ref(false)
+const isCategorySubmitting = ref(false)
+const categoryError = ref('')
+const newCategoryName = ref('')
+const renamingId = ref<string | null>(null)
+const renameName = ref('')
+
+function openCategoryManage() {
+  categoryError.value = ''
+  newCategoryName.value = ''
+  renamingId.value = null
+  isCategoryManageOpen.value = true
+}
+
+// 類別操作共用包裝：單一 in-flight、失敗訊息 inline 顯示（不進 toast，避免 strict mode 雙元素）
+async function runCategoryAction(action: () => Promise<unknown>): Promise<boolean> {
+  if (isCategorySubmitting.value)
+    return false
+  isCategorySubmitting.value = true
+  categoryError.value = ''
+  try {
+    await action()
+    await refreshCategories()
+    return true
+  }
+  catch (error: any) {
+    categoryError.value
+      = error?.data?.message || error?.statusMessage || '操作失敗，請稍後再試'
+    return false
+  }
+  finally {
+    isCategorySubmitting.value = false
+  }
+}
+
+async function addCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name)
+    return
+  if (await runCategoryAction(() => createGiftCategory(weddingId.value, { name })))
+    newCategoryName.value = ''
+}
+
+function startRename(cat: { value: string, label: string }) {
+  renamingId.value = cat.value
+  renameName.value = cat.label
+  categoryError.value = ''
+}
+
+async function confirmRename() {
+  const categoryId = renamingId.value
+  const name = renameName.value.trim()
+  if (!categoryId || !name)
+    return
+  if (await runCategoryAction(() => updateGiftCategory(weddingId.value, categoryId, { name })))
+    renamingId.value = null
+}
+
+async function removeCategory(categoryId: string) {
+  await runCategoryAction(() => deleteGiftCategory(weddingId.value, categoryId))
+}
 </script>
 
 <template>
@@ -304,7 +373,7 @@ async function confirmRemove() {
     <PageHeader
       title="婚禮小物"
       :eyebrow="`Wedding Favors · ${(giftItems ?? []).length} 項`"
-      description="規劃六類婚禮小物品項與費用總覽"
+      description="規劃婚禮小物品項與費用總覽"
     >
       <template #actions>
         <UButton
@@ -320,33 +389,33 @@ async function confirmRemove() {
     </PageHeader>
 
     <div class="min-h-0 flex-1 overflow-auto pr-4">
-      <!-- 採買參考（左）＋全部總額（右，獨立區塊）：同列固定於頂部，位置不隨內容長度跳動 -->
-      <div class="mb-8 flex flex-wrap items-stretch gap-4">
-        <!-- 採買參考：單一凹陷條，三個 inline 數字（testid 容器需含數字，勿拆離） -->
-        <div class="flex min-w-0 flex-[3] flex-wrap gap-y-3 divide-x divide-line rounded-lg bg-paper p-4 dark:divide-neutral-800 dark:bg-neutral-800/60">
-          <div data-testid="gift-ref-adults" class="min-w-32 flex-1 px-5 first:pl-1">
+      <!-- 採買參考（左）＋全部總額（右，獨立區塊）：桌機同列、mobile 直向堆疊 -->
+      <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-stretch">
+        <!-- 採買參考：單一凹陷條，三欄固定不換行（換行會讓 divide-x/first:pl 產生階梯縮排） -->
+        <div class="flex min-w-0 divide-x divide-line rounded-lg bg-paper p-4 sm:flex-[3] dark:divide-neutral-800 dark:bg-neutral-800/60">
+          <div data-testid="gift-ref-adults" class="min-w-0 flex-1 px-3 first:pl-1 sm:px-5">
             <p class="text-overline uppercase text-gold-deep">
               出席大人
             </p>
-            <p class="mt-1 flex items-baseline gap-1">
+            <p class="mt-1 flex flex-wrap items-baseline gap-x-1">
               <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refAdults }}</span>
               <span class="text-caption text-ink-300">位（已扣兒童椅）</span>
             </p>
           </div>
-          <div data-testid="gift-ref-children" class="min-w-32 flex-1 px-5">
+          <div data-testid="gift-ref-children" class="min-w-0 flex-1 px-3 sm:px-5">
             <p class="text-overline uppercase text-gold-deep">
               兒童椅
             </p>
-            <p class="mt-1 flex items-baseline gap-1">
+            <p class="mt-1 flex flex-wrap items-baseline gap-x-1">
               <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refChildren }}</span>
               <span class="text-caption text-ink-300">位</span>
             </p>
           </div>
-          <div data-testid="gift-ref-tables" class="min-w-32 flex-1 px-5">
+          <div data-testid="gift-ref-tables" class="min-w-0 flex-1 px-3 sm:px-5">
             <p class="text-overline uppercase text-gold-deep">
               桌數
             </p>
-            <p class="mt-1 flex items-baseline gap-1">
+            <p class="mt-1 flex flex-wrap items-baseline gap-x-1">
               <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ refTables }}</span>
               <span class="text-caption text-ink-300">桌</span>
             </p>
@@ -362,43 +431,61 @@ async function confirmRemove() {
             <span data-testid="gift-grand-total" class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ formatPrice(grandTotal) }}</span>
           </p>
           <p class="mt-0.5 text-caption text-ink-300">
-            六類品項總計（含運費與其他費用）
+            全部品項總計（含運費與其他費用）
           </p>
         </div>
       </div>
 
-      <!-- 類別篩選膠囊（issue #117）：全部＋六類，帶數量與小計；低調配色，選中白底金字 -->
-      <div class="mb-6 flex flex-wrap items-center gap-2">
+      <!-- 類別篩選膠囊（issue #117）：全部＋各類別，帶數量與小計；低調配色，選中白底金字。
+           類別多或窄螢幕時單列 x 軸滑動（issue #124），管理入口固定在滑動區外恆可見 -->
+      <div class="mb-6 flex items-center gap-2">
+        <div class="-mb-2 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-2">
+          <button
+            type="button"
+            data-testid="vibe-gift-filter-all"
+            class="shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-caption transition-colors sm:py-1.5"
+            :class="chipClass(activeCategory === 'all')"
+            :aria-pressed="activeCategory === 'all'"
+            @click="activeCategory = 'all'"
+          >
+            全部 {{ (giftItems ?? []).length }}
+          </button>
+          <button
+            v-for="cat in categories"
+            :key="cat.value"
+            type="button"
+            :data-testid="`vibe-gift-filter-${cat.value}`"
+            class="shrink-0 whitespace-nowrap rounded-full border px-3.5 py-2 text-caption transition-colors sm:py-1.5"
+            :class="chipClass(activeCategory === cat.value)"
+            :aria-pressed="activeCategory === cat.value"
+            @click="activeCategory = cat.value"
+          >
+            {{ cat.label }} {{ categoryItems(cat.value).length }}<template v-if="categorySubtotal(cat.value) > 0">
+              · {{ formatPrice(categorySubtotal(cat.value)) }}
+            </template>
+          </button>
+        </div>
+        <!-- 類別管理入口（issue #124）：icon 疊字直排、低調靠右，不與膠囊搶焦點 -->
         <button
           type="button"
-          data-testid="vibe-gift-filter-all"
-          class="rounded-full border px-3 py-1 text-caption transition-colors"
-          :class="chipClass(activeCategory === 'all')"
-          :aria-pressed="activeCategory === 'all'"
-          @click="activeCategory = 'all'"
+          data-testid="vibe-gift-category-manage"
+          class="flex shrink-0 flex-col items-center gap-0.5 rounded-lg px-2 py-1 text-ink-500 transition-colors hover:bg-white/60 dark:text-neutral-400 dark:hover:bg-neutral-800/60"
+          @click="openCategoryManage"
         >
-          全部 {{ (giftItems ?? []).length }}
-        </button>
-        <button
-          v-for="cat in GIFT_CATEGORIES"
-          :key="cat.value"
-          type="button"
-          :data-testid="`vibe-gift-filter-${cat.value}`"
-          class="rounded-full border px-3 py-1 text-caption transition-colors"
-          :class="chipClass(activeCategory === cat.value)"
-          :aria-pressed="activeCategory === cat.value"
-          @click="activeCategory = cat.value"
-        >
-          {{ cat.label }} {{ itemsByCategory[cat.value].length }}<template v-if="subtotalByCategory[cat.value] > 0">
-            · {{ formatPrice(subtotalByCategory[cat.value]) }}
-          </template>
+          <UIcon name="i-heroicons-adjustments-horizontal" class="size-5" />
+          <span class="text-caption">管理類別</span>
         </button>
       </div>
 
-      <!-- 六類固定區塊：類別為「章節」直接落在頁面底色上，品項才是卡片；依膠囊篩選顯示 -->
-      <div class="space-y-8">
+      <!-- 類別區塊（婚禮字典，預設六類）：類別為「章節」直接落在頁面底色上，品項才是卡片；依膠囊篩選顯示 -->
+      <EmptyState
+        v-if="categories.length === 0"
+        title="尚無禮物類別"
+        description="點擊「管理類別」新增"
+      />
+      <div v-else class="space-y-8">
         <section
-          v-for="cat in GIFT_CATEGORIES"
+          v-for="cat in categories"
           v-show="activeCategory === 'all' || activeCategory === cat.value"
           :key="cat.value"
           :data-testid="`gift-category-${cat.value}`"
@@ -408,13 +495,13 @@ async function confirmRemove() {
               {{ cat.label }}
             </h2>
             <span class="text-caption text-ink-400 dark:text-neutral-500">
-              {{ itemsByCategory[cat.value].length }} 項
+              {{ categoryItems(cat.value).length }} 項
             </span>
             <span class="h-px flex-1 bg-line" />
           </div>
 
           <EmptyState
-            v-if="itemsByCategory[cat.value].length === 0"
+            v-if="categoryItems(cat.value).length === 0"
             :title="`尚無${cat.label}品項`"
             description="點擊右上「新增禮物品項」加入"
           />
@@ -422,7 +509,7 @@ async function confirmRemove() {
           <div v-else class="space-y-3">
             <!-- 品項卡：aria-label 僅放款式說明（識別名，不含數值/狀態） -->
             <article
-              v-for="item in itemsByCategory[cat.value]"
+              v-for="item in categoryItems(cat.value)"
               :key="item.giftItemId"
               :aria-label="item.description"
               class="flex flex-wrap gap-4 rounded-lg border border-line bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
@@ -513,7 +600,7 @@ async function confirmRemove() {
               :data-testid="`gift-category-subtotal-${cat.value}`"
               class="font-display text-body-l font-semibold text-gold-deep"
             >
-              {{ formatPrice(subtotalByCategory[cat.value]) }}
+              {{ formatPrice(categorySubtotal(cat.value)) }}
             </span>
           </div>
         </section>
@@ -705,7 +792,7 @@ async function confirmRemove() {
               <USelectMenu
                 v-model="draft.category"
                 data-testid="gift-category-select"
-                :items="categoryOptions"
+                :items="categories"
                 value-key="value"
                 placeholder="選擇類別"
                 class="w-full"
@@ -732,6 +819,121 @@ async function confirmRemove() {
               </UButton>
             </div>
           </UForm>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 類別管理 Modal（issue #124）：清單就地改名、底部新增；失敗訊息 inline -->
+    <UModal v-model:open="isCategoryManageOpen">
+      <template #content>
+        <div data-testid="vibe-gift-category-modal" class="max-h-[85vh] overflow-y-auto p-6">
+          <h3 class="mb-1 text-body-l font-semibold text-ink dark:text-paper">
+            管理類別
+          </h3>
+          <p class="mb-4 text-caption text-ink-400 dark:text-neutral-500">
+            改名不影響既有品項；仍有品項的類別無法刪除
+          </p>
+
+          <UAlert
+            v-if="categoryError"
+            data-testid="vibe-gift-category-error"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="categoryError"
+            class="mb-4"
+          />
+
+          <ul v-if="categories.length" class="space-y-2">
+            <li
+              v-for="cat in categories"
+              :key="cat.value"
+              class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 dark:border-neutral-800"
+            >
+              <template v-if="renamingId === cat.value">
+                <UInput
+                  v-model="renameName"
+                  data-testid="vibe-gift-category-rename-input"
+                  size="sm"
+                  class="flex-1"
+                  @keyup.enter="confirmRename"
+                />
+                <UButton
+                  data-testid="vibe-gift-category-rename-save"
+                  size="xs"
+                  color="neutral"
+                  variant="solid"
+                  :loading="isCategorySubmitting"
+                  @click="confirmRename"
+                >
+                  儲存
+                </UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  @click="renamingId = null"
+                >
+                  取消
+                </UButton>
+              </template>
+              <template v-else>
+                <span class="flex-1 text-body text-ink dark:text-paper">{{ cat.label }}</span>
+                <span class="text-caption text-ink-400 dark:text-neutral-500">{{ categoryItems(cat.value).length }} 項</span>
+                <UButton
+                  data-testid="vibe-gift-category-rename"
+                  icon="i-heroicons-pencil"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`改名 ${cat.label}`"
+                  @click="startRename(cat)"
+                />
+                <UButton
+                  data-testid="vibe-gift-category-delete"
+                  icon="i-heroicons-trash"
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  :aria-label="`刪除 ${cat.label}`"
+                  @click="removeCategory(cat.value)"
+                />
+              </template>
+            </li>
+          </ul>
+          <EmptyState v-else title="尚無類別" />
+
+          <div class="mt-4 flex items-center gap-2">
+            <UInput
+              v-model="newCategoryName"
+              data-testid="vibe-gift-category-new-name"
+              placeholder="新類別名稱"
+              size="sm"
+              class="flex-1"
+              @keyup.enter="addCategory"
+            />
+            <UButton
+              data-testid="vibe-gift-category-add"
+              icon="i-heroicons-plus"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :loading="isCategorySubmitting"
+              @click="addCategory"
+            >
+              新增
+            </UButton>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <UButton
+              color="neutral"
+              variant="outline"
+              @click="isCategoryManageOpen = false"
+            >
+              完成
+            </UButton>
+          </div>
         </div>
       </template>
     </UModal>

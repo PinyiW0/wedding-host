@@ -4,12 +4,30 @@
 //   giftitem-002 送客禮 80×150＋運費200＋50 → 小計 12,000、總計 12,250
 //   全部總額 18,350
 
-import type { GiftCategory } from '../../../app/types/api/gifts'
+import { DEFAULT_GIFT_CATEGORIES } from '../../utils/gift-category'
+import { mockWeddings } from './weddings'
+
+export interface MockGiftCategory {
+  weddingId: string
+  categoryId: string
+  name: string
+  sortOrder: number
+}
+
+// 每場 seed 婚禮都帶預設六類（categoryId 為 slug，凍結 spec 的 subtotal testid 依此定位）
+export const mockGiftCategories: MockGiftCategory[] = mockWeddings.flatMap(w =>
+  DEFAULT_GIFT_CATEGORIES.map((c, i) => ({
+    weddingId: w.weddingId,
+    categoryId: c.categoryId,
+    name: c.name,
+    sortOrder: i + 1,
+  })),
+)
 
 export interface MockGiftItem {
   giftItemId: string
   weddingId: string
-  category: GiftCategory
+  category: string
   description: string
   imageUrl: string | null
   unitPrice: number
