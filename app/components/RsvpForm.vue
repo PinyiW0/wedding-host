@@ -7,6 +7,7 @@ import type {
   SubmitRsvpBody,
 } from '~/types/api/rsvp'
 import type {
+  RsvpAudience,
   RsvpBuiltinKey,
   RsvpCustomQuestion,
   RsvpFormConfigDetail,
@@ -32,12 +33,15 @@ const props = withDefaults(
 const emit = defineEmits<{ submit: [body: SubmitRsvpBody] }>()
 
 // === 依設定解析題目 ===
-// 系統題：key → { enabled, label }；查無視為停用
+// 系統題：key → { enabled, label, description, audience }；查無視為停用
 const builtinMap = computed(() => {
-  const map = new Map<RsvpBuiltinKey, { enabled: boolean, label: string }>()
+  const map = new Map<
+    RsvpBuiltinKey,
+    { enabled: boolean, label: string, description?: string, audience?: RsvpAudience }
+  >()
   for (const q of props.config.questions) {
     if (q.type === 'builtin')
-      map.set(q.key, { enabled: q.enabled, label: q.label })
+      map.set(q.key, { enabled: q.enabled, label: q.label, description: q.description, audience: q.audience })
   }
   return map
 })
@@ -46,6 +50,9 @@ function isEnabled(key: RsvpBuiltinKey) {
 }
 function labelOf(key: RsvpBuiltinKey, fallback: string) {
   return builtinMap.value.get(key)?.label || fallback
+}
+function descriptionOf(key: RsvpBuiltinKey, fallback = '') {
+  return builtinMap.value.get(key)?.description || fallback
 }
 // 自訂題：依 order 排序
 const customQuestions = computed(() =>
@@ -124,10 +131,42 @@ function isMultiChecked(id: string, value: string) {
   return Array.isArray(cur) && cur.includes(value)
 }
 
-// 是否顯示接駁車提問：男方親友 + 出席 + 該題啟用
+// === 顯示對象（audience）===
+// 題目可限定只給男方／女方親友看；後台預覽一律顯示全部題目（否則未選側別會看不到限定題）
+function isVisibleFor(audience?: RsvpAudience) {
+  if (props.preview)
+    return true
+  return !audience || audience === 'all' || relationship.value === audience
+}
+// 預覽用的對象標記：讓後台知道這題不是所有人都看得到
+function audienceHint(audience?: RsvpAudience) {
+  if (!props.preview || !audience || audience === 'all')
+    return ''
+  return audience === 'groom' ? '限男方親友' : '限女方親友'
+}
+
+// 是否顯示接駁車提問：該題啟用 + 符合顯示對象
+// （出席條件由外層「出席細節」容器負責，不重複判斷）
 const showShuttle = computed(
-  () => isEnabled('shuttle') && relationship.value === 'groom' && attending.value === 'attending',
+  () => isEnabled('shuttle') && isVisibleFor(builtinMap.value.get('shuttle')?.audience),
 )
+
+// 自訂題：符合顯示對象者才渲染與送出
+const visibleCustomQuestions = computed(() =>
+  customQuestions.value.filter(q => isVisibleFor(q.audience)),
+)
+
+// 側別切換後清掉已隱藏題目的答案，避免先填後隱藏仍隨提交送出
+watch(relationship, () => {
+  if (!showShuttle.value) {
+    needsShuttle.value = null
+    shuttleCount.value = 1
+  }
+  for (const q of customQuestions.value) {
+    if (!isVisibleFor(q.audience))
+      delete customAnswers[q.id]
+  }
+})
 
 // === 畫小花（canvas 手繪：10 色 + 橡皮擦） ===
 const PALETTE = [
@@ -225,7 +264,7 @@ function clearCanvas() {
 // === 組裝並送出 ===
 function buildCustomAnswers(): Record<string, string | string[]> | undefined {
   const result: Record<string, string | string[]> = {}
-  for (const q of customQuestions.value) {
+  for (const q of visibleCustomQuestions.value) {
     const ans = customAnswers[q.id]
     if (Array.isArray(ans)) {
       if (ans.length)
@@ -554,13 +593,19 @@ function onSubmit() {
           </div>
         </div>
 
-        <!-- 接駁車（限男方親友／高雄地區） -->
+        <!-- 接駁車（顯示對象由後台設定，預設限男方親友） -->
         <div v-if="showShuttle" data-testid="vibe-rsvp-shuttle">
           <p class="mb-1 text-overline uppercase text-gold-deep">
             {{ labelOf('shuttle', '高雄地區接駁車') }}
+            <span
+              v-if="audienceHint(builtinMap.get('shuttle')?.audience)"
+              class="ml-2 normal-case text-caption text-ink-300"
+            >
+              {{ audienceHint(builtinMap.get('shuttle')?.audience) }}
+            </span>
           </p>
           <p class="mb-3 text-caption text-ink-300">
-            我們為男方親友安排了接駁車，是否需要搭乘？
+            {{ descriptionOf('shuttle', '我們為親友安排了接駁車，是否需要搭乘？') }}
           </p>
           <div class="grid grid-cols-2 gap-3">
             <UButton
@@ -674,9 +719,9 @@ function onSubmit() {
         </div>
       </div>
 
-      <!-- 自訂題 -->
+      <!-- 自訂題（依顯示對象過濾） -->
       <div
-        v-for="q in customQuestions"
+        v-for="q in visibleCustomQuestions"
         :key="q.id"
         :data-testid="`vibe-rsvp-custom-${q.id}`"
       >
@@ -688,6 +733,9 @@ function onSubmit() {
             :class="q.description ? 'mb-1' : 'mb-2'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </label>
           <p v-if="q.description" class="mb-2 text-caption text-ink-300">
             {{ q.description }}
@@ -708,6 +756,9 @@ function onSubmit() {
             :class="q.description ? 'mb-1' : 'mb-3'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </p>
           <p v-if="q.description" class="mb-3 text-caption text-ink-300">
             {{ q.description }}
@@ -734,6 +785,9 @@ function onSubmit() {
             :class="q.description ? 'mb-1' : 'mb-3'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </p>
           <p v-if="q.description" class="mb-3 text-caption text-ink-300">
             {{ q.description }}

@@ -9,7 +9,7 @@ export type RsvpBuiltinKey
     | 'diet' // 餐點
     | 'partySize' // 攜伴人數
     | 'childChair' // 兒童椅數
-    | 'shuttle' // 接駁車（限男方親友）
+    | 'shuttle' // 接駁車（顯示對象由 audience 設定）
     | 'invitation' // 喜帖需求
     | 'blessing' // 祝福留言
     | 'flower' // 畫小花
@@ -17,17 +17,25 @@ export type RsvpBuiltinKey
 // 自訂題輸入型別
 export type RsvpCustomType = 'text' | 'single' | 'multi'
 
+// 題目顯示對象：省略或 'all' ＝所有人；'groom'／'bride' ＝只有該側親友看得到
+// （賓客在表單開頭自選「與新人的關係」，據此決定後續題目是否出現）
+export type RsvpAudience = 'all' | 'groom' | 'bride'
+
 export interface RsvpQuestionOption {
   value: string
   label: string
 }
 
-// 系統題：由 key 識別，僅能開關／改標籤／排序（輸入機制由前端固定渲染）
+// 系統題：由 key 識別，僅能開關／改標籤／說明／顯示對象／排序（輸入機制由前端固定渲染）
 export interface RsvpBuiltinQuestion {
   type: 'builtin'
   key: RsvpBuiltinKey
   label: string
+  // 補充說明（選填，例：只有高雄地區的家人才需要選）
+  description?: string
   enabled: boolean
+  // 顯示對象（選填，省略＝所有人）
+  audience?: RsvpAudience
   order: number
 }
 
@@ -39,6 +47,8 @@ export interface RsvpCustomQuestion {
   // 補充說明（選填，例：限定填答對象）
   description?: string
   required: boolean
+  // 顯示對象（選填，省略＝所有人）
+  audience?: RsvpAudience
   order: number
   // single / multi 專用選項
   options?: RsvpQuestionOption[]
