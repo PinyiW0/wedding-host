@@ -234,8 +234,7 @@ async function save() {
                     v-for="opt in AUDIENCE_OPTIONS"
                     :key="opt.value"
                     size="xs"
-                    color="neutral"
-                    :variant="audienceOf(q) === opt.value ? 'solid' : 'outline'"
+                    v-bind="choiceProps(audienceOf(q) === opt.value)"
                     :aria-label="`${opt.label} ${q.label}`"
                     @click="setAudience(q, opt.value)"
                   >
@@ -251,8 +250,7 @@ async function save() {
                     v-for="(label, type) in CUSTOM_TYPE_LABELS"
                     :key="type"
                     size="xs"
-                    color="neutral"
-                    :variant="(q as { type: string }).type === type ? 'solid' : 'outline'"
+                    v-bind="choiceProps((q as { type: string }).type === type)"
                     @click="setCustomType(q, type as RsvpCustomType)"
                   >
                     {{ label }}
@@ -318,6 +316,8 @@ async function save() {
             :config="draft"
             :groom-name="groomName"
             :bride-name="brideName"
+            :wedding-date="wedding?.date"
+            :venue="wedding?.venue"
             preview
           />
         </div>
