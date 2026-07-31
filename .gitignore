@@ -20,6 +20,8 @@ logs
 
 # Claude Code local settings
 .claude/settings.local.json
+# hook 的授權 sentinel 與 session 標記（暫存，不進版控）
+.claude/tmp/
 
 # Local env files（M0-a 起 .env 存放真 secrets，不進版控；.env.example 為範本）
 .env
