@@ -1,6 +1,7 @@
 <!-- app/pages/weddings/[weddingId]/rsvp/questions.vue — RSVP 題目設定（系統題開關/標籤/排序 + 自訂題 + 即時預覽） -->
 <script setup lang="ts">
 import type {
+  RsvpAudience,
   RsvpCustomType,
   RsvpFormConfigDetail,
   RsvpQuestion,
@@ -27,8 +28,23 @@ const CUSTOM_TYPE_LABELS: Record<RsvpCustomType, string> = {
   multi: '多選',
 }
 
+// 顯示對象：省略＝所有人，賓客選了對應側別才看得到該題
+const AUDIENCE_OPTIONS: { value: RsvpAudience, label: string }[] = [
+  { value: 'all', label: '所有人' },
+  { value: 'groom', label: '只有男方親友' },
+  { value: 'bride', label: '只有女方親友' },
+]
+
 function isBuiltin(q: RsvpQuestion) {
   return q.type === 'builtin'
+}
+
+function audienceOf(q: RsvpQuestion): RsvpAudience {
+  return q.audience ?? 'all'
+}
+
+function setAudience(q: RsvpQuestion, audience: RsvpAudience) {
+  q.audience = audience
 }
 
 function move(index: number, delta: number) {
@@ -202,21 +218,39 @@ async function save() {
                 class="w-full"
               />
 
-              <!-- 自訂題：說明 + 型別 + 選項 -->
+              <!-- 補充說明（系統題與自訂題皆可填） -->
+              <UInput
+                v-model="(q as { description: string }).description"
+                :aria-label="`題目說明 ${index + 1}`"
+                placeholder="補充說明（選填，例：只有高雄地區的家人才需要選）"
+                class="w-full"
+              />
+
+              <!-- 顯示對象：限定哪一側親友看得到這題 -->
+              <div>
+                <label class="mb-1 block text-caption text-ink-300">顯示對象</label>
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    v-for="opt in AUDIENCE_OPTIONS"
+                    :key="opt.value"
+                    size="xs"
+                    v-bind="choiceProps(audienceOf(q) === opt.value)"
+                    :aria-label="`${opt.label} ${q.label}`"
+                    @click="setAudience(q, opt.value)"
+                  >
+                    {{ opt.label }}
+                  </UButton>
+                </div>
+              </div>
+
+              <!-- 自訂題：型別 + 選項 -->
               <template v-if="!isBuiltin(q)">
-                <UInput
-                  v-model="(q as { description: string }).description"
-                  :aria-label="`題目說明 ${index + 1}`"
-                  placeholder="補充說明（選填，例：只有高雄地區的家人才可以選）"
-                  class="w-full"
-                />
                 <div class="flex flex-wrap gap-2">
                   <UButton
                     v-for="(label, type) in CUSTOM_TYPE_LABELS"
                     :key="type"
                     size="xs"
-                    color="neutral"
-                    :variant="(q as { type: string }).type === type ? 'solid' : 'outline'"
+                    v-bind="choiceProps((q as { type: string }).type === type)"
                     @click="setCustomType(q, type as RsvpCustomType)"
                   >
                     {{ label }}
@@ -282,6 +316,8 @@ async function save() {
             :config="draft"
             :groom-name="groomName"
             :bride-name="brideName"
+            :wedding-date="wedding?.date"
+            :venue="wedding?.venue"
             preview
           />
         </div>

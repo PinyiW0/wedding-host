@@ -7,6 +7,7 @@ import type {
   SubmitRsvpBody,
 } from '~/types/api/rsvp'
 import type {
+  RsvpAudience,
   RsvpBuiltinKey,
   RsvpCustomQuestion,
   RsvpFormConfigDetail,
@@ -17,6 +18,9 @@ const props = withDefaults(
     config: RsvpFormConfigDetail
     groomName: string
     brideName: string
+    // 婚禮日期（YYYY-MM-DD）與場地，顯示於 hero；未給則該行不出現
+    weddingDate?: string
+    venue?: string
     lineAddUrl?: string
     submitting?: boolean
     submitted?: boolean
@@ -26,18 +30,24 @@ const props = withDefaults(
     // 公開 RSVP（無 guestId）需姓名識別回覆者；已知賓客模式不傳（spec 凍結：送出可不填姓名）
     requireName?: boolean
   }>(),
-  { lineAddUrl: '', submitting: false, submitted: false, errorMessage: '', preview: false, requireName: false },
+  { weddingDate: '', venue: '', lineAddUrl: '', submitting: false, submitted: false, errorMessage: '', preview: false, requireName: false },
 )
 
 const emit = defineEmits<{ submit: [body: SubmitRsvpBody] }>()
 
+// 日期以間隔點呈現（2026-12-01 → 2026 · 12 · 01），對齊設計稿的排版語彙
+const heroDate = computed(() => props.weddingDate?.replaceAll('-', ' · ') ?? '')
+
 // === 依設定解析題目 ===
-// 系統題：key → { enabled, label }；查無視為停用
+// 系統題：key → { enabled, label, description, audience }；查無視為停用
 const builtinMap = computed(() => {
-  const map = new Map<RsvpBuiltinKey, { enabled: boolean, label: string }>()
+  const map = new Map<
+    RsvpBuiltinKey,
+    { enabled: boolean, label: string, description?: string, audience?: RsvpAudience }
+  >()
   for (const q of props.config.questions) {
     if (q.type === 'builtin')
-      map.set(q.key, { enabled: q.enabled, label: q.label })
+      map.set(q.key, { enabled: q.enabled, label: q.label, description: q.description, audience: q.audience })
   }
   return map
 })
@@ -46,6 +56,9 @@ function isEnabled(key: RsvpBuiltinKey) {
 }
 function labelOf(key: RsvpBuiltinKey, fallback: string) {
   return builtinMap.value.get(key)?.label || fallback
+}
+function descriptionOf(key: RsvpBuiltinKey, fallback = '') {
+  return builtinMap.value.get(key)?.description || fallback
 }
 // 自訂題：依 order 排序
 const customQuestions = computed(() =>
@@ -124,10 +137,42 @@ function isMultiChecked(id: string, value: string) {
   return Array.isArray(cur) && cur.includes(value)
 }
 
-// 是否顯示接駁車提問：男方親友 + 出席 + 該題啟用
+// === 顯示對象（audience）===
+// 題目可限定只給男方／女方親友看；後台預覽一律顯示全部題目（否則未選側別會看不到限定題）
+function isVisibleFor(audience?: RsvpAudience) {
+  if (props.preview)
+    return true
+  return !audience || audience === 'all' || relationship.value === audience
+}
+// 預覽用的對象標記：讓後台知道這題不是所有人都看得到
+function audienceHint(audience?: RsvpAudience) {
+  if (!props.preview || !audience || audience === 'all')
+    return ''
+  return audience === 'groom' ? '限男方親友' : '限女方親友'
+}
+
+// 是否顯示接駁車提問：該題啟用 + 符合顯示對象
+// （出席條件由外層「出席細節」容器負責，不重複判斷）
 const showShuttle = computed(
-  () => isEnabled('shuttle') && relationship.value === 'groom' && attending.value === 'attending',
+  () => isEnabled('shuttle') && isVisibleFor(builtinMap.value.get('shuttle')?.audience),
 )
+
+// 自訂題：符合顯示對象者才渲染與送出
+const visibleCustomQuestions = computed(() =>
+  customQuestions.value.filter(q => isVisibleFor(q.audience)),
+)
+
+// 側別切換後清掉已隱藏題目的答案，避免先填後隱藏仍隨提交送出
+watch(relationship, () => {
+  if (!showShuttle.value) {
+    needsShuttle.value = null
+    shuttleCount.value = 1
+  }
+  for (const q of customQuestions.value) {
+    if (!isVisibleFor(q.audience))
+      delete customAnswers[q.id]
+  }
+})
 
 // === 畫小花（canvas 手繪：10 色 + 橡皮擦） ===
 const PALETTE = [
@@ -142,8 +187,12 @@ const PALETTE = [
   '#3F6F6F',
   '#2B2420',
 ]
+// 筆刷粗細三段（細／中／粗）；橡皮擦按比例放大，擦起來才不會比畫的還慢
+const BRUSH_SIZES = [2, 4, 8]
+const ERASER_RATIO = 5
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const brushColor = ref<string>(PALETTE[0]!)
+const brushSize = ref<number>(BRUSH_SIZES[1]!)
 const isEraser = ref(false)
 const hasDrawing = ref(false)
 let drawing = false
@@ -181,11 +230,11 @@ function applyBrush() {
     return
   if (isEraser.value) {
     ctx.globalCompositeOperation = 'destination-out'
-    ctx.lineWidth = 18
+    ctx.lineWidth = brushSize.value * ERASER_RATIO
   }
   else {
     ctx.globalCompositeOperation = 'source-over'
-    ctx.lineWidth = 3
+    ctx.lineWidth = brushSize.value
     ctx.strokeStyle = brushColor.value
   }
 }
@@ -225,7 +274,7 @@ function clearCanvas() {
 // === 組裝並送出 ===
 function buildCustomAnswers(): Record<string, string | string[]> | undefined {
   const result: Record<string, string | string[]> = {}
-  for (const q of customQuestions.value) {
+  for (const q of visibleCustomQuestions.value) {
     const ans = customAnswers[q.id]
     if (Array.isArray(ans)) {
       if (ans.length)
@@ -284,16 +333,47 @@ function onSubmit() {
       <img :src="config.banner" alt="婚禮主視覺" class="size-full object-cover">
     </div>
 
-    <!-- Hero -->
-    <div data-testid="vibe-rsvp-hero" class="py-6 text-center">
+    <!-- Hero（結構對齊設計稿：眉標 → 大名 → 日期場地 → 滿版細線 → RSVP 眉標 → 邀請語） -->
+    <div data-testid="vibe-rsvp-hero" class="relative overflow-hidden py-6 text-center">
+      <!-- 手繪花草：純裝飾，壓低透明度當背景層，不擋文字也不可點；螢幕閱讀器忽略 -->
+      <img
+        src="~/assets/svg/leaf1.svg"
+        alt=""
+        aria-hidden="true"
+        class="pointer-events-none absolute -left-6 -top-4 w-24 -rotate-12 opacity-20 select-none"
+      >
+      <img
+        src="~/assets/svg/flower2.svg"
+        alt=""
+        aria-hidden="true"
+        class="pointer-events-none absolute -right-5 top-8 w-20 rotate-12 opacity-20 select-none"
+      >
       <p class="text-overline uppercase text-gold-deep">
-        RSVP · 敬請回覆
+        The Wedding of
       </p>
       <h1 class="mt-3 font-display text-display-l font-semibold leading-none text-ink">
         {{ groomName }} &amp; {{ brideName }}
       </h1>
-      <div class="mx-auto mt-4 h-px w-10 bg-gold" />
-      <p class="mt-4 text-body-l text-ink-500">
+      <p v-if="heroDate || venue" class="mt-4 text-body tracking-wide text-ink-500">
+        <span v-if="heroDate">{{ heroDate }}</span>
+        <span v-if="heroDate && venue" class="mx-3" />
+        <span v-if="venue">{{ venue }}</span>
+      </p>
+      <!-- 分隔線中央嵌小花：線實際斷成兩段（不靠背景色遮蓋，否則會在漸層底上露出色塊） -->
+      <div class="mt-6 flex items-center gap-3">
+        <span class="h-px flex-1 bg-line" />
+        <img
+          src="~/assets/svg/flower1.svg"
+          alt=""
+          aria-hidden="true"
+          class="pointer-events-none w-11 shrink-0 select-none"
+        >
+        <span class="h-px flex-1 bg-line" />
+      </div>
+      <p class="mt-6 text-overline uppercase text-gold-deep">
+        RSVP · 敬請回覆
+      </p>
+      <p class="mt-3 text-body-l text-ink-500">
         誠摯邀請您，請撥空填寫以下出席資訊
       </p>
     </div>
@@ -320,11 +400,12 @@ function onSubmit() {
       class="mt-2"
     />
 
-    <form v-else class="mt-6 space-y-8" @submit.prevent="onSubmit">
+    <!-- pb-36：預留固定送出列的高度，最後一題不會被壓在底下（preview 無送出列，不需留白） -->
+    <form v-else class="mt-6 space-y-8" :class="preview ? '' : 'pb-36'" @submit.prevent="onSubmit">
       <!-- 基本資料（身分識別，常駐） -->
       <section class="space-y-5">
         <div>
-          <label for="rsvp-name" class="mb-2 block text-overline uppercase text-gold-deep">
+          <label for="rsvp-name" class="mb-2 block text-body-l font-medium text-ink-700">
             請問您的大名？<span v-if="requireName" class="ml-1 text-error">＊必填</span>
           </label>
           <UInput
@@ -343,13 +424,12 @@ function onSubmit() {
 
         <!-- 與新人的關係 -->
         <div data-testid="vibe-rsvp-relationship">
-          <p class="mb-3 text-overline uppercase text-gold-deep">
+          <p class="mb-3 text-body-l font-medium text-ink-700">
             與新人的關係？
           </p>
           <div class="grid grid-cols-2 gap-3">
             <UButton
-              color="neutral"
-              :variant="relationship === 'groom' ? 'solid' : 'outline'"
+              v-bind="choiceProps(relationship === 'groom')"
               size="xl"
               block
               @click="relationship = 'groom'"
@@ -357,8 +437,7 @@ function onSubmit() {
               新郎{{ groomName }}的親友
             </UButton>
             <UButton
-              color="neutral"
-              :variant="relationship === 'bride' ? 'solid' : 'outline'"
+              v-bind="choiceProps(relationship === 'bride')"
               size="xl"
               block
               @click="relationship = 'bride'"
@@ -368,15 +447,14 @@ function onSubmit() {
           </div>
 
           <div v-if="relationship" data-testid="vibe-rsvp-relation-category" class="mt-3">
-            <p class="mb-2 text-caption text-ink-300">
+            <p class="mb-2 text-body text-ink-500">
               您是{{ sideName }}的…
             </p>
             <div class="grid grid-cols-4 gap-2">
               <UButton
                 v-for="cat in RELATION_CATEGORIES"
                 :key="cat"
-                color="neutral"
-                :variant="relationCategory === cat ? 'solid' : 'outline'"
+                v-bind="choiceProps(relationCategory === cat)"
                 size="lg"
                 block
                 @click="relationCategory = cat"
@@ -388,7 +466,7 @@ function onSubmit() {
         </div>
 
         <div>
-          <label for="rsvp-phone" class="mb-2 block text-overline uppercase text-gold-deep">
+          <label for="rsvp-phone" class="mb-2 block text-body-l font-medium text-ink-700">
             您的聯繫電話？
           </label>
           <UInput
@@ -406,13 +484,12 @@ function onSubmit() {
 
       <!-- 是否出席 -->
       <div v-if="isEnabled('attending')" data-testid="vibe-rsvp-attend-toggle">
-        <p class="mb-3 text-overline uppercase text-gold-deep">
+        <p class="mb-3 text-body-l font-medium text-ink-700">
           {{ labelOf('attending', '是否會出席婚禮？') }}
         </p>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <UButton
-            color="neutral"
-            :variant="attending === 'attending' ? 'solid' : 'outline'"
+            v-bind="choiceProps(attending === 'attending')"
             size="xl"
             block
             aria-label="出席"
@@ -421,8 +498,7 @@ function onSubmit() {
             當然！期待見到你們！
           </UButton>
           <UButton
-            color="neutral"
-            :variant="attending === 'declined' ? 'solid' : 'outline'"
+            v-bind="choiceProps(attending === 'declined')"
             size="xl"
             block
             aria-label="不出席"
@@ -437,13 +513,12 @@ function onSubmit() {
       <template v-if="attending === 'attending'">
         <!-- 餐點 -->
         <div v-if="isEnabled('diet')" data-testid="vibe-rsvp-diet-segment">
-          <p class="mb-3 text-overline uppercase text-gold-deep">
+          <p class="mb-3 text-body-l font-medium text-ink-700">
             {{ labelOf('diet', '餐點選擇') }}
           </p>
           <div class="grid grid-cols-2 gap-3">
             <UButton
-              color="neutral"
-              :variant="diet === 'meat' ? 'solid' : 'outline'"
+              v-bind="choiceProps(diet === 'meat')"
               size="xl"
               block
               @click="diet = 'meat'"
@@ -451,8 +526,7 @@ function onSubmit() {
               葷食
             </UButton>
             <UButton
-              color="neutral"
-              :variant="diet === 'vegetarian' ? 'solid' : 'outline'"
+              v-bind="choiceProps(diet === 'vegetarian')"
               size="xl"
               block
               @click="diet = 'vegetarian'"
@@ -467,7 +541,7 @@ function onSubmit() {
           <div class="flex items-center justify-between gap-4">
             <div>
               <span class="text-body-l text-ink">{{ labelOf('partySize', '攜伴人數') }}</span>
-              <p class="mt-0.5 text-caption text-ink-300">
+              <p class="mt-0.5 text-body text-ink-500">
                 不含您本人（兒童椅嬰兒請填下方欄位）
               </p>
             </div>
@@ -497,7 +571,7 @@ function onSubmit() {
               <UButton
                 icon="i-heroicons-plus"
                 color="neutral"
-                variant="solid"
+                variant="outline"
                 size="xl"
                 class="rounded-full"
                 :disabled="plusOneCount >= MAX_COUNT"
@@ -513,7 +587,7 @@ function onSubmit() {
           <div class="flex items-center justify-between gap-4">
             <div>
               <span class="text-body-l text-ink">{{ labelOf('childChair', '兒童椅數') }}</span>
-              <p class="mt-0.5 text-caption text-ink-300">
+              <p class="mt-0.5 text-body text-ink-500">
                 需要兒童椅、不吃大人菜的小嬰兒；不需要請填 0
               </p>
             </div>
@@ -543,7 +617,7 @@ function onSubmit() {
               <UButton
                 icon="i-heroicons-plus"
                 color="neutral"
-                variant="solid"
+                variant="outline"
                 size="xl"
                 class="rounded-full"
                 :disabled="childChairCount >= MAX_COUNT"
@@ -554,18 +628,23 @@ function onSubmit() {
           </div>
         </div>
 
-        <!-- 接駁車（限男方親友／高雄地區） -->
+        <!-- 接駁車（顯示對象由後台設定，預設限男方親友） -->
         <div v-if="showShuttle" data-testid="vibe-rsvp-shuttle">
-          <p class="mb-1 text-overline uppercase text-gold-deep">
+          <p class="mb-1 text-body-l font-medium text-ink-700">
             {{ labelOf('shuttle', '高雄地區接駁車') }}
+            <span
+              v-if="audienceHint(builtinMap.get('shuttle')?.audience)"
+              class="ml-2 normal-case text-caption text-ink-300"
+            >
+              {{ audienceHint(builtinMap.get('shuttle')?.audience) }}
+            </span>
           </p>
-          <p class="mb-3 text-caption text-ink-300">
-            我們為男方親友安排了接駁車，是否需要搭乘？
+          <p class="mb-3 text-body text-ink-500">
+            {{ descriptionOf('shuttle', '我們為親友安排了接駁車，是否需要搭乘？') }}
           </p>
           <div class="grid grid-cols-2 gap-3">
             <UButton
-              color="neutral"
-              :variant="needsShuttle === true ? 'solid' : 'outline'"
+              v-bind="choiceProps(needsShuttle === true)"
               size="xl"
               block
               @click="needsShuttle = true"
@@ -573,8 +652,7 @@ function onSubmit() {
               需要搭乘
             </UButton>
             <UButton
-              color="neutral"
-              :variant="needsShuttle === false ? 'solid' : 'outline'"
+              v-bind="choiceProps(needsShuttle === false)"
               size="xl"
               block
               @click="needsShuttle = false"
@@ -603,7 +681,7 @@ function onSubmit() {
               <UButton
                 icon="i-heroicons-plus"
                 color="neutral"
-                variant="solid"
+                variant="outline"
                 size="xl"
                 class="rounded-full"
                 :disabled="shuttleCount >= MAX_COUNT"
@@ -617,13 +695,12 @@ function onSubmit() {
 
       <!-- 是否需要喜帖 -->
       <div v-if="isEnabled('invitation')" data-testid="vibe-rsvp-invitation">
-        <p class="mb-3 text-overline uppercase text-gold-deep">
+        <p class="mb-3 text-body-l font-medium text-ink-700">
           {{ labelOf('invitation', '是否需要喜帖？') }}
         </p>
         <div class="grid grid-cols-1 gap-3">
           <UButton
-            color="neutral"
-            :variant="invitation === 'e-card' ? 'solid' : 'outline'"
+            v-bind="choiceProps(invitation === 'e-card')"
             size="xl"
             block
             @click="invitation = 'e-card'"
@@ -631,8 +708,7 @@ function onSubmit() {
             需要！請寄電子喜帖
           </UButton>
           <UButton
-            color="neutral"
-            :variant="invitation === 'physical' ? 'solid' : 'outline'"
+            v-bind="choiceProps(invitation === 'physical')"
             size="xl"
             block
             @click="invitation = 'physical'"
@@ -640,8 +716,7 @@ function onSubmit() {
             需要！請寄實體喜帖
           </UButton>
           <UButton
-            color="neutral"
-            :variant="invitation === 'none' ? 'solid' : 'outline'"
+            v-bind="choiceProps(invitation === 'none')"
             size="xl"
             block
             @click="invitation = 'none'"
@@ -660,7 +735,7 @@ function onSubmit() {
         </div>
 
         <div v-if="invitation === 'physical'" class="mt-4">
-          <label for="rsvp-address" class="mb-2 block text-caption text-ink-300">
+          <label for="rsvp-address" class="mb-2 block text-body text-ink-500">
             紙本喜帖寄送地址（請輸入 3+2 郵遞區號與地址）
           </label>
           <UTextarea
@@ -674,9 +749,9 @@ function onSubmit() {
         </div>
       </div>
 
-      <!-- 自訂題 -->
+      <!-- 自訂題（依顯示對象過濾） -->
       <div
-        v-for="q in customQuestions"
+        v-for="q in visibleCustomQuestions"
         :key="q.id"
         :data-testid="`vibe-rsvp-custom-${q.id}`"
       >
@@ -684,12 +759,15 @@ function onSubmit() {
         <template v-if="q.type === 'text'">
           <label
             :for="`rsvp-custom-${q.id}`"
-            class="block text-overline uppercase text-gold-deep"
+            class="block text-body-l font-medium text-ink-700"
             :class="q.description ? 'mb-1' : 'mb-2'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </label>
-          <p v-if="q.description" class="mb-2 text-caption text-ink-300">
+          <p v-if="q.description" class="mb-2 text-body text-ink-500">
             {{ q.description }}
           </p>
           <UInput
@@ -704,20 +782,22 @@ function onSubmit() {
         <!-- 單選 -->
         <template v-else-if="q.type === 'single'">
           <p
-            class="text-overline uppercase text-gold-deep"
+            class="text-body-l font-medium text-ink-700"
             :class="q.description ? 'mb-1' : 'mb-3'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </p>
-          <p v-if="q.description" class="mb-3 text-caption text-ink-300">
+          <p v-if="q.description" class="mb-3 text-body text-ink-500">
             {{ q.description }}
           </p>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <UButton
               v-for="opt in q.options ?? []"
               :key="opt.value"
-              color="neutral"
-              :variant="customAnswers[q.id] === opt.value ? 'solid' : 'outline'"
+              v-bind="choiceProps(customAnswers[q.id] === opt.value)"
               size="xl"
               block
               @click="customAnswers[q.id] = opt.value"
@@ -730,20 +810,22 @@ function onSubmit() {
         <!-- 多選 -->
         <template v-else>
           <p
-            class="text-overline uppercase text-gold-deep"
+            class="text-body-l font-medium text-ink-700"
             :class="q.description ? 'mb-1' : 'mb-3'"
           >
             {{ q.label }}
+            <span v-if="audienceHint(q.audience)" class="ml-2 normal-case text-caption text-ink-300">
+              {{ audienceHint(q.audience) }}
+            </span>
           </p>
-          <p v-if="q.description" class="mb-3 text-caption text-ink-300">
+          <p v-if="q.description" class="mb-3 text-body text-ink-500">
             {{ q.description }}
           </p>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <UButton
               v-for="opt in q.options ?? []"
               :key="opt.value"
-              color="neutral"
-              :variant="isMultiChecked(q.id, opt.value) ? 'solid' : 'outline'"
+              v-bind="choiceProps(isMultiChecked(q.id, opt.value))"
               size="xl"
               block
               @click="toggleMulti(q.id, opt.value)"
@@ -779,7 +861,7 @@ function onSubmit() {
 
       <!-- 祝福留言 -->
       <div v-if="isEnabled('blessing')">
-        <label for="rsvp-blessing" class="mb-2 block text-overline uppercase text-gold-deep">
+        <label for="rsvp-blessing" class="mb-2 block text-body-l font-medium text-ink-700">
           {{ labelOf('blessing', '想給新人的祝福') }}
         </label>
         <div data-testid="vibe-rsvp-blessing-presets" class="mb-3 flex flex-wrap gap-2">
@@ -808,7 +890,7 @@ function onSubmit() {
 
       <!-- 畫一朵小花 -->
       <div v-if="isEnabled('flower')" data-testid="vibe-rsvp-flower">
-        <p class="mb-3 text-overline uppercase text-gold-deep">
+        <p class="mb-3 text-body-l font-medium text-ink-700">
           {{ labelOf('flower', '畫一朵小花給新人們') }}
         </p>
 
@@ -829,10 +911,26 @@ function onSubmit() {
             @click="selectColor(color)"
           />
           <div class="mx-1 h-6 w-px bg-line" />
+
+          <!-- 筆刷粗細：圓點大小直接對應筆畫，不需文字說明 -->
+          <button
+            v-for="size in BRUSH_SIZES"
+            :key="size"
+            type="button"
+            :data-testid="`rsvp-flower-size-${size}`"
+            class="flex size-7 items-center justify-center border transition-colors"
+            :class="brushSize === size ? 'border-ink bg-ink/5' : 'border-line'"
+            :aria-label="`筆刷粗細 ${size}`"
+            :aria-pressed="brushSize === size"
+            @click="brushSize = size"
+          >
+            <span class="rounded-full bg-ink" :style="{ width: `${size + 2}px`, height: `${size + 2}px` }" />
+          </button>
+
+          <div class="mx-1 h-6 w-px bg-line" />
           <UButton
             type="button"
-            :color="isEraser ? 'primary' : 'neutral'"
-            :variant="isEraser ? 'solid' : 'outline'"
+            v-bind="choiceProps(isEraser)"
             size="sm"
             icon="i-heroicons-backspace"
             data-testid="rsvp-flower-eraser"
@@ -864,27 +962,37 @@ function onSubmit() {
           @pointerup="endDraw"
           @pointerleave="endDraw"
         />
-        <p class="mt-2 text-center text-caption text-ink-300">
+        <p class="mt-2 text-center text-body text-ink-500">
           用手指或滑鼠在上方畫畫吧（可留白）
         </p>
       </div>
 
-      <UButton
+      <!-- 送出列：固定於視窗底部（表單有 8 題，捲到底才找得到送出鈕對長輩不友善）
+           用 fixed 而非 sticky——sticky 的寬度會被 layout 的 max-w-2xl 綁住，
+           桌機上色帶只有表單那麼寬會像一條浮在中間的帶子；fixed 讓底色滿寬，
+           內層再收回同樣的 max-w-2xl，按鈕仍與表單對齊 -->
+      <div
         v-if="!preview"
-        type="submit"
-        data-testid="rsvp-submit"
-        color="primary"
-        size="xl"
-        block
-        :loading="submitting"
-        class="mt-2"
+        class="fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-paper from-60% to-transparent pb-4 pt-8"
       >
-        送出回覆
-      </UButton>
+        <div class="mx-auto max-w-2xl px-4">
+          <UButton
+            type="submit"
+            data-testid="rsvp-submit"
+            color="primary"
+            size="xl"
+            block
+            :loading="submitting"
+            class="rounded-none"
+          >
+            送出回覆
+          </UButton>
 
-      <p v-if="!preview" class="text-center text-caption text-ink-300">
-        回覆截止前 · 可隨時修改
-      </p>
+          <p class="mt-3 text-center text-caption text-ink-500">
+            回覆截止前 · 可隨時修改
+          </p>
+        </div>
+      </div>
     </form>
   </div>
 </template>

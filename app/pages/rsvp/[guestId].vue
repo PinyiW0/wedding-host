@@ -51,6 +51,8 @@ async function handleSubmit(body: SubmitRsvpBody) {
     :config="formConfig"
     :groom-name="groomName"
     :bride-name="brideName"
+    :wedding-date="wedding?.date"
+    :venue="wedding?.venue"
     :line-add-url="lineAddUrl"
     :submitting="isSubmitting"
     :submitted="isSubmitted"
