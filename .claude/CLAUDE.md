@@ -1,12 +1,47 @@
-# Nuxt 4 專案模板
+# wedding-host（婚禮籌備／現場接待管理）
 
 ## 技術棧
 
-- **框架**：Nuxt 4（Vue 3 Composition API）
-- **UI 庫**：NuxtUI
-- **測試**：Playwright（E2E）
-- **型別**：TypeScript strict mode
-- **Lint**：ESLint + Prettier
+- **框架**：Nuxt 4（Vue 3 Composition API）+ Pinia（`@pinia/nuxt` auto-import，persistedstate 預設存 **cookie**、SSR 讀得到)
+- **UI 庫**：NuxtUI + Tailwind（已鎖 light 單一模式，`colorMode: false`）
+- **後端**：Nitro server routes + Drizzle ORM + Postgres（本機 docker-compose，正式站 Neon）
+- **測試**：Playwright（主 spec / gate / vibe）+ Vitest（`test/unit/`）
+- **型別**：TypeScript strict mode + zod（輸入驗證）
+- **Lint**：ESLint + Prettier，另串 `scripts/visual-hierarchy-check.mjs`
+- **其他**：jose（JWT）、Sentry、Cloudflare R2（S3 SDK）、LINE Login／Messaging API
+
+---
+
+## 常用指令
+
+```bash
+npm run dev          # 開發（predev 會自動 docker compose up -d --wait db）
+npm run eslint       # ESLint + 視覺層級檢查 ← 注意不是 npm run lint
+npm run typelint     # 型別檢查            ← 注意不是 npm run typecheck
+npm run test:unit    # Vitest（test/unit/）
+npm run test:e2e     # Playwright 主 spec
+
+npx playwright test --config playwright.gate.config.ts  # 守門：主 spec + vibe spec
+sh scripts/docker-gate.sh                               # 同上，改用 production image + ephemeral DB
+
+npm run db:generate      # 由 schema 產 migration
+npm run db:migrate       # 套用 migration（預設打本機，見下方 gotchas）
+npm run db:studio        # Drizzle Studio
+npm run db:create-admin  # 建立管理者帳號
+```
+
+完成程式碼修改後必跑 `npm run eslint` + `npm run typelint`，兩者皆綠才算完成（細節見 `rules/code-quality.md`）。
+
+---
+
+## 本機開發 gotchas
+
+- **開發需要 Docker**：`predev` 會起 `wedding-host-db`（Postgres 17，host port 5433）
+- **容器名固定**：所有 worktree 共用同一個 `wedding-host-db`。在次要 worktree 操作時帶 `COMPOSE_PROJECT_NAME=wedding-host`，避免另建一份容器
+- **跑 E2E 會清空本機 DB**：spec 會打 `server/api/__test__/reset.post.ts`（truncate 全表後回填 seed），手動建的資料會消失。要保留資料就走 `sh scripts/docker-gate.sh`（ephemeral DB，不碰 5433）
+- **`db:migrate` 沒帶 DSN 會靜默跑本機**：`drizzle.config.ts` 預設 `postgresql://wedding:wedding@localhost:5433/wedding`。要打正式站必須帶 `NUXT_DATABASE_URL`，否則會回報成功但正式庫毫無變化
+- **E2E port 依 worktree 路徑 hash 推導**：同 worktree 每次同 port（server 可重用），不同 worktree 不互撞
+- **禁用 `--no-verify`**：唯一例外是 gate 已全綠、push 因 SSH timeout 中斷時重推（`.husky/pre-push` 同此規則）
 
 ---
 
@@ -89,9 +124,23 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | 程式碼品質驗證 | [rules/code-quality.md](rules/code-quality.md) | 修改 app/、server/ 程式碼時 |
 | UI 實作規範 | [rules/ui-conventions.md](rules/ui-conventions.md) | 修改 pages/、components/、layouts/ 時 |
 | 視覺層級規範 | [rules/visual-hierarchy.md](rules/visual-hierarchy.md) | 修改 pages/、components/、layouts/ 時 |
+| 主 spec 凍結 | [rules/frozen-paths.md](rules/frozen-paths.md) | 修改 test/e2e/specs/、spec/gherkin-feature/、spec/e2e-flows/ 時（hook 強制） |
+| Server 安全慣例 | [rules/server-security.md](rules/server-security.md) | 修改 server/**/*.ts 時（hook 強制） |
+| 前端安全慣例 | [rules/frontend-security.md](rules/frontend-security.md) | 修改 app/ 頁面、stores、composables、middleware、plugins、nuxt.config.ts 時 |
 | 創意方向 | `spec/ui-config/creative-direction.md` | vibe 要求質感/風格/動畫、實作賓客公開頁時讀取 |
 | UI 設定 | `spec/ui-config/ui-config.yaml` | UI 實作時讀取 |
 | Business Invariants | `spec/e2e-flows/*.flow.md` 開頭段 | Vibe UI 前必讀 |
+
+### Hooks（`.claude/settings.json` 註冊，版控內、對 subagent 同樣生效）
+
+| Hook | 事件 | 作用 |
+|------|------|------|
+| `hooks/frozen-paths-guard.mjs` | PreToolUse（Edit/Write/NotebookEdit/Bash） | 擋下凍結區**既有檔**的修改；新增全新檔放行。授權通道：`.claude/tmp/frozen-allow.json` |
+| `hooks/server-security-guard.mjs` | PostToolUse（Edit/Write） | 編輯 `server/**/*.ts` 時注入安全 8 條摘要；對 `server/api/**` 機械偵測巢狀 IDOR 與 mass assignment。誤報豁免：`.claude/tmp/server-security-allow.json` |
+
+> rules 的 frontmatter `paths` 觸發只在主對話生效、subagent 內不注入，所以凍結與 server 安全兩條靠 hook 當實際防線。
+>
+> 未回灌 nuxt4-template 的 `framework-skills.md`、`vibe-ui.md`：內容已由本檔「框架知識 Skill 與裁決」「Vibe UI 守則（v2）」兩段涵蓋，且本專案版本較新（多 Nuxt 4 裁決與 vibe spec 去留政策），搬過來只會製造兩份真理。`i18n` 相關 rules 本專案不適用，不搬。
 
 ---
 
@@ -99,19 +148,32 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 ```
 app/
+├── api/              # *.api.ts — 前端呼叫 API 的唯一入口
 ├── components/       # Vue 元件
+├── composables/      # 共用 composable
 ├── layouts/          # Layout
+├── middleware/       # 路由守衛（auth 等）
 ├── pages/            # 頁面路由
 ├── stores/           # Pinia stores
-└── types/api/        # API 合約型別（由 /feature-to-api 產出）
+├── types/api/        # API 合約型別（由 /feature-to-api 產出）
+└── utils/            # 純函式工具
 server/
-├── api/              # API 端點
-└── mock/             # Mock 資料
+├── api/              # Nitro 端點（含 __test__/reset.post.ts）
+├── db/               # Drizzle schema / migrations / seed
+├── middleware/       # 認證、租戶範圍
+├── mock/             # Mock 資料（真後端上線後僅殘留部分）
+├── plugins/
+└── utils/
 spec/
 ├── gherkin-feature/  # .dsl.feature 規格檔
 ├── e2e-flows/        # .flow.md 測試流程
 ├── ui-config/        # UI 設定
+├── ir/               # 中介表示
 └── report/           # route-map.yaml 等報告
 test/
-└── e2e/specs/        # Playwright 測試
+├── e2e/specs/        # Playwright 主 spec（凍結）
+├── e2e/vibe/         # vibe spec（不凍結）
+└── unit/             # Vitest
+docs/                 # architecture / security / ops / production-readiness
+scripts/              # docker-gate.sh、visual-hierarchy-check.mjs 等
 ```
