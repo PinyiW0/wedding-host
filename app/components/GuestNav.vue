@@ -100,8 +100,14 @@ watch(() => route.fullPath, closeMenu)
       <NuxtLink
         v-if="homeTo"
         :to="homeTo"
-        class="group absolute inset-y-0 left-1/2 flex -translate-x-1/2 flex-col items-center justify-center"
+        class="group absolute inset-y-0 left-1/2 flex -translate-x-1/2 flex-col items-center justify-center px-8"
       >
+        <!-- 滑過品牌時灑出金色小心軌跡（純裝飾，reduced-motion 下不產生） -->
+        <TextCursor :spacing="26" :max-points="6" font-class="text-base">
+          <svg viewBox="0 0 24 24" fill="currentColor" class="size-4 text-gold">
+            <path d="M12 20.4c-.28 0-.55-.1-.76-.29C7.9 17.2 3.4 13.5 3.4 9.1 3.4 6.3 5.5 4.1 8.2 4.1c1.5 0 2.9.7 3.8 1.9.9-1.2 2.3-1.9 3.8-1.9 2.7 0 4.8 2.2 4.8 5 0 4.4-4.5 8.1-7.84 11-.21.19-.48.29-.76.29Z" />
+          </svg>
+        </TextCursor>
         <span class="font-display text-2xl font-semibold tracking-wide text-ink transition-transform duration-400 ease-emphasized group-hover:-translate-y-px">
           EverAfter
         </span>
