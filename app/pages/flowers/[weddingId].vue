@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import { listFlowers } from '~/api'
 
-// 滿版春日底色，不用 guest layout 的窄容器
+// 滿版春日底色，不用 guest layout 的窄容器；導覽列改由頁面自行掛 GuestNav
 definePageMeta({ layout: false })
 
 const route = useRoute()
@@ -15,12 +15,8 @@ const flowerList = computed(() => flowers.value ?? [])
 
 <template>
   <div data-testid="flower-field-page" class="spring-day flex min-h-screen flex-col">
-    <!-- 品牌列：與 guest layout 同語彙 -->
-    <header class="shrink-0 border-b border-line bg-paper">
-      <div class="mx-auto flex h-16 max-w-6xl items-center justify-center px-6">
-        <span class="font-display text-2xl font-semibold tracking-wide text-ink">EverAfter</span>
-      </div>
-    </header>
+    <!-- 導覽列直接掛在頁面上：layout: false 只是為了滿版，導覽仍與其他公開頁共用同一個元件 -->
+    <GuestNav />
 
     <!-- 單一焦點：祝福花田 -->
     <main class="flex flex-1 items-center justify-center px-6 py-12 lg:py-16">
