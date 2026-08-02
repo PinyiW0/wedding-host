@@ -67,7 +67,7 @@ export function useGuestNav() {
     }
   })
 
-  // 依婚禮時序排列：流程 → 當天報到 → 祝福 → 婚後謝卡 → 通知綁定
+  // 依婚禮時序排列：流程 → 當天報到 → 祝福（留言／花田）→ 婚後謝卡 → 通知綁定
   const menuItems = computed<GuestNavItem[]>(() => {
     const wid = weddingId.value
     if (!wid)
@@ -84,6 +84,9 @@ export function useGuestNav() {
 
     // 祝福牆共用 QR 無 guestId 時改由賓客自填姓名，故 guestId 僅在賓客級連結帶入
     items.push({ key: 'blessing', label: '祝福留言', to: withQuery(`/blessing/${wid}`, { guestId: personal ? gid : '', sig: sig.value }) })
+
+    // 花田是全婚禮共賞的手繪小花匯集，婚禮級與賓客級簽名都通行
+    items.push({ key: 'flowers', label: '祝福花田', to: withQuery(`/flowers/${wid}`, { sig: sig.value }) })
 
     if (personal) {
       items.push({ key: 'thankyou', label: '感謝卡', to: withQuery(`/thankyou/${wid}/${gid}`, { sig: sig.value }) })
