@@ -19,5 +19,6 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeLis
     imageUrl: c.imageUrl,
     price: c.price,
     componentTypeIds: c.componentTypeIds ?? null,
+    visibleToReception: c.visibleToReception,
   }))
 })

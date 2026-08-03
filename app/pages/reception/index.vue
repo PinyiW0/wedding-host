@@ -1,5 +1,6 @@
 <!-- app/pages/reception/index.vue -->
 <script setup lang="ts">
+import type { CakeBoxTypeListItem } from '~/types/api/cakebox'
 import type { CreateGuestBody, GuestListItem } from '~/types/api/guests'
 import type {
   DistributeCakeBoxBody,
@@ -20,6 +21,7 @@ import {
   distributeCakeBox,
   getReceptionStatus,
   listCakeBoxAssignments,
+  listCakeBoxExclusions,
   listCakeBoxTypes,
   listGuests,
   listTables,
@@ -54,15 +56,19 @@ const guestsAsync = listGuests(weddingId, { default: () => [] })
 const cakeTypesAsync = listCakeBoxTypes(weddingId, { default: () => [] })
 // 後台逐位指定的喜餅款式（接待端據此顯示「指定款式」並可打勾發放）
 const cakeAssignAsync = listCakeBoxAssignments(weddingId, { default: () => [] })
+// 後台標記不發放的賓客（新人本人、男方親屬等）：接待端顯示「不發放」並收起所有發放操作
+const cakeExclusionAsync = listCakeBoxExclusions(weddingId, { default: () => [] })
 // 報到／禮金／喜餅狀態（GuestListItem 不含這些欄位，見下方 status 區）
 const statusAsync = getReceptionStatus(weddingId, { default: () => [] })
 // 現場桌次圖：桌次 + 全婚禮座位（一次抓，取代逐桌 N 請求）
 const tablesAsync = listTables(weddingId, { default: () => [] })
 const seatsAsync = listWeddingSeats(weddingId, { default: () => [] })
-await Promise.all([guestsAsync, cakeTypesAsync, cakeAssignAsync, statusAsync, tablesAsync, seatsAsync])
+await Promise.all([guestsAsync, cakeTypesAsync, cakeAssignAsync, cakeExclusionAsync, statusAsync, tablesAsync, seatsAsync])
 const { data: guests, refresh: refreshGuests } = guestsAsync
-const { data: cakeBoxTypes } = cakeTypesAsync
+// 款式清單原本只取 data，後台改款／改組合後接待端會停在開頁當下的舊資料直到整頁重載（issue #138）
+const { data: cakeBoxTypes, refresh: refreshCakeTypes } = cakeTypesAsync
 const { data: cakeAssignments, refresh: refreshCakeAssignments } = cakeAssignAsync
+const { data: cakeExclusions, refresh: refreshCakeExclusions } = cakeExclusionAsync
 const { data: receptionStatus, refresh: refreshStatus } = statusAsync
 const { data: tables, refresh: refreshTables } = tablesAsync
 const { data: allSeats, refresh: refreshSeats } = seatsAsync
@@ -71,8 +77,24 @@ const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
 )
 
+const cakeTypeById = computed(() =>
+  new Map((cakeBoxTypes.value ?? []).map(t => [t.cakeBoxTypeId, t])),
+)
+
+// 款式顯示名：組合款附上內含單款（issue #106），讓接待員知道實際要拿幾盒
+function cakeTypeLabel(type: CakeBoxTypeListItem): string {
+  const parts = (type.componentTypeIds ?? [])
+    .map(id => cakeTypeById.value.get(id)?.name ?? '')
+    .filter(Boolean)
+  return parts.length ? `${type.name}：${parts.join('＋')}` : type.name
+}
+
+// 選款清單只列出後台開放「接待台可選」的款式（issue #138）；
+// 已指派／已發放的隱藏款仍由 cakeTypeById 查得到名稱，不會顯示成空白
 const cakeTypeOptions = computed(() =>
-  (cakeBoxTypes.value ?? []).map(t => ({ label: t.name, value: t.cakeBoxTypeId })),
+  (cakeBoxTypes.value ?? [])
+    .filter(t => t.visibleToReception)
+    .map(t => ({ label: cakeTypeLabel(t), value: t.cakeBoxTypeId })),
 )
 
 // guestId → 指定款式（同一賓客取第一筆指派）
@@ -89,10 +111,25 @@ function assignedCake(guestId: string) {
   return assignedCakeByGuest.value.get(guestId) ?? null
 }
 
-function cakeTypeName(typeId: string | null): string {
-  if (!typeId)
-    return ''
-  return (cakeBoxTypes.value ?? []).find(t => t.cakeBoxTypeId === typeId)?.name ?? ''
+// 指定款標籤：優先用款式清單（才有組合內容），查不到才退回指派帶出的款名
+function assignedCakeLabel(typeId: string, fallbackName: string): string {
+  const type = cakeTypeById.value.get(typeId)
+  return type ? cakeTypeLabel(type) : fallbackName
+}
+
+// 已發放顯示文字；款式被刪除時只說「已發放」，不渲染成「已發放（）」
+function distributedLabel(typeId: string | null): string {
+  const type = typeId ? cakeTypeById.value.get(typeId) : null
+  return type ? `已發放（${cakeTypeLabel(type)}）` : '已發放'
+}
+
+// 不發放賓客：接待端據此收起打勾與發放按鈕（後端另有 409 守門）
+const excludedGuestIds = computed(() =>
+  new Set((cakeExclusions.value ?? []).map(e => e.guestId)),
+)
+
+function isCakeExcluded(guestId: string): boolean {
+  return excludedGuestIds.value.has(guestId)
 }
 
 // 顯示文字
@@ -146,9 +183,10 @@ const filteredGuests = computed(() => {
 
 // 顯示順序：三項（報到／禮金／喜餅）皆完成者視為已處理，穩定沉到清單最下方；
 // 其餘（含剛報到、尚未登禮金／喜餅者）維持原順序留在上方，避免處理到一半就跳走干擾
+// 不發放的賓客喜餅永遠不會有發放紀錄，視為該項已處理，否則他們會永遠卡在待處理區
 function isFullyServed(g: GuestListItem): boolean {
   const s = status[g.guestId]
-  return !!s?.checkedIn && s.giftAmount != null && s.cakeBoxTypeId != null
+  return !!s?.checkedIn && s.giftAmount != null && (s.cakeBoxTypeId != null || isCakeExcluded(g.guestId))
 }
 const displayGuests = computed(() => {
   const pending: GuestListItem[] = []
@@ -430,7 +468,9 @@ onMounted(() => {
     Promise.all([
       refreshGuests(),
       refreshStatus(),
+      refreshCakeTypes(),
       refreshCakeAssignments(),
+      refreshCakeExclusions(),
       refreshSeating(),
     ]).catch(() => {})
   }, POLL_MS)
@@ -998,7 +1038,8 @@ async function submitCake() {
                 </UButton>
               </div>
 
-              <!-- 喜餅：已發放打勾；未發放且有指定款 → 打勾即發放，另留「發放喜餅」可改款 -->
+              <!-- 喜餅：已發放顯示款式；不發放者無操作；有指定款打勾即發放；
+                   「發放喜餅」按鈕只留給沒有後台指派的現場臨時來賓（issue #138） -->
               <div class="flex items-center gap-3">
                 <span class="text-caption uppercase tracking-wider text-ink-300">喜餅</span>
                 <span
@@ -1006,18 +1047,25 @@ async function submitCake() {
                   class="inline-flex items-center gap-1.5 text-body font-medium text-success-600"
                 >
                   <UIcon name="i-heroicons-check-circle-20-solid" class="size-5" />
-                  已發放（{{ cakeTypeName(status[guest.guestId]!.cakeBoxTypeId) }}）
+                  {{ distributedLabel(status[guest.guestId]!.cakeBoxTypeId) }}
                 </span>
+                <span
+                  v-else-if="isCakeExcluded(guest.guestId)"
+                  :data-testid="`vibe-reception-cake-nobox-${guest.guestId}`"
+                  class="text-body text-ink-300"
+                >
+                  不發放
+                </span>
+                <UCheckbox
+                  v-else-if="assignedCake(guest.guestId)"
+                  :model-value="false"
+                  :data-testid="`reception-cake-tick-${guest.guestId}`"
+                  :disabled="quickDistributingId === guest.guestId"
+                  :label="`${assignedCakeLabel(assignedCake(guest.guestId)!.typeId, assignedCake(guest.guestId)!.typeName)}（指定）`"
+                  @update:model-value="quickDistribute(guest)"
+                />
                 <template v-else>
-                  <UCheckbox
-                    v-if="assignedCake(guest.guestId)"
-                    :model-value="false"
-                    :data-testid="`reception-cake-tick-${guest.guestId}`"
-                    :disabled="quickDistributingId === guest.guestId"
-                    :label="`${assignedCake(guest.guestId)!.typeName}（指定）`"
-                    @update:model-value="quickDistribute(guest)"
-                  />
-                  <span v-else class="text-body text-ink-300">未指定款式</span>
+                  <span class="text-body text-ink-300">未指定款式</span>
                   <UButton
                     :data-testid="`reception-cake-${guest.guestId}`"
                     color="neutral"

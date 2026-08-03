@@ -113,7 +113,7 @@ Pinia store 只有一個：`app/stores/auth.ts`（`useAuthStore`，setup store�
 
 - Vercel serverless 長連線 = function 持續計費＋時長上限強制斷線，SSE 變成偽輪詢；WebSocket 不支援
 - neon-http driver 無常駐連線，聽不了 Postgres LISTEN/NOTIFY，推播需外掛 pub/sub 服務（新依賴＋費用）
-- 實際負載：一場婚禮 1-3 台接待機，輪詢每 5 秒 6 個小請求（座位批次化後），成本趨近零；體感上 5 秒內同步已足夠
+- 實際負載：一場婚禮 1-3 台接待機，輪詢每 5 秒 7 個小請求（賓客／狀態／喜餅款式／指派／不發放／桌次／座位；座位已批次化），成本趨近零；體感上 5 秒內同步已足夠
 - 未來若成真多場次、數十台裝置同時在線：優先評估 Supabase Realtime / Pusher 免費層，而非自建 SSE
 
 ---

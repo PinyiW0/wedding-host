@@ -11,6 +11,9 @@ export interface CakeBoxTypeListItem {
   price: number | null
   // 組合款（issue #106）：內含單款 id 清單；null／空＝一般單款
   componentTypeIds: string[] | null
+  // 接待台可選（issue #138）：false＝僅新人／管理端可見，接待端選款清單不列出
+  // （已指派／已發放者仍顯示款名，否則畫面會出現「已發放（）」）
+  visibleToReception: boolean
 }
 
 export interface CreateCakeBoxTypeBody {
@@ -21,6 +24,8 @@ export interface CreateCakeBoxTypeBody {
   price?: number
   // 有值即為組合款；僅可內含非組合款（單層）
   componentTypeIds?: string[]
+  // 未帶＝可選（既有呼叫端不受影響）
+  visibleToReception?: boolean
 }
 
 export interface CakeBoxTypeCreatedEvent {
@@ -32,6 +37,7 @@ export interface CakeBoxTypeCreatedEvent {
   imageUrl: string | null
   price: number | null
   componentTypeIds: string[] | null
+  visibleToReception: boolean
 }
 
 export interface UpdateCakeBoxTypeBody {
@@ -43,6 +49,7 @@ export interface UpdateCakeBoxTypeBody {
   price?: number
   // 傳空陣列＝解除組合
   componentTypeIds?: string[]
+  visibleToReception?: boolean
 }
 
 export interface CakeBoxTypeUpdatedEvent {
@@ -53,6 +60,7 @@ export interface CakeBoxTypeUpdatedEvent {
   imageUrl: string | null
   price: number | null
   componentTypeIds: string[] | null
+  visibleToReception: boolean
 }
 
 export interface ConfigureCakeBoxAssignmentBody {

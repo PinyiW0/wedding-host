@@ -31,8 +31,11 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeCre
     await db.update(cakeBoxTypes).set({ isDefault: false }).where(eq(cakeBoxTypes.weddingId, weddingId))
   }
 
-  await db.insert(cakeBoxTypes).values({ cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price, componentTypeIds })
+  // 未帶＝接待台可選（issue #138）：既有呼叫端與匯入流程不必為此欄改動
+  const visibleToReception = body.visibleToReception ?? true
+
+  await db.insert(cakeBoxTypes).values({ cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price, componentTypeIds, visibleToReception })
 
   setResponseStatus(event, 201)
-  return { cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price, componentTypeIds }
+  return { cakeBoxTypeId, weddingId, name: body.name, description, isDefault: body.isDefault, imageUrl, price, componentTypeIds, visibleToReception }
 })

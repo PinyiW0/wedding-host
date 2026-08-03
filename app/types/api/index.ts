@@ -21,11 +21,20 @@ export type {
 } from './blessings'
 export type {
   CakeBoxAssignmentConfiguredEvent,
+  CakeBoxAssignmentListItem,
+  CakeBoxExclusionListItem,
+  CakeBoxExtraOrderCreatedEvent,
+  CakeBoxExtraOrderListItem,
+  CakeBoxExtraOrderUpdatedEvent,
+  CakeBoxGuestExcludedEvent,
   CakeBoxTypeCreatedEvent,
   CakeBoxTypeListItem,
   CakeBoxTypeUpdatedEvent,
   ConfigureCakeBoxAssignmentBody,
+  CreateCakeBoxExtraOrderBody,
   CreateCakeBoxTypeBody,
+  ExcludeGuestCakeBoxBody,
+  UpdateCakeBoxExtraOrderBody,
   UpdateCakeBoxTypeBody,
 } from './cakebox'
 export type {
@@ -62,6 +71,7 @@ export type {
 } from './projection'
 export type {
   CakeBoxDistributedEvent,
+  CakeBoxDistributionCancelledEvent,
   DistributeCakeBoxBody,
   GiftMoneyRecordedEvent,
   GiftMoneyUpdatedEvent,

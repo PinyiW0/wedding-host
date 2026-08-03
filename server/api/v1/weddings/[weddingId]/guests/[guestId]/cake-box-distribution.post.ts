@@ -4,7 +4,7 @@ import type { CakeBoxDistributedEvent, DistributeCakeBoxBody } from '../../../..
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
-import { cakeBoxTypes, guests } from '../../../../../../db/schema'
+import { cakeBoxExclusions, cakeBoxTypes, guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<CakeBoxDistributedEvent> => {
   const guestId = getRouterParam(event, 'guestId')!
@@ -22,6 +22,11 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxDistrib
   }
   if (guest.cakeBoxDistributedTypeId) {
     throw createError({ statusCode: 409, statusMessage: '喜餅已發放' })
+  }
+  // 不發放守門（issue #138）：後台標記排除的賓客，接待端已隱藏操作，這裡擋掉直接打 API 的路徑
+  const [excluded] = await db.select({ guestId: cakeBoxExclusions.guestId }).from(cakeBoxExclusions).where(and(eq(cakeBoxExclusions.weddingId, weddingId), eq(cakeBoxExclusions.guestId, guestId)))
+  if (excluded) {
+    throw createError({ statusCode: 409, statusMessage: '該賓客設定為不發放喜餅' })
   }
   // cakeBoxTypeId 需屬於本婚禮（issue #70 / L2）：防指向跨婚禮或幽靈款式。
   // 原本 `?? 'cakeboxtype-001'` 的 default 配上 `if (body?.cakeBoxTypeId)` 會讓這段驗證在
