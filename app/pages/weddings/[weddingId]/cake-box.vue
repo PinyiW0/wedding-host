@@ -135,8 +135,9 @@ async function confirmCancelDistribution() {
 // 款式 CRUD 後同步重抓「款式」與「指派」兩支 GET：
 // 領取清單表格的已指派列讀的是 assignments 的 cakeBoxTypeName（後端依當前款式即時帶出），
 // 只重抓款式會讓表格停在舊名稱／已移除款式，故兩者一起 reload。
+// 排除清單與已發放狀態同樣受款式異動牽連（刪款會連帶清指派），一併重抓避免頁面停在舊值
 async function reloadCakeBoxData() {
-  await Promise.all([refresh(), refreshAssignments(), refreshExtra()])
+  await Promise.all([refresh(), refreshAssignments(), refreshExtra(), refreshExclusions(), refreshReceptionStatus()])
 }
 
 // === 新增 / 編輯喜餅款式表單 ===
@@ -144,6 +145,8 @@ const schema = z.object({
   name: z.string().trim().min(1, '請輸入款式名稱'),
   description: z.string().trim(),
   isDefault: z.boolean(),
+  // 接待台可選（issue #138）：關掉＝只有新人知道的款式
+  visibleToReception: z.boolean(),
 })
 
 type Schema = z.output<typeof schema>
@@ -156,6 +159,7 @@ const state = reactive<Schema>({
   name: '',
   description: '',
   isDefault: false,
+  visibleToReception: true,
 })
 // 縮圖（base64 data URL）與單價（元）獨立於 zod schema 管理，避免數字/檔案的驗證摩擦
 const imageUrl = ref('')
@@ -171,6 +175,7 @@ function resetState() {
   state.name = ''
   state.description = ''
   state.isDefault = false
+  state.visibleToReception = true
   imageUrl.value = ''
   priceText.value = ''
   componentTypeIds.value = []
@@ -189,6 +194,7 @@ function openEdit(type: CakeBoxTypeListItem) {
   state.name = type.name
   state.description = type.description ?? ''
   state.isDefault = type.isDefault
+  state.visibleToReception = type.visibleToReception
   imageUrl.value = type.imageUrl ?? ''
   priceText.value = type.price != null ? String(type.price) : ''
   componentTypeIds.value = type.componentTypeIds ?? []
@@ -264,6 +270,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         imageUrl: uploadedImageUrl,
         price,
         componentTypeIds: componentTypeIds.value, // 空陣列＝解除組合
+        visibleToReception: data.visibleToReception,
       }
       await updateCakeBoxType(weddingId.value, editingId.value, body)
       toast.add({ title: '喜餅款式已更新', color: 'success' })
@@ -276,6 +283,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
         imageUrl: uploadedImageUrl || undefined,
         price,
         componentTypeIds: componentTypeIds.value.length ? componentTypeIds.value : undefined,
+        visibleToReception: data.visibleToReception,
       }
       await createCakeBoxType(weddingId.value, body)
       toast.add({ title: '喜餅款式新增成功', color: 'success' })
@@ -468,12 +476,20 @@ async function applyByCategory() {
     let applied = 0
     let skipped = 0
     let excludedCount = 0
+    let keptNoBox = 0
+    const excludedIds = new Set((exclusions.value ?? []).map(e => e.guestId))
     for (const g of activeGuests.value) {
       // 勾選時男方親屬跳過款式指派、直接標不發放（已排除者不重打）
       if (excludeGroomRelatives.value && isGroomRelativeGuest(g)) {
-        if (!(exclusions.value ?? []).some(e => e.guestId === g.guestId))
+        if (!excludedIds.has(g.guestId))
           await excludeGuestCakeBox(weddingId.value, { guestId: g.guestId })
         excludedCount++
+        continue
+      }
+      // 已手動標記不發放者不被批次覆蓋（對齊 issue #105「手動覆寫不被打掉」的精神）。
+      // 要恢復發放走表格列的就地改款，那條會先解除不發放
+      if (excludedIds.has(g.guestId)) {
+        keptNoBox++
         continue
       }
       const cat = guestCategory(g.category)
@@ -492,6 +508,8 @@ async function applyByCategory() {
     const descriptionParts: string[] = []
     if (excludedCount > 0)
       descriptionParts.push(`男方親屬 ${excludedCount} 位設為不發放`)
+    if (keptNoBox > 0)
+      descriptionParts.push(`${keptNoBox} 位維持原本的不發放設定`)
     if (skipped > 0)
       descriptionParts.push(`${skipped} 位未對到規則且無預設款`)
     toast.add({
@@ -570,14 +588,15 @@ function onRowStyleChange(row: PickupRow, value: string) {
 
 const inlineSavingId = ref<string | null>(null)
 
-// 設為不發放（新人本人等）：寫入排除清單
+// 設為不發放（新人本人等）：寫入排除清單。
+// 後端會一併清掉該賓客的指派（不發放與指派互斥，issue #138），故指派也要重抓
 async function setNoBox(row: PickupRow) {
   if (row.excluded)
     return
   inlineSavingId.value = row.guestId
   try {
     await excludeGuestCakeBox(weddingId.value, { guestId: row.guestId })
-    await refreshExclusions()
+    await Promise.all([refreshExclusions(), refreshAssignments()])
     toast.add({ title: `已將「${row.name}」設為不發放`, color: 'success' })
   }
   catch (error: any) {
@@ -990,6 +1009,9 @@ async function removeExtraOrder(extraOrderId: string) {
                   </p>
                   <p v-if="(type.componentTypeIds ?? []).length" class="truncate text-caption text-gold-deep">
                     組合：{{ comboLabel(type) }}
+                  </p>
+                  <p v-if="!type.visibleToReception" class="truncate text-caption text-ink-300">
+                    僅新人可見（接待台不列出）
                   </p>
                 </div>
 
@@ -1554,6 +1576,17 @@ async function removeExtraOrder(extraOrderId: string) {
                 v-model="state.isDefault"
                 data-testid="cake-box-default"
                 label="設為預設款式"
+              />
+            </UFormField>
+
+            <UFormField
+              name="visibleToReception"
+              help="關閉後接待台的選款清單不會出現此款（已指派／已發放的賓客仍看得到款名）"
+            >
+              <UCheckbox
+                v-model="state.visibleToReception"
+                data-testid="vibe-cake-box-visible-reception"
+                label="接待台可選"
               />
             </UFormField>
 
