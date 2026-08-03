@@ -78,6 +78,13 @@
       "when": 1784688308840,
       "tag": "0010_pretty_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785713463338,
+      "tag": "0011_closed_amphibian",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "cake_box_types" ADD COLUMN "visible_to_reception" boolean DEFAULT true NOT NULL;

@@ -45,6 +45,8 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
     patch.imageUrl = body.imageUrl
   if (body.price !== undefined)
     patch.price = body.price
+  if (body.visibleToReception !== undefined)
+    patch.visibleToReception = body.visibleToReception
   // 切換預設款：設為預設時取消同婚禮其他款式的預設（維持單一預設）
   if (body.isDefault !== undefined) {
     patch.isDefault = body.isDefault
@@ -66,5 +68,6 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxTypeUpd
     imageUrl: cakeBoxType!.imageUrl,
     price: cakeBoxType!.price,
     componentTypeIds: cakeBoxType!.componentTypeIds ?? null,
+    visibleToReception: cakeBoxType!.visibleToReception,
   }
 })
