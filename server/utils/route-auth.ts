@@ -41,6 +41,9 @@ const THANK_YOU_PUBLIC_RE = /^thank-you-card\/public\/([^/]+)$/
 const RECEPTION_ACTION_RE = /^guests\/[^/]+\/(?:check-in|cake-box-distribution)$/
 const GIFT_MONEY_RE = /^guests\/[^/]+\/gift-money$/
 const BLESSING_REVIEW_RE = /^blessings\/[^/]+\/(?:approve|reject|project)$/
+// 現場臨時來賓（issue #138）：接待台當場新增賓客／開桌／入座。
+// 原本這三支只放行管理端，接待員登入會 403，現場加人得回頭找管理者
+const RECEPTION_ONSITE_CREATE_RE = /^(?:guests|tables|tables\/[^/]+\/seats)$/
 const WEDDING_PATH_RE = /^weddings\/([^/]+)(?:\/(.*))?$/
 
 export function classifyRoute(method: string, pathname: string): RouteAccess {
@@ -86,7 +89,7 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
 
   // 接待端白名單（CheckInByReception／RecordGiftMoney／DistributeCakeBox／審核祝福）
   const receptionist
-    = (method === 'POST' && (RECEPTION_ACTION_RE.test(sub) || GIFT_MONEY_RE.test(sub) || BLESSING_REVIEW_RE.test(sub)))
+    = (method === 'POST' && (RECEPTION_ACTION_RE.test(sub) || GIFT_MONEY_RE.test(sub) || BLESSING_REVIEW_RE.test(sub) || RECEPTION_ONSITE_CREATE_RE.test(sub)))
       || (method === 'PATCH' && GIFT_MONEY_RE.test(sub))
       || (method === 'GET' && RECEPTION_GET.has(sub))
 
