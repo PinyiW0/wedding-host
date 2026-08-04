@@ -23,6 +23,12 @@ export async function resolveComboComponents(db: Db, weddingId: string, raw: unk
   if (rows.some(r => (r.componentTypeIds ?? []).length > 0)) {
     throw createError({ statusCode: 400, statusMessage: '組合款不可再內含組合款' })
   }
+  // 只含一款的「組合」＝把單款換個名字：訂購總覽會把份數拆算到內含單款、
+  // 該組合本身永遠訂不到，是會靜默出錯的建模誤用（issue #140）。
+  // 放在存在性／巢狀檢查之後，讓「內含款不存在」仍回 404 而非被這條攔胡
+  if (ids.length === 1) {
+    throw createError({ statusCode: 400, statusMessage: '組合款至少需內含兩款；只發一盒請建成單款' })
+  }
   return ids
 }
 

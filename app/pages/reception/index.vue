@@ -14,6 +14,7 @@ import type {
   SeatListItem,
   TableListItem,
 } from '~/types/api/seating'
+import type { CakeBoxThumbItem } from '~/utils/cakeBoxDisplay'
 import {
   checkInGuest,
   createGuest,
@@ -30,6 +31,7 @@ import {
   seatGuest,
   updateGiftMoney,
 } from '~/api'
+import { cakeBoxDisplayName, cakeBoxThumbItems } from '~/utils/cakeBoxDisplay'
 
 definePageMeta({ layout: 'default' })
 
@@ -81,20 +83,24 @@ const cakeTypeById = computed(() =>
   new Map((cakeBoxTypes.value ?? []).map(t => [t.cakeBoxTypeId, t])),
 )
 
-// 款式顯示名：組合款附上內含單款（issue #106），讓接待員知道實際要拿幾盒
-function cakeTypeLabel(type: CakeBoxTypeListItem): string {
-  const parts = (type.componentTypeIds ?? [])
-    .map(id => cakeTypeById.value.get(id)?.name ?? '')
-    .filter(Boolean)
-  return parts.length ? `${type.name}：${parts.join('＋')}` : type.name
+// 款式顯示：組合款以內含單款為主行（接待員實際要拿的盒子），組合自訂名降為副標（issue #140）
+function cakeTypeView(type: CakeBoxTypeListItem) {
+  return {
+    ...cakeBoxDisplayName(type, cakeTypeById.value),
+    thumbItems: cakeBoxThumbItems(type, cakeTypeById.value),
+  }
 }
 
 // 選款清單只列出後台開放「接待台可選」的款式（issue #138）；
 // 已指派／已發放的隱藏款仍由 cakeTypeById 查得到名稱，不會顯示成空白
+// label 供 USelectMenu 過濾與選取後顯示；組合自訂名走內建 description 副標，縮圖走 item-leading
 const cakeTypeOptions = computed(() =>
   (cakeBoxTypes.value ?? [])
     .filter(t => t.visibleToReception)
-    .map(t => ({ label: cakeTypeLabel(t), value: t.cakeBoxTypeId })),
+    .map((t) => {
+      const { primary, secondary, thumbItems } = cakeTypeView(t)
+      return { label: primary, description: secondary, thumbItems, value: t.cakeBoxTypeId }
+    }),
 )
 
 // guestId → 指定款式（同一賓客取第一筆指派）
@@ -111,16 +117,27 @@ function assignedCake(guestId: string) {
   return assignedCakeByGuest.value.get(guestId) ?? null
 }
 
-// 指定款標籤：優先用款式清單（才有組合內容），查不到才退回指派帶出的款名
-function assignedCakeLabel(typeId: string, fallbackName: string): string {
-  const type = cakeTypeById.value.get(typeId)
-  return type ? cakeTypeLabel(type) : fallbackName
+// guestId → 指定款顯示（款名 + 副標 + 縮圖）；
+// 款式已被刪除或關閉可選時，退回指派帶出的款名，不讓卡片變空白
+const assignedCakeViewByGuest = computed(() => {
+  const map = new Map<string, { primary: string, secondary: string, thumbItems: CakeBoxThumbItem[] }>()
+  for (const [guestId, assigned] of assignedCakeByGuest.value) {
+    const type = cakeTypeById.value.get(assigned.typeId)
+    map.set(guestId, type
+      ? cakeTypeView(type)
+      : { primary: assigned.typeName, secondary: '', thumbItems: [] })
+  }
+  return map
+})
+
+function assignedCakeView(guestId: string) {
+  return assignedCakeViewByGuest.value.get(guestId) ?? null
 }
 
 // 已發放顯示文字；款式被刪除時只說「已發放」，不渲染成「已發放（）」
 function distributedLabel(typeId: string | null): string {
   const type = typeId ? cakeTypeById.value.get(typeId) : null
-  return type ? `已發放（${cakeTypeLabel(type)}）` : '已發放'
+  return type ? `已發放（${cakeTypeView(type).primary}）` : '已發放'
 }
 
 // 不發放賓客：接待端據此收起打勾與發放按鈕（後端另有 409 守門）
@@ -1056,14 +1073,32 @@ async function submitCake() {
                 >
                   不發放
                 </span>
+                <!-- 組合款以內含單款為主行、組合自訂名走 description 副標（issue #140） -->
                 <UCheckbox
-                  v-else-if="assignedCake(guest.guestId)"
+                  v-else-if="assignedCakeView(guest.guestId)"
                   :model-value="false"
                   :data-testid="`reception-cake-tick-${guest.guestId}`"
                   :disabled="quickDistributingId === guest.guestId"
-                  :label="`${assignedCakeLabel(assignedCake(guest.guestId)!.typeId, assignedCake(guest.guestId)!.typeName)}（指定）`"
+                  :ui="{ root: 'items-center' }"
                   @update:model-value="quickDistribute(guest)"
-                />
+                >
+                  <!-- 縮圖與副標都放進 label：整塊等高後，勾選框才會對齊縮圖中心
+                       （用 description prop 會讓副標落在 label 外，勾選框被推到頂部） -->
+                  <template #label>
+                    <span class="flex items-center gap-2">
+                      <CakeBoxThumb :items="assignedCakeView(guest.guestId)!.thumbItems" size="sm" />
+                      <span class="min-w-0">
+                        <span class="block">{{ assignedCakeView(guest.guestId)!.primary }}（指定）</span>
+                        <span
+                          v-if="assignedCakeView(guest.guestId)!.secondary"
+                          class="block text-caption text-ink-300"
+                        >
+                          {{ assignedCakeView(guest.guestId)!.secondary }}
+                        </span>
+                      </span>
+                    </span>
+                  </template>
+                </UCheckbox>
                 <template v-else>
                   <span class="text-body text-ink-300">未指定款式</span>
                   <UButton
@@ -1428,7 +1463,8 @@ async function submitCake() {
           <div class="space-y-6">
             <!-- 喜餅選擇卡（選中：金框 + bg-paper；長輩友善大點擊區） -->
             <UFormField label="喜餅款式" name="cakeBoxTypeId">
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <!-- 單欄長條：組合款名（內含兩款）在兩欄寬度下會擠到勾選框，且現場單欄更好按 -->
+              <div class="flex flex-col gap-3">
                 <button
                   v-for="opt in cakeTypeOptions"
                   :key="opt.value"
@@ -1440,7 +1476,19 @@ async function submitCake() {
                     : 'border-line bg-white hover:border-gold/60 dark:border-neutral-800 dark:bg-neutral-800'"
                   @click="cakeTypeId = opt.value"
                 >
-                  <span class="text-body-l font-medium text-ink dark:text-paper">{{ opt.label }}</span>
+                  <span class="flex min-w-0 flex-1 items-center gap-3">
+                    <CakeBoxThumb :items="opt.thumbItems" />
+                    <span class="min-w-0">
+                      <!-- break-keep：組合款只在「＋」兩側的空白斷行，不會斷在「輕巧禮／盒」中間 -->
+                      <span class="block break-keep text-body-l font-medium text-ink dark:text-paper">{{ opt.label }}</span>
+                      <span
+                        v-if="opt.description"
+                        class="block truncate text-caption text-ink-500 dark:text-neutral-400"
+                      >
+                        {{ opt.description }}
+                      </span>
+                    </span>
+                  </span>
                   <span
                     class="flex size-7 shrink-0 items-center justify-center rounded"
                     :class="cakeTypeId === opt.value ? 'bg-gold text-white' : 'border border-line'"
@@ -1458,7 +1506,11 @@ async function submitCake() {
                 value-key="value"
                 placeholder="選擇喜餅款式"
                 class="mt-3 w-full"
-              />
+              >
+                <template #item-leading="{ item }">
+                  <CakeBoxThumb :items="item.thumbItems" size="sm" />
+                </template>
+              </USelectMenu>
             </UFormField>
 
             <div class="flex justify-end gap-3 pt-2">

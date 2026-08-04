@@ -10,6 +10,7 @@ import type {
   UpdateCakeBoxTypeBody,
 } from '~/types/api/cakebox'
 import type { GuestListItem } from '~/types/api/guests'
+import type { CakeBoxThumbItem } from '~/utils/cakeBoxDisplay'
 
 import { z } from 'zod'
 import {
@@ -31,6 +32,7 @@ import {
   updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from '~/api'
+import { cakeBoxThumbItems } from '~/utils/cakeBoxDisplay'
 
 definePageMeta({ layout: 'default' })
 
@@ -170,6 +172,13 @@ const imageInputRef = ref<HTMLInputElement>()
 const priceText = ref('')
 // 組合款內含單款（issue #106）：與縮圖／單價同樣獨立於 zod schema 管理
 const componentTypeIds = ref<string[]>([])
+// 只含一款的「組合」＝把單款換個名字：訂購總覽會把份數拆算到內含單款、
+// 該組合本身永遠訂不到。後端同樣擋（400），這裡先在表單上說清楚（issue #140）
+const comboSingleError = computed(() =>
+  componentTypeIds.value.length === 1
+    ? '組合至少要內含兩款；只發一盒請清空此欄，直接建成單款'
+    : '',
+)
 
 function resetState() {
   state.name = ''
@@ -250,6 +259,10 @@ async function setAsDefault(type: CakeBoxTypeListItem) {
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   if (isSubmitting.value)
     return
+  if (comboSingleError.value) {
+    formError.value = comboSingleError.value
+    return
+  }
   isSubmitting.value = true
   formError.value = ''
   try {
@@ -344,6 +357,10 @@ const componentOptions = computed(() =>
 )
 function comboLabel(type: CakeBoxTypeListItem): string {
   return (type.componentTypeIds ?? []).map(id => typeById.value.get(id)?.name ?? '').filter(Boolean).join('＋')
+}
+// 款式列縮圖：組合款展開成內含各單款的圖（issue #140）
+function thumbItems(type: CakeBoxTypeListItem): CakeBoxThumbItem[] {
+  return cakeBoxThumbItems(type, typeById.value)
 }
 const guestOptions = computed(() =>
   activeGuests.value.map(g => ({ label: g.name, value: g.guestId })),
@@ -974,19 +991,8 @@ async function removeExtraOrder(extraOrderId: string) {
                 :aria-label="type.name"
                 class="flex items-center gap-3 px-2 py-3 transition-colors hover:bg-cream dark:hover:bg-neutral-800/40"
               >
-                <!-- 小縮圖（無圖以禮盒 icon 佔位；邊框+對比底色，預設款金框列上也分得出來） -->
-                <div class="size-12 shrink-0 overflow-hidden rounded-md border border-line bg-white dark:border-neutral-700 dark:bg-neutral-800">
-                  <img
-                    v-if="type.imageUrl"
-                    :src="type.imageUrl"
-                    :alt="type.name"
-                    loading="lazy"
-                    class="size-full object-cover"
-                  >
-                  <div v-else class="flex size-full items-center justify-center text-ink-300">
-                    <UIcon name="i-heroicons-gift" class="size-5" />
-                  </div>
-                </div>
+                <!-- 小縮圖：組合款並排內含各單款的圖，無圖以禮盒 icon 佔位（issue #140） -->
+                <CakeBoxThumb :items="thumbItems(type)" />
 
                 <!-- 主資訊 -->
                 <div class="min-w-0 flex-1">
@@ -1444,8 +1450,9 @@ async function removeExtraOrder(extraOrderId: string) {
       :content="{ onFocusOutside: (e) => e.preventDefault() }"
     >
       <template #content>
-        <div data-testid="cake-box-form-modal" class="p-6">
-          <h3 class="mb-4 text-body-l font-semibold text-ink dark:text-paper">
+        <!-- 限高 + 表單區內滾：上傳縮圖後內容變高時，「取消／新增」仍固定在視窗內（issue #140） -->
+        <div data-testid="cake-box-form-modal" class="flex max-h-[85dvh] flex-col p-6">
+          <h3 class="mb-4 shrink-0 text-body-l font-semibold text-ink dark:text-paper">
             {{ editingId ? '編輯喜餅款式' : '新增喜餅款式' }}
           </h3>
 
@@ -1456,141 +1463,151 @@ async function removeExtraOrder(extraOrderId: string) {
             color="error"
             variant="soft"
             :title="formError"
-            class="mb-4"
+            class="mb-4 shrink-0"
           />
 
           <UForm
             :schema="schema"
             :state="state"
-            class="space-y-4"
+            class="flex min-h-0 flex-1 flex-col"
             @submit="onSubmit"
           >
-            <UFormField
-              label="名稱"
-              name="name"
-              class="relative mb-6"
-              :ui="{ error: 'absolute top-full left-0 mt-1' }"
-            >
-              <UInput
-                v-model="state.name"
-                data-testid="cake-box-name"
-                placeholder="請輸入款式名稱"
-                class="w-full"
-              />
-            </UFormField>
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <UFormField
+                label="名稱"
+                name="name"
+                class="relative mb-6"
+                :ui="{ error: 'absolute top-full left-0 mt-1' }"
+              >
+                <UInput
+                  v-model="state.name"
+                  data-testid="cake-box-name"
+                  placeholder="請輸入款式名稱"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <UFormField label="說明" name="description">
-              <UTextarea
-                v-model="state.description"
-                data-testid="cake-box-description"
-                placeholder="款式說明（選填）"
-                class="w-full"
-              />
-            </UFormField>
+              <UFormField label="說明" name="description">
+                <UTextarea
+                  v-model="state.description"
+                  data-testid="cake-box-description"
+                  placeholder="款式說明（選填）"
+                  class="w-full"
+                />
+              </UFormField>
 
-            <UFormField label="縮圖" name="imageUrl">
-              <div class="flex items-center gap-4">
-                <div class="size-20 shrink-0 overflow-hidden rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-800">
-                  <img
-                    v-if="imageUrl"
-                    :src="imageUrl"
-                    alt="縮圖預覽"
-                    loading="lazy"
-                    class="size-full object-cover"
-                  >
-                  <div v-else class="flex size-full items-center justify-center text-ink-300">
-                    <UIcon name="i-heroicons-photo" class="size-6" />
+              <UFormField label="縮圖" name="imageUrl">
+                <div class="flex items-center gap-4">
+                  <div class="size-20 shrink-0 overflow-hidden rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-800">
+                    <img
+                      v-if="imageUrl"
+                      :src="imageUrl"
+                      alt="縮圖預覽"
+                      loading="lazy"
+                      class="size-full object-cover"
+                    >
+                    <div v-else class="flex size-full items-center justify-center text-ink-300">
+                      <UIcon name="i-heroicons-photo" class="size-6" />
+                    </div>
+                  </div>
+                  <!-- 隱藏 input + outline 次要鈕（取代黑色 file:bg-ink 鈕，對齊克制風格） -->
+                  <div class="flex flex-col items-start gap-1.5">
+                    <input
+                      ref="imageInputRef"
+                      type="file"
+                      accept="image/*"
+                      data-testid="cake-box-image"
+                      class="hidden"
+                      @change="onPickImage"
+                    >
+                    <UButton
+                      type="button"
+                      icon="i-heroicons-arrow-up-tray"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      @click="imageInputRef?.click()"
+                    >
+                      {{ imageUrl ? '更換圖片' : '上傳圖片' }}
+                    </UButton>
+                    <p class="text-caption text-ink-300">
+                      建議方形，5MB 內
+                    </p>
+                    <UButton
+                      v-if="imageUrl"
+                      type="button"
+                      icon="i-heroicons-trash"
+                      color="error"
+                      variant="ghost"
+                      size="xs"
+                      @click="imageUrl = ''"
+                    >
+                      移除圖片
+                    </UButton>
                   </div>
                 </div>
-                <!-- 隱藏 input + outline 次要鈕（取代黑色 file:bg-ink 鈕，對齊克制風格） -->
-                <div class="flex flex-col items-start gap-1.5">
-                  <input
-                    ref="imageInputRef"
-                    type="file"
-                    accept="image/*"
-                    data-testid="cake-box-image"
-                    class="hidden"
-                    @change="onPickImage"
-                  >
-                  <UButton
-                    type="button"
-                    icon="i-heroicons-arrow-up-tray"
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    @click="imageInputRef?.click()"
-                  >
-                    {{ imageUrl ? '更換圖片' : '上傳圖片' }}
-                  </UButton>
-                  <p class="text-caption text-ink-300">
-                    建議方形，5MB 內
-                  </p>
-                  <UButton
-                    v-if="imageUrl"
-                    type="button"
-                    icon="i-heroicons-trash"
-                    color="error"
-                    variant="ghost"
-                    size="xs"
-                    @click="imageUrl = ''"
-                  >
-                    移除圖片
-                  </UButton>
-                </div>
-              </div>
-            </UFormField>
+              </UFormField>
 
-            <UFormField label="價格" name="price">
-              <UInput
-                v-model="priceText"
-                data-testid="cake-box-price"
-                type="number"
-                min="0"
-                placeholder="單價（元，選填）"
-                class="w-full"
+              <UFormField label="價格" name="price">
+                <UInput
+                  v-model="priceText"
+                  data-testid="cake-box-price"
+                  type="number"
+                  min="0"
+                  placeholder="單價（元，選填）"
+                  class="w-full"
+                >
+                  <template #leading>
+                    <span class="text-caption text-ink-400">NT$</span>
+                  </template>
+                </UInput>
+              </UFormField>
+
+              <!-- 組合款只能內含單款（單層），故沒有單款可選時明說要先建單款（issue #140） -->
+              <UFormField
+                label="組合內容"
+                name="componentTypeIds"
+                :error="comboSingleError"
+                :help="componentOptions.length
+                  ? '選滿兩款以上即成為組合款（同一位賓客一次發兩盒）；訂購總覽會自動拆算內含單款的下單數量'
+                  : '組合款只能內含單款——請先建立單一禮盒款式，再回來把它們組成組合款'"
               >
-                <template #leading>
-                  <span class="text-caption text-ink-400">NT$</span>
-                </template>
-              </UInput>
-            </UFormField>
+                <USelectMenu
+                  v-model="componentTypeIds"
+                  data-testid="vibe-cake-box-components"
+                  :items="componentOptions"
+                  value-key="value"
+                  multiple
+                  :placeholder="componentOptions.length ? '選擇內含單款（可複選，選填）' : '尚無可選的單款'"
+                  class="w-full"
+                >
+                  <template #empty>
+                    尚無可內含的單款——請先建立單一禮盒款式
+                  </template>
+                </USelectMenu>
+              </UFormField>
 
-            <UFormField
-              label="組合內容"
-              name="componentTypeIds"
-              help="選了內含單款即成為組合款（同一位賓客一次發兩款）；訂購總覽會自動拆算內含單款的下單數量"
-            >
-              <USelectMenu
-                v-model="componentTypeIds"
-                data-testid="vibe-cake-box-components"
-                :items="componentOptions"
-                value-key="value"
-                multiple
-                placeholder="選擇內含單款（可複選，選填）"
-                class="w-full"
-              />
-            </UFormField>
+              <UFormField name="isDefault">
+                <UCheckbox
+                  v-model="state.isDefault"
+                  data-testid="cake-box-default"
+                  label="設為預設款式"
+                />
+              </UFormField>
 
-            <UFormField name="isDefault">
-              <UCheckbox
-                v-model="state.isDefault"
-                data-testid="cake-box-default"
-                label="設為預設款式"
-              />
-            </UFormField>
+              <UFormField
+                name="visibleToReception"
+                help="關閉後接待台的選款清單不會出現此款（已指派／已發放的賓客仍看得到款名）"
+              >
+                <UCheckbox
+                  v-model="state.visibleToReception"
+                  data-testid="vibe-cake-box-visible-reception"
+                  label="接待台可選"
+                />
+              </UFormField>
+            </div>
 
-            <UFormField
-              name="visibleToReception"
-              help="關閉後接待台的選款清單不會出現此款（已指派／已發放的賓客仍看得到款名）"
-            >
-              <UCheckbox
-                v-model="state.visibleToReception"
-                data-testid="vibe-cake-box-visible-reception"
-                label="接待台可選"
-              />
-            </UFormField>
-
-            <div class="flex justify-end gap-3 pt-2">
+            <div class="flex shrink-0 justify-end gap-3 border-t border-line pt-4 dark:border-neutral-800">
               <UButton
                 color="neutral"
                 variant="outline"
