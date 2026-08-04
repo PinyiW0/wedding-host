@@ -56,7 +56,11 @@ test.describe('vibe：喜餅款式在接待端的可見性與組合展開', () =
 
     await page.goto(RECEPTION_PATH, { waitUntil: 'networkidle' })
     await expect(page.getByTestId('reception-cake-tick-guest-002')).toBeVisible()
-    // guest-002＝林美麗；組合內容顯示在打勾的 label 上
-    await expect(findEntity(page, /林美麗/)).toContainText('豪華禮盒：經典禮盒＋輕巧禮盒')
+    // guest-002＝林美麗；內含單款為主行、組合自訂名為副標（issue #140）
+    // 逐項斷言不綁完整字串，排版調整不會誤紅
+    const card = findEntity(page, /林美麗/)
+    await expect(card).toContainText('經典禮盒')
+    await expect(card).toContainText('輕巧禮盒')
+    await expect(card).toContainText('豪華禮盒')
   })
 })
