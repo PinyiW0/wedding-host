@@ -53,7 +53,7 @@ Nuxt 4 單體（monolith）：前端 Vue SSR 與後端 Nitro API 同一個應用
 | 端 | layout | 頁面 |
 |----|--------|------|
 | 後台管理 | `default`（側邊欄殼層） | `/weddings/[weddingId]/` 下：總覽、賓客、桌次、流程、RSVP×3、喜餅、小物、祝福審核、謝卡、LINE、帳號；全域 `/weddings`、`/users`、`/reception` |
-| 賓客公開頁 | `guest`（行動優先、無導航） | `/rsvp/[guestId]`、`/rsvp/public/[weddingId]`、`/checkin`、`/blessing/`、`/flowers/`、`/thankyou/`、`/rundown/`、`/guest/[guestId]/bind` |
+| 賓客公開頁 | `guest`（行動優先，導覽列依簽名等級給項目） | `/rsvp/[guestId]`、`/rsvp/public/[weddingId]`、`/checkin`、`/blessing/`、`/flowers/`、`/thankyou/`、`/schedule/`（賓客版流程）、`/rundown/`（工作人員版流程）、`/guest/[guestId]/bind` |
 | 認證 | `auth`（置中卡片） | `/login`、`/register` |
 | 投影牆 | `false`（全螢幕） | `/projection/[weddingId]` |
 
