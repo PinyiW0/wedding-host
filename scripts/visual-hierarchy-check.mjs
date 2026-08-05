@@ -82,7 +82,7 @@ function walk(dir) {
 
 // 本專案無 (public) route group：公開頁判定對齊 auth.global.ts 的 PUBLIC_PATTERNS
 // 賓客面向路徑（login/register 屬後台入口，維持後台規則）
-const PUBLIC_DIRS = ['rsvp', 'checkin', 'blessing', 'guest', 'flowers', 'thankyou', 'projection', 'rundown']
+const PUBLIC_DIRS = ['rsvp', 'checkin', 'blessing', 'guest', 'flowers', 'thankyou', 'projection', 'rundown', 'schedule']
 const PUBLIC_PREFIXES = PUBLIC_DIRS.map(d => join(SCAN_DIR, 'pages', d))
 
 const files = walk(SCAN_DIR)

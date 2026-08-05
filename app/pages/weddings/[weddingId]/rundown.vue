@@ -55,6 +55,8 @@ interface DraftRow {
   roleTaskById: Record<string, string>
   // 使用者標記列（底色強調，隨整表 PUT 持久化）
   highlight: boolean
+  // 對賓客公開此時段（賓客版流程頁 /schedule 只呈現勾選的列）
+  guestVisible: boolean
 }
 
 let draftSeq = 0
@@ -74,6 +76,7 @@ function toDraftRows(list: RundownItemListItem[]): DraftRow[] {
       item.roleTasks.filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
     ),
     highlight: item.highlight ?? false,
+    guestVisible: item.guestVisible ?? false,
   }))
 }
 
@@ -126,6 +129,7 @@ function addRow() {
     note: '',
     roleTaskById: {},
     highlight: false,
+    guestVisible: false,
   })
 }
 
@@ -134,10 +138,10 @@ function removeRow(row: DraftRow) {
 }
 
 // === 拖曳重排（時間格不動、只換內容）===
-// 內容欄位（事項/場地/物品/備註/角色事項/時長/標記）隨拖曳搬家；
+// 內容欄位（事項/場地/物品/備註/角色事項/時長/標記/賓客可見）隨拖曳搬家；
 // id / rundownItemId / time 是「時間格」不變量 → 列陣列順序與 PUT 的 id 集合恆定，
 // 不會破壞 .nth() 凍結定位，也絕不誤觸「未帶回＝刪除」合約
-type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'highlight'>
+type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'highlight' | 'guestVisible'>
 
 function pickContent(row: DraftRow): RowContent {
   return {
@@ -148,6 +152,7 @@ function pickContent(row: DraftRow): RowContent {
     note: row.note,
     roleTaskById: row.roleTaskById,
     highlight: row.highlight,
+    guestVisible: row.guestVisible,
   }
 }
 
@@ -240,6 +245,7 @@ function buildPayload(): SaveRundownTableBody {
           .filter(([, task]) => task.trim() !== '')
           .map(([roleId, task]) => ({ roleId, task })),
         highlight: row.highlight,
+        guestVisible: row.guestVisible,
       }
       // 新列（draft- 臨時 id）不帶 rundownItemId，由後端配發
       if (row.rundownItemId)
@@ -387,6 +393,8 @@ function applyTemplateToDraft() {
       (row.roleTasks ?? []).filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
     ),
     highlight: false,
+    // 範本自帶賓客可見預設（賓客在場的段落才勾），新人仍可逐列調整
+    guestVisible: row.guestVisible ?? false,
   })))
   isTemplateOpen.value = false
 }
@@ -538,6 +546,17 @@ function downloadRundownJpeg() {
           >
             複製分享連結
           </UButton>
+          <!-- 賓客版流程頁（另開分頁，不影響手上的草稿） -->
+          <UButton
+            data-testid="vibe-rundown-preview-guest"
+            icon="i-heroicons-eye"
+            color="neutral"
+            variant="outline"
+            :to="`/schedule/${weddingId}`"
+            target="_blank"
+          >
+            預覽賓客版
+          </UButton>
           <UButton
             data-testid="rundown-download-jpeg"
             icon="i-heroicons-photo"
@@ -638,9 +657,14 @@ function downloadRundownJpeg() {
       <!-- 流程矩陣表：列＝時間段、固定欄＋每角色一欄，表格內直接編輯草稿 -->
       <section class="flex min-h-0 flex-1 flex-col">
         <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <p class="text-overline uppercase text-gold-deep">
-            流程矩陣表
-          </p>
+          <div>
+            <p class="text-overline uppercase text-gold-deep">
+              流程矩陣表
+            </p>
+            <p class="mt-1 text-caption text-ink-300">
+              勾選「賓客」欄的時段才會出現在賓客版流程頁
+            </p>
+          </div>
           <div class="flex flex-wrap items-center gap-3">
             <USelectMenu
               v-model="roleFilter"
@@ -712,6 +736,10 @@ function downloadRundownJpeg() {
                 </th>
                 <th class="min-w-32 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   備註
+                </th>
+                <!-- 對賓客公開此時段（賓客版流程頁 /schedule 只呈現勾選的列） -->
+                <th class="w-16 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-center text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
+                  賓客
                 </th>
                 <th
                   v-for="role in visibleRoles"
@@ -810,6 +838,18 @@ function downloadRundownJpeg() {
                     size="sm"
                     placeholder="備註"
                     class="w-full"
+                  />
+                </td>
+                <td class="border-r border-line p-1 text-center dark:border-neutral-800">
+                  <UButton
+                    data-testid="vibe-rundown-row-guest"
+                    :icon="row.guestVisible ? 'i-heroicons-eye-20-solid' : 'i-heroicons-eye-slash'"
+                    :color="row.guestVisible ? 'primary' : 'neutral'"
+                    variant="ghost"
+                    size="xs"
+                    :aria-pressed="row.guestVisible"
+                    :aria-label="`對賓客公開 ${row.title || '此列'}`"
+                    @click="row.guestVisible = !row.guestVisible"
                   />
                 </td>
                 <td

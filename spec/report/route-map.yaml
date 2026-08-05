@@ -741,3 +741,14 @@ routes:
       - GET /api/v1/weddings/{weddingId}/rundown-roles
     components: [EmptyState]
     store: null
+
+  # 賓客版當日流程（issue #142）：與 /rundown 同資料源，只呈現 guestVisible 的時段
+  - path: /schedule/[weddingId]
+    page: app/pages/schedule/[weddingId].vue
+    layout: guest
+    features: []
+    api_endpoints:
+      - GET /api/v1/weddings/{weddingId}
+      - GET /api/v1/weddings/{weddingId}/rundown-items
+    components: [EmptyState]
+    store: null
