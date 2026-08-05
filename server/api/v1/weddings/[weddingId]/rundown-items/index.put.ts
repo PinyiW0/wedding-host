@@ -40,6 +40,8 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
     roleTasks: (row.roleTasks ?? []).filter(rt => validRoleIds.has(rt.roleId)),
     // 凍結測試以 raw PUT 不帶此欄呼叫，必須有預設值
     highlight: row.highlight ?? false,
+    // 同上；預設不公開，賓客版流程頁只呈現明確勾選的時段
+    guestVisible: row.guestVisible ?? false,
   }))
 
   // 整批取代：改用「upsert（by rundownItemId）先行 + 刪除不在新集合者」取代 delete-all+insert，
@@ -56,6 +58,7 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
         note: sql`excluded.note`,
         roleTasks: sql`excluded.role_tasks`,
         highlight: sql`excluded.highlight`,
+        guestVisible: sql`excluded.guest_visible`,
       },
     })
     await db.delete(rundownItems).where(and(

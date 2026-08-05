@@ -246,6 +246,8 @@ export const rundownItems = pgTable('rundown_items', {
   note: text(),
   roleTasks: jsonb().$type<{ roleId: string, task: string }[]>().notNull(),
   highlight: boolean().notNull(),
+  // 賓客版流程頁（/schedule）只呈現勾選的時段；預設 false 讓內部段落（彩排、換裝、物品點交）不外流
+  guestVisible: boolean().notNull().default(false),
 }, t => [index().on(t.weddingId)])
 
 export const rsvpFormConfigs = pgTable('rsvp_form_configs', {
