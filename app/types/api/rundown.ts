@@ -49,6 +49,8 @@ export interface RundownItemListItem {
   roleTasks: RundownRoleTask[]
   // 使用者標記列（highlight 底色強調；隨整表 PUT 持久化）
   highlight: boolean
+  // 對賓客公開此時段（賓客版流程頁 /schedule 只呈現 true 的列）
+  guestVisible: boolean
 }
 
 export interface SaveRundownTableBody {
@@ -64,6 +66,7 @@ export interface SaveRundownTableBody {
     roleTasks?: RundownRoleTask[]
     // 省略視為 false（相容不帶此欄的呼叫端）
     highlight?: boolean
+    guestVisible?: boolean
   }>
 }
 

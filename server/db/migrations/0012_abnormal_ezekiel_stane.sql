@@ -1,0 +1,1 @@
+ALTER TABLE "rundown_items" ADD COLUMN "guest_visible" boolean DEFAULT false NOT NULL;

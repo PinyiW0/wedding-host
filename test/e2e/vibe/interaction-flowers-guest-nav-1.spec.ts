@@ -73,8 +73,9 @@ test.describe('vibe：花田頁賓客導覽列', () => {
       const overlay = page.getByTestId('vibe-guest-nav-overlay')
       await expect(overlay).toBeVisible()
 
+      // 流程入口指向賓客版 /schedule（工作人員版 /rundown 由後台複製連結發送，issue #142）
       await overlay.getByTestId('vibe-guest-nav-mobile-item-rundown').click()
-      await page.waitForURL(`**/rundown/${WEDDING_ID}?**`)
+      await page.waitForURL(`**/schedule/${WEDDING_ID}?**`)
       await expect(overlay).toBeHidden()
     })
   })

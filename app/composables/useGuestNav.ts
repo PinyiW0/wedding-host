@@ -75,8 +75,10 @@ export function useGuestNav() {
 
     const gid = guestId.value
     const personal = isGuestScoped.value && Boolean(gid)
+    // 賓客看的是 /schedule（只有時間、事項、場地）；/rundown 是工作人員版，由後台複製連結發送
+    // key 維持 'rundown'：既有 vibe spec 以 vibe-guest-nav-item-rundown 定位
     const items: GuestNavItem[] = [
-      { key: 'rundown', label: '婚禮流程', to: withQuery(`/rundown/${wid}`, { sig: sig.value }) },
+      { key: 'rundown', label: '當日流程', to: withQuery(`/schedule/${wid}`, { sig: sig.value }) },
     ]
 
     if (personal)

@@ -11,17 +11,19 @@ export interface RundownTemplateSegment {
   location: string
   supplies: string | null
   roleTaskByName: Record<string, string> | 'all'
+  // 帶入後預設對賓客公開：賓客在場的段落才給，籌備與換裝段留給工作人員
+  guestVisible: boolean
 }
 
 export const RUNDOWN_TEMPLATE: RundownTemplateSegment[] = [
-  { title: '彩排・設備確認', durationMinutes: 15, location: '宴會廳', supplies: '音響、投影、麥克風', roleTaskByName: { 總場控: '流程走位、音控測試', 新秘: '定妝檢查' } },
-  { title: '迎賓・收禮金', durationMinutes: 30, location: '宴會廳入口', supplies: '禮金簿、簽名綢、喜糖', roleTaskByName: { 接待: '簽到、禮金點收' } },
-  { title: '主持開場・一進', durationMinutes: 25, location: '宴會廳', supplies: '進場音樂、手捧花', roleTaskByName: { 總場控: 'cue 流程、音控', 平面攝影師: '進場側拍' } },
-  { title: '開桌上菜', durationMinutes: 10, location: '宴會廳', supplies: null, roleTaskByName: { 總場控: '與內場確認上菜' } },
-  { title: '退場換裝', durationMinutes: 30, location: '新娘房', supplies: '第二套禮服', roleTaskByName: { 新秘: '第二套禮服妝髮' } },
-  { title: '二進・遊戲・敬酒', durationMinutes: 45, location: '宴會廳', supplies: '遊戲道具、酒水', roleTaskByName: { 總場控: '遊戲主持、敬酒引導', 平面攝影師: '逐桌合照' } },
-  { title: '二退換裝備送客', durationMinutes: 30, location: '新娘房', supplies: '送客禮服', roleTaskByName: { 新秘: '送客造型' } },
-  { title: '送客・合照', durationMinutes: 30, location: '宴會廳門口', supplies: '送客禮', roleTaskByName: 'all' },
+  { title: '彩排・設備確認', durationMinutes: 15, location: '宴會廳', supplies: '音響、投影、麥克風', roleTaskByName: { 總場控: '流程走位、音控測試', 新秘: '定妝檢查' }, guestVisible: false },
+  { title: '迎賓・收禮金', durationMinutes: 30, location: '宴會廳入口', supplies: '禮金簿、簽名綢、喜糖', roleTaskByName: { 接待: '簽到、禮金點收' }, guestVisible: true },
+  { title: '主持開場・一進', durationMinutes: 25, location: '宴會廳', supplies: '進場音樂、手捧花', roleTaskByName: { 總場控: 'cue 流程、音控', 平面攝影師: '進場側拍' }, guestVisible: true },
+  { title: '開桌上菜', durationMinutes: 10, location: '宴會廳', supplies: null, roleTaskByName: { 總場控: '與內場確認上菜' }, guestVisible: true },
+  { title: '退場換裝', durationMinutes: 30, location: '新娘房', supplies: '第二套禮服', roleTaskByName: { 新秘: '第二套禮服妝髮' }, guestVisible: false },
+  { title: '二進・遊戲・敬酒', durationMinutes: 45, location: '宴會廳', supplies: '遊戲道具、酒水', roleTaskByName: { 總場控: '遊戲主持、敬酒引導', 平面攝影師: '逐桌合照' }, guestVisible: true },
+  { title: '二退換裝備送客', durationMinutes: 30, location: '新娘房', supplies: '送客禮服', roleTaskByName: { 新秘: '送客造型' }, guestVisible: false },
+  { title: '送客・合照', durationMinutes: 30, location: '宴會廳門口', supplies: '送客禮', roleTaskByName: 'all', guestVisible: true },
 ]
 
 // HH:MM 加 minutes 後回 HH:MM（跨日取 24 小時制餘數）
@@ -52,6 +54,7 @@ export function buildTemplateRows(
       title: seg.title,
       location: seg.location,
       roleTasks,
+      guestVisible: seg.guestVisible,
     }
     if (seg.supplies)
       row.supplies = seg.supplies

@@ -32,5 +32,6 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownItemLis
       note: i.note,
       roleTasks: i.roleTasks,
       highlight: i.highlight,
+      guestVisible: i.guestVisible,
     }))
 })
