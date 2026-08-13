@@ -102,7 +102,8 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 | 指令 | 用途 | 前置條件 |
 |------|------|----------|
-| `/new-issue` | 建 GitHub issue（含驗收標準 checklist）+ 綁 `feature/#N-` linked 分支 | 無 |
+| `/new-issue` | 建 GitHub issue（固定四段 body，含驗收標準 checklist）+ 綁 `feature/#N-` linked 分支 | 無 |
+| `/verify-ac` | 對照 issue AC 逐條驗收，未過自動修（上限 2 輪），結果勾回 issue | issue 有 `## 驗收標準`、編號可解析 |
 | `/commit` | 依 SDD 階段分群產生 Conventional Commits（列草案待確認） | 有工作區改動 |
 | `/pr` | push → PR 草案 → `gh pr create`（分支含 `#N` → 自動 Closes #N） | 已有 commit |
 | `/feature-to-flow` | Feature → `.flow.md`（business invariant + UX-agnostic E2E 流程） | `.feature` 已放入 `spec/gherkin-feature/` |

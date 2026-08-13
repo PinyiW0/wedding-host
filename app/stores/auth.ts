@@ -48,7 +48,12 @@ export const useAuthStore = defineStore(
     return { user, accessToken, isAuthenticated, isAdmin, isCouple, isReceptionist, weddingId, login, clearAuth }
   },
   {
-    persist: true,
+    persist: {
+      // cookie 而非 localStorage：SSR 讀得到 token，避免 hydration 不一致（module 預設即 cookie）。
+      // maxAge 必須明設並對齊後端 JWT 存活期（nuxt.config `jwtExpiresIn: '7d'`）：不設＝session cookie，
+      // 瀏覽器行程被回收（手機切背景、關瀏覽器）cookie 即蒸發 →「閒置一陣子回來就被登出」。
+      storage: piniaPluginPersistedstate.cookies({ sameSite: 'lax', maxAge: 60 * 60 * 24 * 7 }),
+    },
   },
 )
 
