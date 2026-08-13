@@ -84,13 +84,13 @@ useHttp()            統一 HTTP 入口（app/composables/useHttp.ts）
 
 ### 3.2 狀態管理
 
-Pinia store 只有一個：`app/stores/auth.ts`（`useAuthStore`，setup store），存 `user` + `accessToken`，`pinia-plugin-persistedstate` 持久化到 localStorage。**其餘 domain 狀態不進 store**——各頁面用 client API 直接抓，情境資料用 composable（`useCurrentWedding` 依路由 weddingId 惰性抓婚禮）。
+Pinia store 只有一個：`app/stores/auth.ts`（`useAuthStore`，setup store），存 `user` + `accessToken`，`pinia-plugin-persistedstate` 持久化到 **cookie**（module 預設 storage，SSR 讀得到；`maxAge` 明設為 7 天對齊後端 JWT 存活期，不設會退化成 session cookie，瀏覽器行程一被回收就等同登出）。**其餘 domain 狀態不進 store**——各頁面用 client API 直接抓，情境資料用 composable（`useCurrentWedding` 依路由 weddingId 惰性抓婚禮）。
 
 ### 3.3 路由守衛
 
 唯一守衛 `app/middleware/auth.global.ts`：
 
-- 僅 client 執行（登入態在 localStorage，SSR 讀不到會誤判）
+- 全端執行（登入態在 cookie，SSR 讀得到；未登入直接 302，不會先渲染未登入版再由 client 修正）
 - 公開頁 pattern 放行 → 未登入導 `/login` → 角色守衛（接待員只留接待台＋祝福審核；`/users` 僅管理者；新人只能進自己的婚禮）
 - 根路由 `/` 由 `index.vue` 依角色重導
 - 前端守衛只是 UX 層，**真正的授權在後端 middleware**（見 §4.2）
