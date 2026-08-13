@@ -32,6 +32,7 @@
 | R1 | 接受 | `guest-link.ts` | HMAC 連結無過期（業務約束） | 記錄殘餘風險 |
 | R2 | 接受 | `guests/display-names`、`flowers` | 簽名者可列全賓客姓名（公開頁設計） | 記錄殘餘風險 |
 | R3 | 接受 | `rate-limit.ts` | in-memory 限流於 serverless 為單實例 | 記錄殘餘風險 |
+| R4 | 接受 | `app/layouts/default.vue`、`server/utils/jwt.ts` | 登出不撤銷 server 端 JWT（7 天重用視窗） | 記錄殘餘風險 |
 
 ---
 
@@ -109,6 +110,14 @@
 
 - **判斷**：本專案為低併發婚禮 SaaS，單一來源的腳本化爆破是主要威脅面，單實例限流已顯著提高門檻，且不需新增資料表／migration（維持 gate 穩定）。
 - **升級路徑**：若實際出現濫用，改為 DB／KV 後端的共享限流（以 `login_attempts` 表或 Upstash Redis）。**目前接受單實例限制**。
+
+### R4 — 登出不撤銷 server 端 JWT（issue #147）
+登出只做 `useAuthStore().clearAuth()` 清 client 狀態（`app/layouts/default.vue`），沒有 logout 端點。`verifyAuthToken`（`server/utils/jwt.ts`）只驗簽名與 `exp`，不查撤銷名單，因此**已登出的 token 在簽發後 7 天內（`jwtExpiresIn`）仍可被接受**——若該字串在登出前已被第三方取得（共用電腦、側錄），登出動作擋不住它。
+
+- **緩解**：認證中介層每次請求都回查 `users`／`reception_accounts`，帳號一旦刪除即失效（`docs/architecture.md` §4.2），故「移除人員」這條路徑是即時生效的；token 僅存於 `sameSite: 'lax'` 的 cookie，未寫入 localStorage。
+- **判斷**：加 revocation 需要一張 token 黑名單表＋每請求查詢，對低併發婚禮 SaaS 的成本效益不成比例；主要威脅（帳號離職／被移除）已由回查帳號涵蓋。
+- **殘餘風險接受**：登出後最長 7 天的 token 重用視窗。需要立刻全面失效時，輪換 `NUXT_JWT_SECRET`（所有既有 token 一次作廢）。
+- **相關限制**：本專案無 refresh token，JWT 到期即硬登出——使用者可能在操作中途被踢回登入頁。要改善須另補 `/auth/refresh` 端點與 rotation，屆時本條的撤銷設計需一併重評。
 
 ### 其他知情項（非缺陷）
 - **`rundown-items`（share）**：流程表內部備註（`supplies`／`note`／`roleTasks`）對所有簽名者可見。若日後在備註寫敏感事項（紅包箱交接等），需拆簽名 scope 或收回管理端。目前備註為一般流程資訊，接受。
