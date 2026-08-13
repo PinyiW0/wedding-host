@@ -7,15 +7,21 @@ import { useAuthStore } from '~/stores/auth'
 // path 佔位符（:id 或 {id}）對應的實際值
 export type PathParams = Record<string, string | number>
 
+// 401 自動登出開關：預設 true；auth 端點（登入／註冊）須設 false，
+// 否則「已登入狀態下打錯密碼」的 401 會把現有 session 一併清掉（issue #147）
+interface UnauthorizedOption {
+  handleUnauthorized?: boolean
+}
+
 // reactive 讀取（useFetch）選項：baseURL 由 useHttp 統一帶入、method 固定，故移除
 // default 在此覆寫：UseFetchOptions<T> 的 default 泛型在巢狀包裝下會塌成 Ref<undefined>，改以 () => T 收斂
-export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method' | 'default'> & {
+export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method' | 'default'> & UnauthorizedOption & {
   pathParams?: PathParams
   default?: () => T
 }
 
 // imperative 讀取 / 寫入（$fetch）選項：同上
-export type HttpRequestOptions = Omit<FetchOptions, 'baseURL' | 'method'> & {
+export type HttpRequestOptions = Omit<FetchOptions, 'baseURL' | 'method'> & UnauthorizedOption & {
   pathParams?: PathParams
 }
 
@@ -36,6 +42,8 @@ function notifyReadError(toast: ReturnType<typeof useToast>) {
   lastReadErrorAt = now
   toast.add({ title: '資料載入失敗', description: '請重新整理或稍後再試', color: 'error' })
 }
+
+const LOGIN_PATH = '/login'
 
 // 將 /users/:id、/users/{id} 內的佔位符換成實際值；未提供的佔位符原樣保留（方便發現漏帶參數）
 function withPathParams(url: string, params?: PathParams): string {
@@ -82,22 +90,36 @@ export function useHttp() {
     return typeof sig === 'string' && sig ? { 'X-Guest-Sig': sig } : {}
   }
 
-  // 401＝token 失效（過期/帳號被刪）：清除登入態導回登入頁；公開頁無 token 不會觸發
-  function handleUnauthorized(status: number): void {
-    if (status === 401 && auth.accessToken) {
-      auth.clearAuth()
-      navigateTo('/login')
-    }
+  // 目前路徑：SSR 取 setup 階段的 route，client 讀 window（event handler 內呼叫時 route 可能已失效）
+  function currentPath(): string | undefined {
+    return import.meta.client ? window.location.pathname : ssrRoute?.path
+  }
+
+  // 401＝token 失效（過期/帳號被刪）：清除登入態導回登入頁；公開頁無 token 不會觸發。
+  // enabled=false 時整段跳過——auth 端點的 401 是「這次帳密錯」而非「登入態失效」。
+  function handleUnauthorized(status: number, enabled: boolean): void {
+    if (status !== 401 || !enabled || !auth.accessToken)
+      return
+
+    // clearAuth 同步把 token 清成 null，同頁其他並發 401 會在上面的 guard 就返回，天然只導一次
+    auth.clearAuth()
+
+    // 已在登入頁：清掉壞 token 就好，再導一次是導向當前路由，只會噴重複導向錯誤
+    if (currentPath() === LOGIN_PATH)
+      return
+
+    // 導頁失敗不該蓋掉原始 401（裸呼叫會變成 unhandled rejection），一律吞掉例外
+    Promise.resolve(navigateTo(LOGIN_PATH)).catch(() => {})
   }
 
   // reactive 讀取：useFetch；url 傳 getter 時 ref 變動會自動重抓
   function get<T>(url: MaybeRefOrGetter<string>, options?: HttpGetOptions<T>) {
-    const { pathParams, headers, ...rest } = options ?? {}
+    const { pathParams, headers, handleUnauthorized: autoLogout = true, ...rest } = options ?? {}
     // useFetch 泛型包裝的已知型別限制：不帶 <T>、改以斷言收斂 options 與回傳（沿用參考專案做法）
     const result = useFetch(() => withPathParams(toValue(url), pathParams), {
       baseURL,
       headers: { ...authHeaders(), ...sigHeaders(), ...(headers as Record<string, string> | undefined) },
-      onResponseError: ({ response }: { response: { status: number } }) => handleUnauthorized(response.status),
+      onResponseError: ({ response }: { response: { status: number } }) => handleUnauthorized(response.status, autoLogout),
       ...rest,
     } as unknown as UseFetchOptions<unknown>) as AsyncData<T | undefined, FetchError | undefined>
     // client 監看 error 冒出 toast（immediate 涵蓋 SSR 失敗序列化回 client 的情況）；
@@ -114,12 +136,12 @@ export function useHttp() {
 
   // imperative：$fetch（getOnce 與寫入共用）
   function request<T>(method: ImperativeMethod, url: string, options?: HttpRequestOptions) {
-    const { pathParams, headers, ...rest } = options ?? {}
+    const { pathParams, headers, handleUnauthorized: autoLogout = true, ...rest } = options ?? {}
     return $fetch<T>(withPathParams(url, pathParams), {
       baseURL,
       method,
       headers: { ...authHeaders(), ...sigHeaders(), ...(headers as Record<string, string> | undefined) },
-      onResponseError: ({ response }) => handleUnauthorized(response.status),
+      onResponseError: ({ response }) => handleUnauthorized(response.status, autoLogout),
       ...rest,
     })
   }
