@@ -70,7 +70,8 @@ describe('useHttp 的 401 處理', () => {
   })
 
   it('一般端點回 401：清除登入態並導回登入頁', async () => {
-    await expect(useHttp().getOnce('/needs-auth')).rejects.toThrow()
+    // 斷言到 statusCode：只驗「有拋錯」的話，端點若變成 404 也會通過（假綠）
+    await expect(useHttp().getOnce('/needs-auth')).rejects.toMatchObject({ statusCode: 401 })
 
     expect(useAuthStore().accessToken).toBeNull()
     expect(navigateToMock).toHaveBeenCalledWith('/login')
@@ -79,7 +80,7 @@ describe('useHttp 的 401 處理', () => {
   it('帶 handleUnauthorized:false 的端點回 401：保留登入態、不導頁', async () => {
     await expect(
       useHttp().post('/needs-auth', { body: {}, handleUnauthorized: false }),
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ statusCode: 401 })
 
     expect(useAuthStore().accessToken).toBe('stale-token')
     expect(navigateToMock).not.toHaveBeenCalled()
@@ -101,7 +102,7 @@ describe('useHttp 的 401 處理', () => {
   it('已在登入頁時回 401：清除登入態但不重複導向當前路由', async () => {
     window.history.pushState({}, '', '/login')
 
-    await expect(useHttp().getOnce('/needs-auth')).rejects.toThrow()
+    await expect(useHttp().getOnce('/needs-auth')).rejects.toMatchObject({ statusCode: 401 })
 
     expect(useAuthStore().accessToken).toBeNull()
     expect(navigateToMock).not.toHaveBeenCalled()

@@ -7,8 +7,9 @@ import { useAuthStore } from '~/stores/auth'
 // path 佔位符（:id 或 {id}）對應的實際值
 export type PathParams = Record<string, string | number>
 
-// 401 自動登出開關：預設 true；auth 端點（登入／註冊）須設 false，
-// 否則「已登入狀態下打錯密碼」的 401 會把現有 session 一併清掉（issue #147）
+// 401 自動登出開關：預設 true。只有「401＝這次憑證錯誤」的端點才設 false（如 login），
+// 否則「已登入狀態下打錯密碼」的 401 會把現有 session 一併清掉（issue #147）。
+// 401＝登入態失效的端點（如 registerAdmin 的「請先登入」）維持預設，該登出就登出。
 interface UnauthorizedOption {
   handleUnauthorized?: boolean
 }
