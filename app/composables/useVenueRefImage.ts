@@ -21,23 +21,14 @@ export function useVenueRefImage(deps: VenueRefImageDeps) {
 
   // === 底圖呈現（顯示寬度上限 1200 等比縮放；載入後 canvasSize 需納入其範圍）===
   const refImageUrl = computed(() => layoutValue()?.referenceImageUrl ?? null)
-  const refImageDims = ref<{ width: number, height: number } | null>(null)
+  const refImageDims = useVenueRefImageDims(refImageUrl)
   // 底圖調整模式：拖曳移動、按鈕縮放。對位結果持久化於 venue-layout，跨進出頁面保留
   const isAdjustingRefImage = ref(false)
   const refImageTransform = ref({ x: 0, y: 0, scale: 1 })
-  watch(refImageUrl, (url) => {
-    refImageDims.value = null
+  watch(refImageUrl, () => {
     isAdjustingRefImage.value = false
     const layout = layoutValue()
     refImageTransform.value = { x: layout?.refImageX ?? 0, y: layout?.refImageY ?? 0, scale: layout?.refImageScale ?? 1 }
-    if (!url || import.meta.server)
-      return
-    const img = new Image()
-    img.onload = () => {
-      const w = Math.min(img.naturalWidth, 1200)
-      refImageDims.value = { width: w, height: Math.round(img.naturalHeight * (w / img.naturalWidth)) }
-    }
-    img.src = url
   }, { immediate: true })
 
   // 對位結果寫回 venue-layout：連續拖放／縮放合併為一次 PUT，靜默儲存（失敗才提示）
@@ -88,17 +79,7 @@ export function useVenueRefImage(deps: VenueRefImageDeps) {
   }
 
   // 底圖實際渲染框（位置 + 縮放後尺寸），畫布尺寸與 template 共用
-  const refImageBox = computed(() => {
-    if (!refImageDims.value)
-      return null
-    const t = refImageTransform.value
-    return {
-      x: t.x,
-      y: t.y,
-      width: Math.round(refImageDims.value.width * t.scale),
-      height: Math.round(refImageDims.value.height * t.scale),
-    }
-  })
+  const refImageBox = computed(() => computeRefImageBox(refImageDims.value, refImageTransform.value))
 
   const isMovingRefImage = ref(false)
   let refImageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }

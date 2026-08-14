@@ -5,7 +5,8 @@
 //   - 賓客名單：圈內列出該桌所有賓客姓名，供列印／分享的桌位示意圖
 import type { MaybeRefOrGetter } from 'vue'
 import type { SeatingMath } from '~/composables/useSeatingMath'
-import type { SeatListItem, TableListItem, VenueMarkerListItem } from '~/types/api/seating'
+import type { CanvasBox } from '~/composables/useVenueCanvasGeometry'
+import type { SeatListItem, TableListItem, VenueLayoutDetail, VenueMarkerListItem } from '~/types/api/seating'
 
 // 桌次圖 canvas 配色：對齊 main.css 設計 token，使下載圖與畫面語意色（cls）一致
 const CHART = {
@@ -27,26 +28,24 @@ const M = 24 // 頁邊距
 const TITLE_H = 70 // 頁首保留高度（抬頭 + 總計 + 圖例）
 const FONT = 'system-ui, "PingFang TC", "Microsoft JhengHei", sans-serif'
 
-// 桌次圓在重排座標系中的幾何：主桌大圓（RM）置頂置中，其餘小圓（R）分兩欄密排
+// 桌次圓在畫布座標系中的幾何（圓心 = 桌位格中心，半徑依格寬）
 interface ChartItem { t: TableListItem, cx: number, cy: number, r: number, isMain: boolean }
-// 版面計算結果：items（各桌重排座標）+ 縮放與位移（把重排座標映射到 A4 可用區）
+// 版面計算結果：items（各桌畫布座標）+ 縮放與位移（把畫布座標映射到 A4 可用區）
 interface ChartLayout {
   items: ChartItem[]
   scale: number
   baseX: number
   baseY: number
-  minX: number
-  minY: number
-  maxX: number
-  contentW: number
-  contentH: number
-  stageCx: number
+  bounds: CanvasBox
+  stage: CanvasBox | null
 }
 
 interface ChartExportDeps {
   weddingId: MaybeRefOrGetter<string>
   tables: MaybeRefOrGetter<TableListItem[] | null | undefined>
   venueMarkers: MaybeRefOrGetter<VenueMarkerListItem[] | null | undefined>
+  // 舞台位置與尺寸：下載圖與畫布同一份佈局，擺位才對得起來
+  venueLayout: MaybeRefOrGetter<VenueLayoutDetail | null | undefined>
   math: Pick<SeatingMath, 'tableSeats' | 'guestById' | 'mainTable' | 'isMainTable'>
   // 位置以畫布當下呈現為準（拖曳中的本地覆寫也一併採用）
   tablePos: (table: TableListItem) => { x: number, y: number }
@@ -125,108 +124,87 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     return seat.seatType === 'childChair' ? `${name}(童)` : name
   }
 
-  // === 共用版面：把各桌重排成「主桌置頂、其餘男左女右兩欄密排」，再等比縮放塞進一頁 A4 ===
+  // === 共用版面：直接沿用畫布座標（後台拖曳出來的擺位），整場等比縮放塞進一頁 A4 ===
+  // 不再重排成兩欄密排——重排過的圖到了現場對不上場地，排位工作等於白做（issue #151）
   function computeChartLayout(): ChartLayout | null {
     const list = chartTables.value
     if (list.length === 0)
       return null
 
-    const centerXOf = (t: TableListItem) => t.positionX + (isMainTable(t) ? 100 : 84)
-    const main = list.find(t => isMainTable(t)) ?? null
-    const others = list.filter(t => !isMainTable(t))
-    const xs = others.map(centerXOf)
-    const axis = xs.length ? (Math.min(...xs) + Math.max(...xs)) / 2 : 0
-    const leftCol = others.filter(t => centerXOf(t) <= axis).sort((a, b) => a.positionY - b.positionY)
-    const rightCol = others.filter(t => centerXOf(t) > axis).sort((a, b) => a.positionY - b.positionY)
+    const stage = computeStageBox(toValue(deps.venueLayout))
+    // 底圖不入列印（列印走白底），只納入桌位、標記與舞台的實際範圍
+    const bounds = computeContentBounds({
+      tables: list,
+      markers: venueMarkers.value,
+      tablePos: deps.tablePos,
+      markerPos: deps.markerPos,
+      isMainTable,
+      stageBox: stage,
+      refImageBox: null,
+    })
+    if (!bounds)
+      return null
 
-    const R = 54
-    const RM = 70
-    const colStep = 2 * R + 36 // 欄距 = 圓桌直徑 + 緊密間隙
-    const rowStep = 2 * R + 28 // 列距 = 圓桌直徑 + 緊密間隙
-    const leftCx = R
-    const rightCx = R + colStep
-    const STAGE_H = 26
-    const items: ChartItem[] = []
-    if (main)
-      items.push({ t: main, cx: (leftCx + rightCx) / 2, cy: STAGE_H + RM, r: RM, isMain: true })
-    const startY = STAGE_H + (main ? 2 * RM + 26 : 0) + R
-    const rowCount = Math.max(leftCol.length, rightCol.length)
-    for (let i = 0; i < rowCount; i++) {
-      const cy = startY + i * rowStep
-      if (leftCol[i])
-        items.push({ t: leftCol[i]!, cx: leftCx, cy, r: R, isMain: false })
-      if (rightCol[i])
-        items.push({ t: rightCol[i]!, cx: rightCx, cy, r: R, isMain: false })
-    }
+    // 圓桌半徑 = 桌位格的 32%（等同畫面上圓桌佔格 64%），主桌自然大一圈
+    const items: ChartItem[] = list.map((t) => {
+      const p = deps.tablePos(t)
+      const isMain = isMainTable(t)
+      const box = tableBoxWidth(isMain)
+      return { t, cx: p.x + box / 2, cy: p.y + box / 2, r: box * 0.32, isMain }
+    })
 
-    // 內容範圍 → 等比縮放置中塞進可用區
-    let minX = Infinity
-    const minY = 0
-    let maxX = -Infinity
-    let maxY = -Infinity
-    for (const it of items) {
-      minX = Math.min(minX, it.cx - it.r)
-      maxX = Math.max(maxX, it.cx + it.r)
-      maxY = Math.max(maxY, it.cy + it.r)
-    }
-    const contentW = Math.max(1, maxX - minX)
-    const contentH = Math.max(1, maxY - minY)
     const availW = A4_W - M * 2
     const availH = A4_H - TITLE_H - M
-    const scale = Math.min(availW / contentW, availH / contentH)
-    const baseX = M + (availW - contentW * scale) / 2 - minX * scale
-    const baseY = TITLE_H + (availH - contentH * scale) / 2 - minY * scale
-    const stageCx = baseX + ((minX + maxX) / 2) * scale
+    const scale = Math.min(availW / bounds.width, availH / bounds.height)
+    const baseX = M + (availW - bounds.width * scale) / 2 - bounds.x * scale
+    const baseY = TITLE_H + (availH - bounds.height * scale) / 2 - bounds.y * scale
 
-    return { items, scale, baseX, baseY, minX, minY, maxX, contentW, contentH, stageCx }
+    return { items, scale, baseX, baseY, bounds, stage }
   }
 
+  // 舞台：依 venueLayout 的實際位置與尺寸畫；尚未設定佈局時退回內容框頂端置中
   function drawStage(ctx: CanvasRenderingContext2D, layout: ChartLayout) {
     ctx.strokeStyle = CHART.line
     ctx.setLineDash([4, 3])
-    ctx.strokeRect(layout.stageCx - 30, layout.baseY + 2, 60, 16)
-    ctx.setLineDash([])
     ctx.textAlign = 'center'
-    ctx.fillStyle = CHART.inkFaint
     ctx.font = `9px ${FONT}`
-    ctx.fillText('舞台', layout.stageCx, layout.baseY + 13)
+    const stage = layout.stage
+    if (stage) {
+      const x = layout.baseX + stage.x * layout.scale
+      const y = layout.baseY + stage.y * layout.scale
+      const w = stage.width * layout.scale
+      const h = stage.height * layout.scale
+      ctx.strokeRect(x, y, w, h)
+      ctx.setLineDash([])
+      ctx.fillStyle = CHART.inkFaint
+      ctx.fillText('舞台', x + w / 2, y + h / 2 + 3, w - 4)
+      return
+    }
+    const cx = layout.baseX + (layout.bounds.x + layout.bounds.width / 2) * layout.scale
+    const top = layout.baseY + layout.bounds.y * layout.scale
+    ctx.strokeRect(cx - 30, top + 2, 60, 16)
+    ctx.setLineDash([])
+    ctx.fillStyle = CHART.inkFaint
+    ctx.fillText('舞台', cx, top + 13)
   }
 
-  // 場地標記：下載圖是緊湊重排、無法 1:1 對位 → 以「螢幕座標正規化 0..1 → chart 內容框映射」
-  // 保留相對方位（右側送客區仍在右側），以虛線矩形＋label 呈現（比照舞台樣式）
+  // 場地標記（門口、送客區等）：與桌位同一組縮放，位置 1:1 對應後台畫布
   function drawMarkers(ctx: CanvasRenderingContext2D, layout: ChartLayout) {
     const markers = venueMarkers.value
     if (markers.length === 0)
       return
-    const list = chartTables.value
-    const SCREEN_BLOCK = 290
-    let sMinX = Infinity
-    let sMinY = Infinity
-    let sMaxX = -Infinity
-    let sMaxY = -Infinity
-    for (const t of list) {
-      const p = deps.tablePos(t)
-      sMinX = Math.min(sMinX, p.x)
-      sMinY = Math.min(sMinY, p.y)
-      sMaxX = Math.max(sMaxX, p.x + SCREEN_BLOCK)
-      sMaxY = Math.max(sMaxY, p.y + SCREEN_BLOCK)
-    }
-    const sW = Math.max(1, sMaxX - sMinX)
-    const sH = Math.max(1, sMaxY - sMinY)
     ctx.setLineDash([4, 3])
     ctx.strokeStyle = CHART.line
     ctx.font = `9px ${FONT}`
     for (const m of markers) {
       const p = deps.markerPos(m)
-      const nx = Math.min(1, Math.max(0, (p.x + m.width / 2 - sMinX) / sW))
-      const ny = Math.min(1, Math.max(0, (p.y + m.height / 2 - sMinY) / sH))
-      const mcx = layout.baseX + (layout.minX + nx * layout.contentW) * layout.scale
-      const mcy = layout.baseY + (layout.minY + ny * layout.contentH) * layout.scale
-      const mw = Math.min(80, Math.max(32, m.width * 0.4))
-      const mh = Math.min(28, Math.max(14, m.height * 0.4))
-      ctx.strokeRect(mcx - mw / 2, mcy - mh / 2, mw, mh)
+      const x = layout.baseX + p.x * layout.scale
+      const y = layout.baseY + p.y * layout.scale
+      const w = m.width * layout.scale
+      const h = m.height * layout.scale
+      ctx.strokeRect(x, y, w, h)
       ctx.fillStyle = CHART.inkFaint
-      ctx.fillText(m.label, mcx, mcy + 3, mw - 4)
+      ctx.fillText(m.label, x + w / 2, y + h / 2 + 3, w - 4)
     }
     ctx.setLineDash([])
   }
