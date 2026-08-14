@@ -8,14 +8,14 @@
 
 - 採用 SDD workflow（`.flow.md` → spec → UI）
 - 採用 vibe iteration 工作流（spec 凍結，UI 可自由 vibe）
-- 主 spec 的 invariant 字串數量 ≥ 10 個
+- `.flow.md` Business Invariants 段的**業務狀態詞**（見下方分組原則 Status 類）合計 ≥ 10 個（首次全量時以 flow 計數——主 spec 此時尚未產出；Sync 迭代時可改以主 spec 實際字面計數）
 - IDE 即時 TypeScript checking 為團隊預設工作環境
 
 不滿足以上任一條件時，本規範**可降為參考**，hardcode + [feature-to-ui rules.md `[P5]`](../../feature-to-ui/references/rules.md) 的「禁翻譯 / 禁同義詞」規則仍夠用。
 
 ## 動機
 
-`.flow.md` 的 Business Invariants 段定義「不可改可見文字」——這是業務合約。傳統做法靠 spec runtime 跑 `getByText` 驗證，缺點：
+v2 flow 的 Business Invariants 寫**意圖層**（可識別／可達／可感知），但其中的**業務狀態詞**（「已收藏」「進行中」「連線中」等）仍會被 spec 以可見文字斷言、被 vibe 守則要求保留語意——這些字面就是本檔的適用對象（操作反饋訊息不是，見「該進與不該進」）。傳統做法靠 spec runtime 跑 `getByText` 驗證，缺點：
 
 - UI 端隨手改字 → runtime 紅燈 → 浪費迭代輪
 - spec 因 UI 端混用同義詞被迫用 regex 集合，弱化合約精度
@@ -66,7 +66,6 @@ export const {GROUP_B} = {
 | 分組類型 | 用途 | 命名範例 |
 |---------|------|---------|
 | **Status** | 業務狀態詞（連線/離線、進行中/已結束、啟用/停用 等） | `{ENTITY}_STATUS`、`CONNECTION_STATUS`、`ORDER_STATUS` |
-| **Feedback** | 操作結果回饋（成功/失敗/處理中）| `FEEDBACK`（含 `CREATE_SUCCESS`、`DELETE_SUCCESS`、`UPDATE_SUCCESS`...）|
 | **Empty State** | 空狀態提示 | `EMPTY_STATE`（含 `{CONTEXT}_NO_DATA` 等鍵）|
 | **Page / Section identity** | 頁面標題、業務名詞 | `PAGE_TITLE`、`DOMAIN_LABEL` |
 | **Error message（業務級）** | UI 端顯示的業務錯誤詞（非 API server 端） | `BUSINESS_ERROR` |
@@ -75,12 +74,12 @@ export const {GROUP_B} = {
 
 ✅ **該進常數檔**：
 
-- `.flow.md` Business Invariants 段明示的「不可改可見文字」
+- `.flow.md` Business Invariants 中 spec 會以可見文字斷言的**業務狀態詞**
 - 跨頁出現、應該保持一致的狀態詞
-- 多次出現、避免漂移的 toast / feedback 訊息
 
 ❌ **不該進常數檔**：
 
+- **toast / feedback 訊息字面**（v2 spec 用 `getFeedbackElement` / role=alert 驗「使用者可感知反饋」，不寫死措辭；反饋文字屬 flow「不再凍結」的 vibe 自由區）
 - **Fixture / mock seed data**（測試用業務資料，屬於 `server/mock/` 範疇）
 - **API server error message**（屬於 `server/api/` 的 `createError({ message })` 合約）
 - **純 UI label**（按鈕文字、form label、placeholder——這些 vibe 可動）

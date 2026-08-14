@@ -52,17 +52,17 @@ npx playwright test test/e2e/specs/{NN}-{name}.spec.ts 2>&1
 ```
 失敗測試
 │
-├─ 讀取 spec 失敗行 → 確認期望的 testid / 文字 / URL
+├─ 讀取 spec 失敗行 → 確認期望的 role/text 斷言 / URL / testid（僅 flow 授權時）
 │
 ├─ 推斷頁面路徑
-│   ├─ page.goto('/teams') → app/pages/teams/index.vue
+│   ├─ page.goto('/sites') → app/pages/sites/index.vue
 │   ├─ page.goto('/trainings/1/analysis') → app/pages/trainings/[id]/analysis.vue
 │   └─ page.goto('/analysis/1') → app/pages/analysis/[id].vue
 │
 ├─ 讀取對應 UI 檔案的 <template>
 │
 └─ 比對 spec 期望 vs UI 實際
-    ├─ testid 缺失 → 加 data-testid
+    ├─ 定位 anchor 缺失 → 優先補語意 role/text，testid 為最後手段
     ├─ 元素結構不同 → 調整 template
     ├─ 文字不匹配 → 檢查 mock data 或顯示邏輯
     └─ 行為差異 → 檢查事件處理或 API 呼叫
@@ -72,9 +72,10 @@ npx playwright test test/e2e/specs/{NN}-{name}.spec.ts 2>&1
 
 ```
 根因
-├─ testid 缺失
-│  → 修 UI：在對應元素加 data-testid="xxx"
-│  → 原則：最小侵入，只加 attribute，不改結構
+├─ 定位 anchor 缺失（spec 找不到元素，但功能區塊存在）
+│  → 修 UI 優先序：先補語意 anchor（語意標籤、role/name、aria-label、可見文字）
+│  → spec 斷言用 testid（flow 授權的 fallback）且 UI 缺該 testid → 才加 data-testid="xxx"
+│  → 原則：最小侵入，不改結構；testid 是最後手段，不因修測試而把 testid 洩漏回 UI
 │
 ├─ 元素不存在（頁面缺少功能區塊）
 │  → 修 UI：補上缺失的 UI 區塊
@@ -134,7 +135,7 @@ npx playwright test test/e2e/specs/{NN}-{name}.spec.ts 2>&1
 
 **修復優先順序**（低風險 → 高風險）：
 
-1. **加 testid**（最安全）：只加 `data-testid` attribute
+1. **補語意 anchor**（最安全）：aria-label、可見文字、語意標籤——只加屬性不動結構。僅當 spec 斷言用的是 flow 授權的 fallback testid 且 UI 缺它時，才補 `data-testid`（同 Step 3 決策樹：testid 是最後手段，不因修測試而把 testid 洩漏回 UI）
 2. **修 mock data**（低風險）：調整測試數據
 3. **修 API handler**（低風險）：回傳格式、排序、錯誤訊息文字
 4. **修 UI 顯示邏輯**（中風險）：格式化、條件渲染
@@ -186,13 +187,15 @@ E2E 綠燈報告：{NN}-{name}
   ✅ 全部通過（{pass} pass, {skip} skip）
 
   修復摘要：
-  1. app/pages/teams/index.vue
-     - L15: 加 data-testid="teams-page"
-     - L32: 加 data-testid="team-row"
-  2. server/mock/data/teams.ts
-     - L8: 修正球隊數量為 2
+  1. app/pages/sites/index.vue
+     - L15: 補 <h1>觀測點列表</h1>（spec 用 getByRole('heading') 定位）
+     - L32: row 補上觀測點名稱可見文字（spec 用 getByRole('row', { name }) 收窄）
+  2. server/mock/data/sites.ts
+     - L8: 修正觀測點數量為 2
 
   迭代次數：2（第 1 次 3 fail → 第 2 次 0 fail）
+
+  下一步：有 vibe 改動先跑 /vibe-check，否則 /commit
 ```
 
 ### 部分失敗（達到最大迭代）
@@ -212,8 +215,8 @@ E2E 綠燈報告：{NN}-{name}
      建議：{人工處理建議}
 
   已修復的檔案：
-  - app/pages/teams/index.vue（2 處）
-  - server/mock/data/teams.ts（1 處）
+  - app/pages/sites/index.vue（2 處）
+  - server/mock/data/sites.ts（1 處）
 ```
 
 ---
@@ -233,9 +236,9 @@ E2E 綠燈批次報告：01 → 05
 
   01-使用者登入         ✅ 已是綠燈（無需修復）
   02-使用者登出         ✅ 綠燈（修復 1 處）
-  03-查詢球隊列表       ✅ 綠燈（修復 3 處）
-  04-建立球隊           ⚠️ 部分失敗（1 fail 待人工確認）
-  05-編輯球隊           ✅ 已是綠燈（無需修復）
+  03-查詢觀測點列表       ✅ 綠燈（修復 3 處）
+  04-建立觀測點           ⚠️ 部分失敗（1 fail 待人工確認）
+  05-編輯觀測點           ✅ 已是綠燈（無需修復）
 
   統計：4 綠燈 / 1 部分失敗
   修復檔案：5 個
@@ -245,33 +248,42 @@ E2E 綠燈批次報告：01 → 05
 
 ## 修復規範
 
-### data-testid 加法
+### 補語意 anchor（最安全的修法，優先於 testid）
+
+spec 找不到元素時，先問「使用者怎麼找到它？」，把那個答案做進 UI，而不是加 testid。
 
 ```vue
-<!-- ❌ 不要改結構 -->
-<div>
-球隊列表
+<!-- ❌ 加容器 testid：SSOT 禁止的形式，且不在合約白名單 → 孤兒 -->
+<div data-testid="sites-page">
+  觀測點列表
 </div>
 
-<!-- ✅ 只加 testid -->
-<div data-testid="teams-page">
-球隊列表
-</div>
+<!-- ✅ 補語意 anchor：spec 用 getByRole('heading', { name: /觀測點列表/ }) 就找得到 -->
+<main>
+  <h1>觀測點列表</h1>
+</main>
+
+<!-- ✅ 按鈕：可見文字或 aria-label 即 accessible name -->
+<UButton aria-label="刪除觀測點">
+  <UIcon name="i-heroicons-trash" />
+</UButton>
 ```
 
-### UTable 行 testid
+### 列／實體的定位
 
 ```vue
-<!-- 在 UTable 的 row 模板中加 testid -->
+<!-- ✅ 預設：row 內含可識別的業務文字，spec 用 getByRole('row', { name: /陳小明/ }) 收窄 -->
 <template #row="{ row }">
-  <tr data-testid="team-row">
-    ...
+  <tr>
+    <td>{{ row.name }}</td>
   </tr>
 </template>
 ```
 
-> 注意：Nuxt UI v3 的 UTable 結構可能需要用 slot 自訂行模板，
-> 或在 cell 級別加 testid。先檢查現有 UTable 用法再決定。
+> **只有在 spec 斷言用的是 flow 授權的 fallback testid、而 UI 缺它時**，才補該 testid（businessId 不可見／同名碰撞／同實體多處呈現三種情境，見 SSOT [testid-conventions.md](../../../feature-to-flow/references/testid-conventions.md)）。**逐字照 spec 補，不自創**——green 階段自創 testid 等於把測試需求洩漏回 UI 合約。
+
+> 注意：Nuxt UI v3 的 UTable 可能需要用 slot 自訂行模板，才能讓 row 帶上可識別的業務文字。
+> **不要用 cell 級 testid 解決**——column-level testid 是 SSOT 明文禁止的形式（欄位呈現方式是 vibe 可動空間，凍結它等於凍結 UX）。先檢查現有 UTable 用法再決定。
 
 ### Mock 資料修正
 
@@ -287,7 +299,7 @@ E2E 綠燈批次報告：01 → 05
 |------|------|
 | **不改既有實體** | `.feature` Background 定義的實體，欄位值與關聯關係不可變更 |
 | **只改補建資料** | 修正對象限於 Phase 1 擴充的補建實體 |
-| **不改關聯關係** | 不可變更實體的父子關聯（如 team_id、player_id） |
+| **不改關聯關係** | 不可變更實體的父子關聯（如 site_id、station_id） |
 
 > ⚠️ 若修 mock 會動到 `.feature` 原始實體，代表問題根因在 spec 或 flow，應優先修正 spec 而非 mock
 
@@ -307,7 +319,7 @@ E2E 綠燈批次報告：01 → 05
 ⚠️ 無法透過修改 UI/mock/API 解決：
 
 失敗測試：{test name}
-根因：{描述}（例：feature 04 變更了 TeamItem 結構，但 flow 07 的預期值未更新）
+根因：{描述}（例：feature 04 變更了 SiteItem 結構，但 flow 07 的預期值未更新）
 相關 flow：spec/e2e-flows/{NN}-{name}.flow.md > {具體段落}
 建議修改：{flow 中需要更新的具體內容}
 
@@ -325,13 +337,13 @@ E2E 綠燈批次報告：01 → 05
 |-----------|----------|
 | `/` | `app/pages/index.vue` |
 | `/login` | `app/pages/login.vue` |
-| `/teams` | `app/pages/teams/index.vue` |
-| `/players` | `app/pages/players/index.vue` |
+| `/sites` | `app/pages/sites/index.vue` |
+| `/stations` | `app/pages/stations/index.vue` |
 | `/trainings` | `app/pages/trainings/index.vue` |
 | `/trainings/history` | `app/pages/trainings/history.vue` |
 | `/trainings/{id}` | `app/pages/trainings/[id]/index.vue` |
 | `/trainings/{id}/analysis` | `app/pages/trainings/[id]/analysis.vue` |
-| `/trainings/{id}/pitches/{pitchId}` | `app/pages/trainings/[id]/pitches/[pitchId].vue` |
+| `/trainings/{id}/sightings/{sightingId}` | `app/pages/trainings/[id]/sightings/[sightingId].vue` |
 | `/analysis` | `app/pages/analysis/index.vue` |
 | `/analysis/{id}` | `app/pages/analysis/[id].vue` |
 
@@ -342,17 +354,18 @@ E2E 綠燈批次報告：01 → 05
 所有修復完成後，**必須執行 lint 修復並確認零錯誤**：
 
 ```bash
-npm run lint --fix
-npm run lint    # 確認 0 errors
+npx eslint . --fix  # 自動修復（--fix 不可接在 npm run eslint 後，會落到 visual-hierarchy-check）
+npm run eslint      # 確認 0 errors
+npm run typelint    # 型別零錯誤（CLAUDE.md 紅線：兩者都要過）
 ```
 
-> **重要**：修改 Vue 頁面或 spec 檔案後可能引入 lint 問題（未使用 import、未使用變數等）。不通過 lint 的程式碼會導致 pre-commit hook 失敗，無法 commit。
+> **重要**：修改 Vue 頁面或 spec 檔案後可能引入 lint 問題（未使用 import、未使用變數等）。lint / typelint 零錯誤是完成的硬條件（CLAUDE.md 紅線）——git hook 不會攔 lint 錯誤，不自跑就會一路帶進 PR。
 
 ---
 
 ## 檢查清單
 
-- [ ] `npm run lint` 零錯誤
+- [ ] `npm run eslint` + `npm run typelint` 零錯誤
 - [ ] 執行紅燈收集失敗（或確認已全部通過）
 - [ ] 每個失敗測試都有根因分析
 - [ ] 修復遵循最小侵入原則

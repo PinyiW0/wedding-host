@@ -1,6 +1,6 @@
 ---
 name: nuxt-ui
-description: 載入 NuxtUI 官方文檔，用於查詢組件、API 和使用方式
+description: 載入 NuxtUI 官方文檔，用於查詢組件、API 和使用方式。Use when 要實作或修改用到 NuxtUI 元件的畫面、查 U 開頭元件（UTable、UModal、UForm…）的 props/slots/emits 用法、或不確定 NuxtUI 元件 API 時——先載文檔再寫，別憑記憶猜舊語法。
 argument-hint: "[component-name]"
 ---
 

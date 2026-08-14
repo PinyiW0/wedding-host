@@ -20,10 +20,13 @@
 
 ```
 必須讀取：
-- test/e2e/specs/{NN}-{name}.spec.ts（該頁面相關的所有 spec — testid、互動、斷言的唯一來源）
+- test/e2e/specs/{NN}-{name}.spec.ts（該頁面相關的所有 spec — locator（role/name/text ＋ fallback testid）、互動、斷言的唯一來源）
 - ui-config.yaml > form（表單設定）
 - ui-config.yaml > toast（通知設定）
 - ui-config.yaml > colorMode（深淺模式）
+- ui-config.yaml > button（按鈕 color/variant 預設）
+- ui-config.yaml > loading（skeleton 載入佔位設定）
+- .claude/rules/visual-hierarchy.md（文字/顏色層級、載體字級、按鈕尺寸——頁面標題一頁一個等硬規則）
 - spec/report/route-map.yaml > 對應路由的 features_used（此頁面使用的 additionalFeature）
 - page-builder.md（DSL 解析 + 表單範本 + 列表範本 + Command → 元件對照）
 - features.md（僅 features_used 有值時需讀取，了解對應元件的使用方式）
@@ -42,9 +45,8 @@ Sync 模式額外讀取：
 執行 /nuxt-ui 載入組件文檔（若尚未載入）
 ```
 
-> **設計理念**：Phase 5 的目標是「讓 .spec.ts 通過」。spec 已包含所有 testid（`getByTestId()`）、
-> 互動模式（`.click()`, `.fill()`）、斷言預期（`toContainText()`, `toHaveCount()`）。
-> 直接從 spec 抄 testid，不存在「兩個版本不一致」的問題。
+> **設計理念**：Phase 5 的目標是「讓 .spec.ts 通過」。v2 spec 以**語意 locator 為主**（`getByRole` + accessible name、`getByText`、`getByLabel`、`findEntity`），`getByTestId` 僅為 flow 授權的 fallback。
+> 所以 UI 要提供的首先是**語意 anchor**（role、accessible name、label、可見文字）；spec 用到 `getByTestId` 之處，`data-testid` 直接從 spec 複製，不存在「兩個版本不一致」的問題。
 
 ---
 
@@ -57,7 +59,7 @@ glob test/e2e/specs/*.spec.ts
 ```
 
 - 若 `test/e2e/specs/` 下無任何 `.spec.ts` → 提示「請先執行 `/test e2e auto` 生成測試合約」並停止
-- 若指定功能（如「球隊」）對應的 spec 不存在 → 提示「請先執行 `/test e2e spec <feature>` 生成該功能的測試合約」並停止
+- 若指定功能（如「觀測點」）對應的 spec 不存在 → 提示「請先執行 `/test e2e spec <feature>` 生成該功能的測試合約」並停止
 
 > **理由**：Phase 5 以 `.spec.ts` 為唯一 UI 合約。沒有 spec 就無法確保 testid 和互動模式正確。
 
@@ -108,10 +110,10 @@ Phase 5 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 
    | 類型 | 項目 | 說明 |
    |------|------|------|
-   | 頁面 UI | /players 排序功能 | 移除 vuedraggable import、dragList ref、handleDragEnd、<Draggable> 元件 |
-   | 型別 | SortPlayersBody | 僅被 Feature 11 使用 |
-   | API 端點 | PUT /api/players/sort | 僅被 Feature 11 使用 |
-   | 欄位 | PlayerItem.sort_order | 排序功能移除後不需要 |
+   | 頁面 UI | /stations 排序功能 | 移除 vuedraggable import、dragList ref、handleDragEnd、<Draggable> 元件 |
+   | 型別 | SortStationsBody | 僅被 Feature 11 使用 |
+   | API 端點 | PUT /api/stations/sort | 僅被 Feature 11 使用 |
+   | 欄位 | StationItem.sort_order | 排序功能移除後不需要 |
 
    確認要刪除以上項目嗎？（可逐項選擇保留或刪除）
    ```
@@ -141,9 +143,12 @@ Phase 5 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 ## 全量模式執行步驟
 
 1. **讀取該頁面相關的 `.spec.ts`**（核心輸入）
-   - 掃描所有 `getByTestId('xxx')` → 提取完整 testid 清單
+   - 掃描 `getByRole('button'|'row'|'dialog'..., { name: /…/ })` 與 `findEntity(...)` → 提取 **role + accessible name 需求清單**（UI 必須提供的語意 anchor：按鈕文字、aria-label、row 內可識別文字）
+   - 掃描 `getByLabel(/…/)` → 表單欄位必須有對應的 label 文字
+   - 掃描 `getByTestId('xxx')` → 提取 **fallback testid 清單**（flow 授權的少數消歧場景）
    - 掃描 `.fill()`, `.click()`, `selectOption()` → 了解互動模式
    - 掃描 `toContainText()`, `toHaveCount()`, `getByText()` → 了解斷言預期和錯誤訊息
+   - 掃描 `waitForApiCall` / `waitForRequest` → 頁面必須實際發出的 API 呼叫（method + 路徑 pattern）
    - 掃描 `test.skip()` 註釋 → 了解哪些情境無需 UI 實作
 2. **⚠️ 強制前置讀取（每個功能都必須執行！）**
    - **掃描 API 結構**：`glob server/api/**/*.ts`
@@ -151,26 +156,28 @@ Phase 5 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
    - **讀取該頁面用到的 `types/api/` 型別定義**：頁面必須 import 使用，禁止定義 local interface
    - **讀取該頁面用到的共用元件原始碼**（`app/components/common/*.vue`）：確認 props、slots、events 簽名
    - **讀取 Pinia store 原始碼**（若頁面需要）：確認 store 提供的方法和屬性
+   - **條件式領域知識**：查 `spec/report/route-map.yaml`——本頁涉及 `realtime` 區塊 → 先執行 `/realtime`；涉及 `streaming` 區塊 → 先執行 `/streaming`。**載入後依其鐵律實作，不可憑記憶自己寫** EventSource／WebSocket／hls.js 掛載（連線 cleanup、看門狗、teardown 這類坑正是該 skill 存在的理由）。無對應區塊則跳過
 3. **⚠️ 實作前對照表（必須在寫 code 之前輸出！）**
    - 從 spec 的 `test.describe` / `test()` 標題提取 Scenario 清單
    - 比對 spec 互動模式 → UI 元件（**必須**查 [page-builder.md](page-builder.md) Command 對照表）
    - 產出「Spec → UI 對照表」，格式如下：
 
    ```
-   Spec → UI 對照表（/players）：
-   | Spec Scenario | 互動模式 | UI 元件 | testid |
-   |--------------|---------|---------|--------|
-   | 查詢球員列表 | locator('tbody tr') | UTable + 搜尋框 | player-list, player-search |
-   | 新增球員 | fill() + click(submit) | Modal + 表單 | player-create, player-form-modal |
-   | 編輯球員 | clear() + fill() | Modal + 表單（預填） | player-edit, player-name |
-   | 刪除球員 | click(delete) + confirm | 確認 Modal | player-delete, confirm-ok |
-   | 調整球員排序 | dragTo() | vuedraggable | player-sort-handle |
+   Spec → UI 對照表（/stations）：
+   | Spec Scenario | 互動模式 | UI 元件 | 語意 anchor / fallback testid |
+   |--------------|---------|---------|------------------------------|
+   | 查詢觀測站列表 | findEntity(/陳小明/) | UTable + 搜尋框 | row 內含觀測站姓名可見文字 |
+   | 新增觀測站 | getByLabel(/姓名/).fill() + getByRole('button', { name: /建立/ }) | Modal + 表單 | 欄位 label、按鈕文字 |
+   | 編輯觀測站 | getByLabel().clear() + fill() | Modal + 表單（預填） | 欄位 label |
+   | 刪除觀測站 | getByRole('button', { name: /刪除/ }) + maybeConfirm | 確認 Modal | 按鈕文字、dialog 動詞按鈕 |
+   | 調整觀測站排序 | dragTo() | vuedraggable | station-sort-handle（fallback testid，無語意 role） |
    ```
 
    > ⚠️ **此表是 code review 用的 checklist**：實作完成後，逐列打勾確認。若表中任何 Scenario 沒有對應 UI，必須補做。
 
 4. **實作頁面**（基於步驟 1-3 的 spec 分析和讀取的實際程式碼）
-   - 所有 `data-testid` **直接從 spec 的 `getByTestId()` 複製**，確保完全一致
+   - **語意 anchor 依步驟 1 的需求清單提供**：按鈕文字／aria-label 對上 `getByRole` 的 name regex、表單欄位 label 對上 `getByLabel`、實體 row 內含可識別文字
+   - spec 用到 `getByTestId` 之處，`data-testid` **直接從 spec 複製**，確保完全一致
    - **逐一檢查步驟 3 對照表，確保每個 Scenario 都有對應的 UI 實作**
    - **⚠️ build 模式（fallback 防漏）：檢查 Layout 導航是否已包含此路由**。Phase 3 應已處理導航同步，此處僅做最終確認。讀取 `app/layouts/default.vue`，確認 `navigation` 陣列是否有此頁面的連結。若無 → 加入導航項目（label、icon、to）
    - 若 spec 資訊不足以判定驗證邊界值（如「字長 1-50」），再查閱 `.dsl.feature` 的 Rule
@@ -179,37 +186,35 @@ Phase 5 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
    - 若有任何 FAIL → 補做後重新驗證
    - 檢查 Mock 資料量是否 ≥ 11 筆，不足則補建
 6. **⚠️ 規範合規檢查（必須執行！）**
-   - testid 是否全部對應 spec 的 `getByTestId()` 呼叫
+   - spec 要求的語意 anchor（role + accessible name、label、可見文字）是否全數提供
+   - fallback testid 是否逐字對應 spec 的 `getByTestId()` 呼叫（不多加、不漏）
    - 型別是否從 `types/api/` import（禁止定義 local interface）
    - 深淺模式是否正常（禁止寫死顏色值）
+   - 頁面主資料是否 `lazy: true` ＋ `status === 'pending'` 渲染 skeleton 佔位（見 [page-builder.md](page-builder.md) > 載入佔位）
 7. **若步驟 5-6 發現缺漏 → 修復後重新驗證**
 8. **⚠️ 程式碼品質檢查（必須執行）**
-   - 依序執行以下指令，針對本次新增或修改的檔案：
-   ```bash
-   npx eslint app/pages/xxx.vue --fix          # ESLint 檢查 + 自動修復
-   npx prettier --write app/pages/xxx.vue      # Prettier 格式化（含 Tailwind class 排序）
-   npm run typelint                             # TypeCheck 型別檢查
-   ```
+   - 對本次新增或修改的檔案跑品質檢查四連（指令順序與禁忌見 [rules.md](rules.md)「程式碼品質檢查規範 `[P5]`」——該段為權威版本）
    - 有錯誤 → 修復後重新執行，直到全部通過
-   - **三項全部通過才可進入下一步**
+   - **全部通過才可進入下一步**
 9. **向用戶確認（必須使用下方結構化格式，包含步驟 3 的對照表）**
 10. **⚠️ 輸出確認格式後立即停止回應，等待用戶回覆後才處理下一個頁面**
 
 ## 每個功能必讀資源 Checklist
 
 > 每個功能開始實作前，必須讀取以下資源：
-> - **核心輸入**：`test/e2e/specs/{NN}-{name}.spec.ts`（testid + 互動 + 斷言，Phase 5 的唯一 UI 合約）
+> - **核心輸入**：`test/e2e/specs/{NN}-{name}.spec.ts`（locator + 互動 + 斷言，Phase 5 的唯一 UI 合約）
 > - **共用規範**：rules.md、page-builder.md
 > - **共用元件**：`app/components/common/*.vue`（讀原始碼即可，不需 components.md）
 > - **API 總覽**：`glob server/api/**/*.ts`
 > - **該功能專屬**：API endpoint 原始碼、`types/api/` 型別、Pinia store（若需要）
+> - **契約缺口檢查**：該功能要顯示的欄位，對應 GET 端點讀得回才動工；讀不回 → 停下回報，禁止 local state 暫存兜（見 [rules.md](rules.md)「契約缺口」）
 > - **選讀**：`.dsl.feature`（驗證邊界值）、`components.md`（編碼慣例/範本）、`features.md`（additionalFeature 用法）
 
 ## 實作順序建議
 
 1. 認證（登入/登出）
-2. 主要 CRUD（球隊 CRUD）
-3. 關聯資料（球員管理）
+2. 主要 CRUD（觀測點 CRUD）
+3. 關聯資料（觀測站管理）
 4. 進階功能
 
 ## 單一功能完成後的確認格式（必須使用）
@@ -226,15 +231,15 @@ Phase 5 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 Scenario 覆蓋：
 | Scenario | 對應 UI | 狀態 |
 |----------|---------|------|
-| 查詢球員列表 | UTable + 搜尋框 | OK |
-| 建立球員 | Modal + 表單 | OK |
-| 調整球員順序 | vuedraggable | OK |
-| 刪除球員 | 確認 Modal | OK |
+| 查詢觀測站列表 | UTable + 搜尋框 | OK |
+| 建立觀測站 | Modal + 表單 | OK |
+| 調整觀測站順序 | vuedraggable | OK |
+| 刪除觀測站 | 確認 Modal | OK |
 
 資料驗證：
 - Mock 資料：12 筆（≥11 OK）
 - API 路徑：全部確認 OK
-- testid：對應 .spec.ts OK
+- locator（語意 anchor + fallback testid）：對應 .spec.ts OK
 
 品質檢查：
 - ESLint：通過
@@ -272,20 +277,15 @@ Scenario 覆蓋：
    - 常見定位目標：`const schema = z.object`、`function openCreate`、`<UFormField label=`、`data-testid=`
 6. **逐項 Edit**（使用 Edit tool，不 Write 整個檔案）
 7. **⚠️ 程式碼品質檢查（必須執行）**
-   - 依序執行以下指令，針對本次修改的檔案：
-   ```bash
-   npx eslint app/pages/xxx.vue --fix
-   npx prettier --write app/pages/xxx.vue
-   npm run typelint
-   ```
+   - 對本次修改的檔案跑品質檢查四連（指令順序與禁忌見 [rules.md](rules.md)「程式碼品質檢查規範 `[P5]`」）
    - 有錯誤 → 修復後重新執行，直到全部通過
 8. **完成後確認**（一次確認即可）
 
    ```
-   Patch 完成：/teams
+   Patch 完成：/sites
 
    受影響的 Features：
-   - 04-建立球隊.dsl.feature（修改：新增 description 欄位）
+   - 04-建立觀測點.dsl.feature（修改：新增 description 欄位）
 
    修改摘要：
    - [template] 建立表單 Modal → 新增 description 輸入欄位（UTextarea）
@@ -294,9 +294,9 @@ Scenario 覆蓋：
    Scenario 覆蓋（含未變更 feature）：
    | Scenario | 狀態 | 備註 |
    |----------|------|------|
-   | 查詢球隊列表 | OK 未動 | 03 無變化 |
-   | 建立球隊 | OK 已更新 | 新增 description |
-   | 刪除球隊 | OK 未動 | 05 無變化 |
+   | 查詢觀測點列表 | OK 未動 | 03 無變化 |
+   | 建立觀測點 | OK 已更新 | 新增 description |
+   | 刪除觀測點 | OK 未動 | 05 無變化 |
 
    品質檢查：
    - ESLint：通過
@@ -335,11 +335,11 @@ Scenario 覆蓋：
    - 自訂邏輯（手動加的額外功能）
 2. **向用戶確認覆蓋範圍**（列出步驟 1 記錄的自訂邏輯摘要）：
    ```
-   Rebuild 將覆蓋：/teams
+   Rebuild 將覆蓋：/sites
 
    偵測到的自訂邏輯（將被覆蓋）：
    - handleExport() 函式（手動新增的匯出功能）
-   - 自訂的 CSS class .team-highlight
+   - 自訂的 CSS class .site-highlight
 
    （若無自訂邏輯則顯示「無自訂邏輯，可直接覆蓋」）
 

@@ -1,5 +1,5 @@
 ---
-name: skill-creator
+name: skill-creator-new
 description: |
   Skill 建立與優化工具。Use when 需要新增 Skill、優化現有 Skill、建立 Skill 規範、或檢查 Skill 標準。
 ---

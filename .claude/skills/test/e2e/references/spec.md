@@ -22,8 +22,8 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 
 2. **role + name regex 為主要 locator**
    ```ts
-   page.getByRole('button', { name: /匯出.*(此次|單次|本練習)/ })
-   page.getByRole('row', { name: /FF/ })  // 找實體
+   page.getByRole('button', { name: /匯出.*(此次|單次|本觀測時段)/ })
+   page.getByRole('row', { name: /PER/ })  // 找實體
    ```
    name regex **列同義詞集合**（給 vibe 改措辭空間）。
 
@@ -37,7 +37,7 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 
 4. **可選 confirm 步驟**：用 helper `maybeConfirm(page)`，scope 到 `getByRole('dialog')`，內部用動詞前綴 regex（`/^(確認|確定|送出|匯出|刪除|移除|完成)/`）
 
-5. **testid 退 fallback only**：僅在以下情況用：
+5. **testid 退 fallback only**（規範 SSOT：[testid-conventions.md](../../../feature-to-flow/references/testid-conventions.md)；本節只給 spec 側的使用政策，不重列命名規則）：僅在以下情況用：
    - role + name 無法消歧（同名多個 role）
    - 純樣式元素無語意角色
    - 動態狀態屬性（`data-favorited`、`data-selected`）
@@ -60,9 +60,10 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 4. test/e2e/helpers/fixtures.ts       — 測試資料
 
 必讀（資料來源）：
-5. spec/gherkin-feature/{NN}-{name}.dsl.feature — 原始 Feature Background（該 feature 的初始狀態定義）
+5. flow 檔頭 `> 對應規格` 所指的 .feature 檔 — 原始 Feature Background（該 feature 的初始狀態定義；定位方式見 Step 2a，逐 feature 檔與單一大檔兩種形式都支援）
 6. server/mock/data/*.ts             — 實際 mock 資料（實體名稱、日期、數值等）
 7. server/api/{相關 API}.ts           — API 過濾邏輯 + 錯誤訊息（createError 的 message）
+8. spec/report/route-map.yaml > rbac（**若存在** → 角色全集、受限端點、ownership、object_ownership（單筆 BOLA）、受保護路由；據此產多角色登入 + 拒絕場景，見「角色與權限場景」段）
 
 不讀（TDD 模式下 UI 尚未建立）：
 7. app/pages/{相關頁面}.vue           — ❌ spec 在 UI 之前生成，不依賴 Vue 頁面
@@ -82,9 +83,9 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 1. **一個 `.flow.md` 對應一個 `.spec.ts`**
 2. **不使用 quickpickle / Gherkin**：直接生成 Playwright `test.describe` / `test` 結構
 3. **共用操作從 helpers import**：login / selectOption / confirmDelete 不在 spec 內定義
-4. **Selector 策略以 `.flow.md` 為準（v2）**：flow 的「Selector 策略」/「Verification 策略」段授權使用哪些 locator 類型。flow 沒寫 testid 就不寫 testid 斷言；flow 用 invariant 表達就用 role/text/API spy 驗證。**禁止越權**：例如 flow 寫「pitch-001 可被識別」，spec 不得改寫成「`pitch-row-pitch-001` 包含 14 欄 testid 斷言」
+4. **Selector 策略以 `.flow.md` 為準（v2）**：flow 的「Selector 策略」/「Verification 策略」段授權使用哪些 locator 類型。flow 沒寫 testid 就不寫 testid 斷言；flow 用 invariant 表達就用 role/text/API spy 驗證。**禁止越權**：例如 flow 寫「sighting-001 可被識別」，spec 不得改寫成「`sighting-row-sighting-001` 包含 14 欄 testid 斷言」
 5. **每個 spec 獨立可執行**：透過 `test.beforeEach` reset mock data + 清理多餘實體，確保初始狀態符合 Feature Background
-6. **⚠️ 初始狀態以 Feature Background 為準**：每個 `.dsl.feature` 的 `Background:` 定義了該 feature 的初始狀態。Mock 全集是所有 feature 的 Background 合併，可能包含不屬於該 feature 的實體。Spec 必須確保測試開始時的狀態與 Feature Background 一致（見 Step 2c-2d）
+6. **⚠️ 初始狀態以 Feature Background 為準**：每個 feature 的 `Background:`（逐檔形式為該 `.dsl.feature` 檔、大檔形式為對應的 `Feature:` 區塊）定義了該 feature 的初始狀態。Mock 全集是所有 feature 的 Background 合併，可能包含不屬於該 feature 的實體。Spec 必須確保測試開始時的狀態與 Feature Background 一致（見 Step 2c-2d）
 7. **spec 是生成物，禁止手動編輯**：`.flow.md` 更新時，spec 全量重新生成。green 階段**禁止修改 spec**，只能修改 UI/mock/API。如果 spec 有問題，修 flow 再重新生成
 
 > ⚠️ 若需調整測試的 Given/When/Then 邏輯，應修改 `.flow.md` 後重新執行 `/test e2e spec`，而非直接編輯 `.spec.ts`
@@ -113,19 +114,25 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 
 在生成 spec 之前，**必須讀取實際實作**來校正 `.flow.md` 中的假設值。
 
-#### 2a. 讀取 Feature Background（⚠️ 初始狀態定義）
+#### 2a. 定位並讀取 Feature Background（⚠️ 初始狀態定義）
 
-讀取 `spec/gherkin-feature/{NN}-{name}.dsl.feature`，解析 `Background:` 區塊中的 `Given` 語句，識別**該 feature 定義的初始狀態**（哪些實體在測試開始時應該存在）。
+**來源 .feature 檔採三層定位，主錨點是 flow 檔頭的 `> 對應規格`，不用檔名瞎猜**：
+
+1. **header 指向逐 feature 檔**（如 `{NN}-{name}.dsl.feature`；可能列多個來源檔，逐一處理）→ 直接讀該檔
+2. **header 指向單一大檔**（一檔含多個 `Feature:` 區塊，如 `gherkin-export.feature`）→ 依 flow 內各 `> 對應 Feature: {feature 名稱}` 引用，在大檔中定位同名 `Feature:` 區塊，只取這些區塊
+3. **header 缺失才 fallback 檔名慣例**：讀 `spec/gherkin-feature/{NN}-{name}.dsl.feature`（由 flow 檔名反推，維持既有行為），並在產出回報中提示在 flow 檔頭補上 `> 對應規格`
+
+定位到目標後，解析 `Background:` 區塊中的 `Given` 語句，識別**該 feature 定義的初始狀態**（哪些實體在測試開始時應該存在）。若定位到的 `Feature:` 區塊沒有 `Background:`，初始狀態由各 Scenario 自己的 `Given` 定義——Step 2c 視為「無 Background 差異」，reset 全集即為基底。
 
 ```
 Feature Background 定義：
-- 使用者：admin, coach1
-- 球隊：藍鷹隊（coach1）
+- 使用者：admin, observer1
+- 觀測點：藍鷹隊（observer1）
 → 該 feature 的測試假設「只有藍鷹隊存在」
 ```
 
 > ⚠️ **Feature Background ≠ Mock 全集**。Mock 資料是所有 feature 的 Background 合併而成的超集。
-> 例如 feature 03 的 Background 有 4 支球隊，feature 04 的 Background 只有 1 支。
+> 例如 feature 03 的 Background 有 4 支觀測點，feature 04 的 Background 只有 1 支。
 > 每個 feature 的 spec 必須基於**自己的 Background**推算預期結果，而非 mock 全集。
 
 #### 2b. 掃描 mock data + API 過濾邏輯
@@ -135,7 +142,9 @@ Feature Background 定義：
 3. **以每個測試情境的角色/參數，模擬 API 過濾**，推算該情境下 API 實際會回傳哪些資料
 4. 用推算結果寫斷言值，而非 raw data 的值
 
-> ⚠️ raw data ≠ API 回傳。例如 `mockTrainings` 有 16 筆，但經過 `status === 'active'`、`date >= today`、角色過濾後，coach1 呼叫 API 可能只拿到 3~4 筆。斷言必須基於過濾後的結果。
+> ⚠️ raw data ≠ API 回傳。例如 `mockTrainings` 有 16 筆，但經過 `status === 'active'`、`date >= today`、角色過濾後，observer1 呼叫 API 可能只拿到 3~4 筆。斷言必須基於過濾後的結果。
+>
+> ⚠️ **角色維度看 `route-map.rbac`**（若存在）：`rbac.endpoints` 列的端點對受限角色回 **403**（該角色的斷言是「被拒」非「空清單」）；`rbac.ownership` 列的端點對 `restricted_roles` 只回自己 `owner_field` 的列（依登入角色推算筆數）；`rbac.object_ownership` 列的 `/{id}` 端點，受限角色帶**他人 id** 回 **403/404**（BOLA），帶**自己 id** 才成功。mock 的 `requireRole` / `requireOwnership` / `getMockCurrentUser` 是實際守門點。
 
 #### 2c. 比對 Feature Background vs Mock 全集（⚠️ 背景差異偵測）
 
@@ -167,8 +176,8 @@ test.beforeEach(async ({ request }) => {
 
   // Step 2: 調整到 Feature 04 的 Background（只有藍鷹隊）
   // 刪除不屬於此 feature Background 的實體
-  await request.delete('/api/teams/2') // 紅龍隊
-  await request.delete('/api/teams/3') // 白虎隊
+  await request.delete('/api/sites/2') // 紅龍隊
+  await request.delete('/api/sites/3') // 白虎隊
 })
 ```
 
@@ -195,7 +204,7 @@ grep "createError" server/api/{相關路徑}/*.ts
 ⚠️ 校正表：
 - flow 實體名稱 "{flow值}" → 實際 mock: "{mock值}"
 - flow 錯誤訊息 "{flow訊息}" → 實際 API: "{api訊息}"
-- testid: 直接使用 flow 定義（flow 是 testid 權威來源）
+- testid: 僅當 flow「Selector 策略」授權時使用，值取自 flow 定義（v2：testid 是 fallback，不是預設）
 - toast 文字: 直接使用 flow 定義（UI 必須實作此文字）
 - ⚠️ Background 衝突: mock 多餘實體 "{name}" 與建立操作衝突 → 需清理
 ```
@@ -206,26 +215,31 @@ grep "createError" server/api/{相關路徑}/*.ts
 
 ### Step 4：生成 .spec.ts（使用校正後的值）
 
+> **覆寫既有 spec 前必寫 sentinel**：flow 更新觸發的全量重生會覆寫 `test/e2e/specs/` 既有檔，凍結 hook 預設擋下。經使用者確認重生範圍後、寫檔前，先寫 `.claude/tmp/frozen-allow.json`（`{ "reason": "flow 更新，spec 全量重生", "files": ["test/e2e/specs/<檔名>.spec.ts", ...] }`），hook 對清單內目標放行一次。新增全新 spec 檔不需 sentinel。
+
 ---
 
 ## .spec.ts 結構（v2）
 
 ```typescript
-import { expect, type Page, test } from '@playwright/test'
+// test/expect 走 ../helpers（掛 hydration 守門 fixture），不直接 import @playwright/test
+import type { Page } from '@playwright/test'
 
 import {
+  expect,
   findEntity,
   getFeedbackElement,
   login,
   maybeConfirm,
   resetMockData,
+  test,
   waitForApiCall,
 } from '../helpers'
 
 test.beforeEach(async ({ page, request }) => {
   await resetMockData(page)
   // 若 Feature Background ≠ mock 全集，在此調整
-  // await request.delete('/api/v1/teams/team-002')
+  // await request.delete('/api/v1/sites/site-002')
 })
 
 test.describe('規則：{Rule 名稱}', () => {
@@ -253,7 +267,7 @@ test.describe('規則：{Rule 名稱}', () => {
 })
 ```
 
-> **v2 範例對照**：見 `test/e2e/specs/06-export.v2.spec.ts` 與 `04-practice.v2.spec.ts`（兩個試點實作）。
+> **v2 範例對照**：見本檔「Flow → Playwright 轉換規則（v2）」與「特殊操作轉換（v2 為主，testid 為 fallback）」段的實例。
 
 ---
 
@@ -306,7 +320,7 @@ await expect(page.getByText({FEEDBACK}.{SUCCESS_KEY})).toBeVisible()
 
 | 資料類型 | 來源 | 說明 |
 |---------|------|------|
-| 實體識別值（人物名稱、pitch-type 等） | `server/mock/data/*.ts` | 用 mock 實際值，spec 用 regex 抽樣（如 `/陳小明/`、`/FF/`） |
+| 實體識別值（人物名稱、shower-code 等） | `server/mock/data/*.ts` | 用 mock 實際值，spec 用 regex 抽樣（如 `/陳小明/`、`/PER/`） |
 | API endpoint & method | `.flow.md` 的 Verification 策略 | URL 用 regex 容版本：`/\/<endpoint>(\?|$)/` |
 | API 錯誤訊息 | `server/api/` 的 `createError({ message })` | exact 文字斷言（這是 API 合約） |
 | 語意 locator 措辭 | `.flow.md` 的 Selector 策略 | 用 regex 含同義詞，不鎖單一措辭 |
@@ -343,7 +357,7 @@ await expect(page.getByText(/陳小明/).first()).toBeVisible()
 
 ```typescript
 // flow 明示用 data attribute 表達狀態時
-await expect(page.getByTestId('pitch-favorite-button-pitch-001')).toHaveAttribute('data-favorited', 'true')
+await expect(page.getByTestId('sighting-favorite-button-sighting-001')).toHaveAttribute('data-favorited', 'true')
 ```
 
 ---
@@ -437,9 +451,9 @@ export function waitForApiCall(page: Page, pathRegex: RegExp, method: string) {
 ```typescript
 // 監聽 destructive API call（DELETE / POST / PUT）
 const apiRequest = page.waitForRequest(
-  req => /\/pitches\/[^/]+$/.test(req.url()) && req.method() === 'DELETE',
+  req => /\/sightings\/[^/]+$/.test(req.url()) && req.method() === 'DELETE',
 )
-await findEntity(page, /FF/).getByRole('button', { name: /刪除/ }).click()
+await findEntity(page, /PER/).getByRole('button', { name: /刪除/ }).click()
 await maybeConfirm(page)
 const request = await apiRequest
 expect(request.postDataJSON()).toMatchObject({ /* expected payload */ })
@@ -451,8 +465,8 @@ expect(request.postDataJSON()).toMatchObject({ /* expected payload */ })
 
 ```typescript
 // 用 role + 語意 name 找實體（不限 row / article / listitem 形式）
-const pitchEntity = findEntity(page, /FF/)  // pitch-type 當識別
-await pitchEntity.getByRole('button', { name: /取消收藏/ }).click()
+const sightingEntity = findEntity(page, /PER/)  // shower-code 當識別
+await sightingEntity.getByRole('button', { name: /取消收藏/ }).click()
 ```
 
 testid fallback（僅 flow 明示 testid 時用）：
@@ -504,7 +518,7 @@ await expect(findEntity(page, /<deleted-name>/)).not.toBeVisible()
 
 ```typescript
 // 優先用 role
-await page.getByRole('combobox', { name: /球員/ }).click()
+await page.getByRole('combobox', { name: /觀測站/ }).click()
 await page.getByRole('option', { name: '陳小明' }).click()
 ```
 
@@ -515,6 +529,90 @@ await selectOption(page, '{field-id}', '{option-label}')
 ```
 
 > **注意**：option label 可能經過格式化（如 `"1 - 項目名稱"` 而非 `"項目名稱"`），必須檢查 Vue 頁面確認實際格式。
+
+---
+
+## 角色與權限場景（條件式，route-map 有 `rbac` 時）
+
+flow 的「角色可見性不變式」+ `route-map.rbac` 一起驅動權限場景的產生。**這些是「看得到的權限差異」，必須測，不可 skip。**
+
+### 多角色登入 helper
+
+`rbac.roles` 每個角色都要能登入。擴充 `test/e2e/helpers/actions.ts`，**測試帳號取自 `ui-config.yaml > testAccounts` / mock 種子，不寫死**：
+
+```ts
+// test/e2e/helpers/actions.ts
+export const ROLE_ACCOUNTS = {
+  super_admin: { account: 'admin', password: 'admin888' },
+  observer: { account: 'observer1', password: 'pass123' },
+} as const
+
+export async function loginAs(page: Page, role: keyof typeof ROLE_ACCOUNTS) {
+  const a = ROLE_ACCOUNTS[role]
+  await login(page, a.account, a.password)
+}
+```
+
+### 拒絕場景產生規則
+
+| route-map.rbac 來源 | 產出 scenario | 驗證方式 |
+|---|---|---|
+| `endpoints`（受限端點） | 「{受限角色} 呼叫 {端點} → 被拒」 | API spy 抓 **403**：`page.waitForResponse(r => /<path-regex>/.test(r.url()) && r.status() === 403)`；或 UI 端語意反饋（`getFeedbackElement` / 無權限文字） |
+| `protected_routes`（受保護路由） | 「{受限角色} 直接打 {path} → 被導離」 | `await page.goto(path)` 後 `await page.waitForURL('**/403')`（或首頁）；**不**斷言看得到受保護內容 |
+| `ownership`（列表 ACL） | 同一列表，全權角色 vs 受限角色筆數不同 | 兩個 test 各自 `loginAs`，斷言可見實體集合依角色推算（見 Step 2b） |
+| `object_ownership`（單筆 BOLA / **OWASP API #1**） | 「{受限角色} 帶**他人 id** 打 {`/{id}` 端點} → 被拒」 | API spy 抓 **403**（`notfound: true` 時 **404**）：`page.waitForResponse(r => /<path-with-OTHER-id>/.test(r.url()) && [403, 404].includes(r.status()))`。關鍵是「**同端點、換成不屬於自己的 object id**」——這正是 BOLA 攻擊面，**必測** |
+
+```ts
+// 範例：受限角色被端點擋（403）
+test('observer 無法取得帳號列表（僅 super_admin 可操作）', async ({ page }) => {
+  await loginAs(page, 'observer')
+  const denied = page.waitForResponse(r => /\/accounts(\?|$)/.test(r.url()) && r.status() === 403)
+  await page.goto('/accounts', { waitUntil: 'networkidle' })
+  await denied
+})
+
+// 範例：受限角色打受保護路由被導離
+test('observer 直接打 /accounts 被導離', async ({ page }) => {
+  await loginAs(page, 'observer')
+  await page.goto('/accounts', { waitUntil: 'networkidle' })
+  await page.waitForURL('**/403') // 或首頁，依 protected_routes 守門目標
+})
+
+// 範例：受限角色帶「他人 id」打單筆端點被擋（OWASP BOLA / API #1）
+// 僅當 route-map.rbac.object_ownership 命中時才產；notes 為假想資源，端點 / id 用實際 rbac 值
+test('observer 無法編輯他人建立的 note（單筆歸屬）', async ({ page }) => {
+  await loginAs(page, 'observer') // observer1 = acc-002
+  // 帶一筆「非自己建立」的 object id（取自 mock 種子中 createdBy 屬於他人的那筆）
+  const denied = page.waitForResponse(r => /\/notes\/note-of-other(\?|$|\/)/.test(r.url()) && [403, 404].includes(r.status()))
+  await page.goto('/notes/note-of-other/edit', { waitUntil: 'networkidle' })
+  await denied
+})
+```
+
+> ⚠️ **拒絕場景 ≠ 不可達場景**：受限角色「被擋」是可觀察、可測的（上方），**必須產**。下方 Skip 規則的「API 層已過濾、UI 根本無法觸發」指的是連入口與路由都不存在、URL 也拼不出來的死路；**不含** BOLA——「帶他人 id 打 `/{id}`」永遠拼得出 URL、是真實攻擊面，`object_ownership` 命中時**必測、不可 skip**。
+> ⚠️ 403/404 statusMessage、守門目標路徑、以及「屬於他人的 object id」以 mock（`requireRole` / `requireOwnership`）、`rbac.global.ts`、mock 種子的實際值為準（交叉比對 Step 2b / 2e）。
+
+### 巢狀資源 scope 層（**無條件**，不需 rbac）
+
+上表全綁 `route-map.rbac`；但「巢狀端點漏帶父層過濾」的 IDOR **不需要角色分層就存在**（wedding-host 是單角色 owner-based 專案，rbac 不會命中，DELETE 漏過濾照樣被打穿）。這層由 setup 階段的 `specs/02-authz-scope.spec.ts` 承接（範本見 setup.md Step 6.6）：route-map endpoints 含 ≥2 個 path 參數 → 用 `request` 直打錯誤父子組合斷言 404，**寫入端點必含**。spec 階段檢查：若本 feature 新增了巢狀端點而 02-authz-scope 未涵蓋 → 依 `rules/frozen-paths.md` 上游變更程序補組合，或另建新 spec 檔。
+
+---
+
+## 持久性斷言（設定/狀態類 scenario 必含）
+
+**判定**：scenario 的 command 更新既有 aggregate 的可變狀態、且畫面直接顯示新值（設定頁、偏好、佈置、編輯表單…），就屬「設定/狀態類」。新增後跳轉列表的 create 類不算——列表重新載入本身就是讀回驗證。
+
+**生成規則**：該 scenario 的 Then 斷言完成後，追加：
+
+```typescript
+// 持久性：寫入必須在 reload 後讀得回（防 UI 用 local state 暫存兜資料）
+await page.reload({ waitUntil: 'networkidle' })
+// <重複該場景的關鍵 Then 斷言>
+```
+
+- 斷言 locator 沿用該場景 flow 已授權的策略，不另開新 selector
+- 這是管線層級守門（與 hydration 守門同類），**flow 沒寫 reload 也必須生**，不算 spec 越權
+- 為什麼：同 session 內「寫入 → 當下顯示」永遠會過；GET 漏欄位、UI 拿 local ref 兜資料時，只有 reload 抓得到（wedding-host 實戰：7 個 GET 缺口對全部同 session 測試隱形）
 
 ---
 
@@ -538,7 +636,7 @@ test.skip('成功調整排序', async () => {
 
 // ✅ 寫完整步驟
 test('成功調整排序', async ({ page }) => {
-  await login(page, 'coach1', 'pass123')
+  await login(page, 'observer1', 'pass123')
   await page.goto('/items/1/list', { waitUntil: 'networkidle' })
   await page.getByTestId('sort-handle').first().dragTo(page.getByTestId('sort-handle').nth(2))
 })
@@ -558,22 +656,9 @@ test.skip('帳號鎖定後重新登入', async () => {
 
 ## ESLint / Lint Gate
 
-```typescript
-// ✅ import 排序：import type 在前、外部套件按字母、相對路徑按字母、named imports 按字母
-import { expect, test } from '@playwright/test'
-import { confirmDelete, login } from '../helpers'
-```
-
-生成後**必須執行**：
-
-```bash
-npm run lint --fix
-npm run lint    # 確認 0 errors
-```
-
-常見問題：
-- `test.skip` 導致 `expect` / `login` 未使用 → 移除未使用的 import
-- 未使用參數 → 加 `_` 前綴
+- 生成後必跑 `npm run eslint` + `npm run typelint`，零錯誤才算完成（CLAUDE.md 紅線）
+- import 排序遵守 perfectionist 規則；test/expect 從 `../helpers` 匯入（見「.spec.ts 結構（v2）」範本）
+- 指令順序、`--fix` 禁忌與常見問題（未使用 import、未使用參數加 `_` 前綴）見 [green.md](green.md) 的「Lint Gate（必須通過）」段
 
 ---
 
@@ -585,13 +670,14 @@ npm run lint    # 確認 0 errors
 - [ ] 共用操作從 `../helpers` import，spec 內無本地定義
 - [ ] `test.beforeEach` 呼叫 reset + 背景調整（Feature Background vs mock 全集已比對）
 - [ ] 每個 test 有 Given/When/Then 註解
-- [ ] `npm run lint` 零錯誤
+- [ ] 設定/狀態類 scenario 含「寫入 → `page.reload()` → 斷言仍在」持久性斷言（見「持久性斷言」段）
+- [ ] `npm run eslint` + `npm run typelint` 零錯誤
 
 ### v2 抽象化合規
 - [ ] **flow 沒寫 testid 的地方，spec 也沒用 testid**（沒越權）
 - [ ] **destructive / async outcome 用 API spy 驗證**（不只靠 UI 斷言）
 - [ ] **API URL 用 regex（`/\/<endpoint>(\?|$)/`）容版本路徑**，不寫死 `/api/exports`
-- [ ] **語意 regex 含同義詞集合**（如 `/匯出.*(此次|單次|本練習)/`），不鎖單一措辭
+- [ ] **語意 regex 含同義詞集合**（如 `/匯出.*(此次|單次|本觀測時段)/`），不鎖單一措辭
 - [ ] **confirm 步驟用 `maybeConfirm(page)`**（dialog scope + 動詞 regex），不寫死 confirm testid
 - [ ] **反饋元素用 `getFeedbackElement(page)`** 或 `getByRole('alert' / 'status')`
 - [ ] **實體查找用 `findEntity(page, /<name>/)`**，不寫死 row layout

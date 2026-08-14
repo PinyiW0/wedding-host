@@ -65,14 +65,70 @@ UI 配色以 **primary + neutral** 為主（佔 90%），語意色只用在狀�
 
 ---
 
+## SSR / Hydration 安全 `[P3, P4, P5]`
+
+Nuxt 預設 SSR：server 先渲染 HTML，client hydration 重算一次。**兩端算出不同結果 = hydration mismatch**（dev console 出現 `Hydration ... mismatch` 警告，E2E 守門會攔）。完整踩坑清單見 nuxt skill 的 `references/best-watches-ssr.md`。
+
+### 正確心智模型：persist 預設存 cookie，SSR 讀得到
+
+`pinia-plugin-persistedstate/nuxt` 預設 storage 是 **cookie**（不是 localStorage）。SSR 請求帶 cookie → server 端 store 有同一份登入狀態 → 兩端渲染一致。auth middleware 因此是**全端守衛**（範本見 [phase-2-skeleton.md](phase-2-skeleton.md)「Auth middleware 範本」，SSR 與 client 都執行）。
+
+```typescript
+// [X] 錯誤心智模型：以為 persist 存 localStorage、SSR 讀不到，middleware 加 server 守衛
+export default defineNuxtRouteMiddleware((to) => {
+  if (import.meta.server) return // ← 讓 SSR 渲染出「未登入版」，反而製造 mismatch
+  // ...
+})
+```
+
+> 顯示 `authStore.account` 等登入欄位的地方**不需要** `<ClientOnly>`——cookie 讓 SSR 拿到同一份登入狀態，包了反而造成登入後首屏閃「未登入」。（store 欄位是扁平的 `account` / `name` / `roles`，沒有 `user` 物件。）
+
+### colorMode 渲染必包 ClientOnly
+
+server 不知道使用者的深淺偏好，`colorMode.value` 兩端必不同。渲染它一律包 `<ClientOnly>` + **同尺寸 fallback**（避免 layout shift）：
+
+```vue
+<!-- [X] 直接渲染 colorMode.value → 必 mismatch -->
+<UIcon :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'" class="size-5" />
+
+<!-- [O] ClientOnly + 同尺寸 fallback -->
+<ClientOnly>
+  <UIcon :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'" class="size-5" />
+  <template #fallback>
+    <UIcon name="i-heroicons-moon" class="size-5" />
+  </template>
+</ClientOnly>
+```
+
+### 非確定值與 browser API
+
+| 禁止（兩端不同值） | 正確做法 |
+|------|----------|
+| template 渲染 `Date.now()`、`Math.random()`、`new Date()` 格式化當下時間 | 值放 `ref('')`，`onMounted` 再填 |
+| `<script setup>` 頂層讀 `window` / `localStorage` / `navigator` | 移入 `onMounted`，或 `if (import.meta.client)` |
+| `v-if` 條件只有 client 成立（螢幕寬度、瀏覽器特性） | 包 `<ClientOnly>`；或 `isClient` flag（`onMounted` 設 true） |
+
+### useFetch 首屏一致性
+
+首屏資料用 `useFetch`（SSR 取一次、payload 帶到 client 不重抓）。**不要**為「避開 SSR」改成 `onMounted + $fetch` 或無理由 `server: false`——製造首屏空白閃爍與兩端不一致。
+
+---
+
+## 視覺層級 `[P3, P4, P5]`
+
+文字層級、文字顏色層級、載體字級、按鈕尺寸的權威來源是 `.claude/rules/visual-hierarchy.md`（skill 已 `@` 載入）。
+硬規則：字級預設用 Tailwind 內建（`text-xs`~`text-4xl`）；禁止 `text-[Npx]` 任意值與未在 `@theme` 定義的具名 token（未定義 token 會靜默失效）。
+
+---
+
 ## Zod v4 規範 `[P5]`
 
 ```typescript
 // [X] Zod v3（禁止 required_error、invalid_type_error）
-z.number({ required_error: '請輸入背號' })
+z.number({ required_error: '請輸入站號' })
 
 // [O] Zod v4：用 error 或 validator message
-z.number({ error: '請輸入背號' })
+z.number({ error: '請輸入站號' })
 z.string().min(1, '請輸入姓名')  // 推薦
 ```
 
@@ -115,16 +171,16 @@ confirmColor?: 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error
 Nuxt UI v3 的 `<USelect>` **禁止** `value: ''`。「全部/不篩選」用 `undefined` + `placeholder`：
 
 ```typescript
-// [X] { label: '全部球隊', value: '' }  → 報錯
+// [X] { label: '全部觀測點', value: '' }  → 報錯
 // [O]
 const selected = ref<string | undefined>(undefined)
 ```
 
 ```vue
-<USelect v-model="selected" :items="options" value-key="value" placeholder="全部球隊" />
+<USelect v-model="selected" :items="options" value-key="value" placeholder="全部觀測點" />
 ```
 
-> API query 判斷：`...(selected.value ? { team_id: selected.value } : {})`
+> API query 判斷：`...(selected.value ? { site_id: selected.value } : {})`
 
 ### FormSubmitEvent
 
@@ -143,7 +199,7 @@ USelect 從 items 的 value 推斷 v-model 型別。窄型別會和 Zod 的 `str
 
 ```typescript
 // [O] 用 string[]
-const positionOptions = ['投手', '捕手', '一壘手', '游擊手']
+const positionOptions = ['觀測站', '捕手', '一壘手', '游擊手']
 // [X] 標 Position[] → 和 Zod 的 string 打架
 ```
 
@@ -169,12 +225,20 @@ const heatMapPoints = computed<HeatMapPoint[]>(() => analysis.value?.heat_map_da
 | 禁止定義 local interface | 從 `~/types/api/` import |
 | API 不存在 | 先建 API，不跳過 |
 
+### 契約缺口：GET 讀不回要顯示的欄位 → 停下回報 `[P5]`
+
+頁面要顯示的資料，唯一合法來源是 GET 端點回傳（經 useFetch / store）。實作時發現「這個欄位 command 寫得進去，但對應 GET 回傳沒有（或根本沒 GET）」：
+
+1. **停止該頁實作**，回報契約缺口：哪個 command 寫入哪些欄位、哪個 GET 缺
+2. 等 `/feature-to-api` 補讀回端點／欄位（見其 phase-1「讀回完整性自查」）後再繼續
+3. **禁止**用 local ref / store 暫存 command payload 兜出畫面——當下顯示正常、重新整理即丟，且同 session 的 e2e 完全抓不到（wedding-host 實戰：此 pattern 對全部測試隱形，事後補了 7 個 GET 才修完）
+
 ### 檔案結構 → 呼叫路徑
 
 | 檔案 | 路徑 | 方法 |
 |------|------|------|
-| `server/api/teams/index.get.ts` | `/api/teams` | GET |
-| `server/api/teams/[id].put.ts` | `/api/teams/${id}` | PUT |
+| `server/api/sites/index.get.ts` | `/api/sites` | GET |
+| `server/api/sites/[id].put.ts` | `/api/sites/${id}` | PUT |
 | `server/api/ai/start.post.ts` | `/api/ai/start` | POST |
 
 ---
@@ -209,18 +273,47 @@ await authStore.login(account, password)
 
 ---
 
+## 角色導向 UI 可見性 `[P2, P5]`
+
+**條件式**：僅當 `route-map.yaml` 有 `rbac` 區塊時套用（偵測規則與合約見 `/feature-to-api` 的 [rbac-scaffold.md](../../feature-to-api/references/rbac-scaffold.md)）。無 rbac 區塊 → 不加任何角色守門。
+
+角色來自 auth-scaffold 的 store（`authStore.roles`，由 `/auth/me` 填入）。**雙層守門**：入口隱藏（看不到）+ 路由 middleware（直接打 URL 也進不去），mock `requireRole` 在 API 層兜底回 403。
+
+### 入口 / 操作鈕隱藏 `[P5]`
+
+選單入口與危險操作鈕依角色 `v-if` 隱藏。角色名用 `route-map.rbac` 的實際值，**不寫死**：
+
+```vue
+<!-- [O] 受保護路由的選單入口：無權角色不顯示 -->
+<NuxtLink v-if="authStore.roles.includes('super_admin')" to="/accounts">帳號管理</NuxtLink>
+
+<!-- [O] 危險操作鈕：依角色顯示 -->
+<UButton v-if="authStore.roles.includes('super_admin')" color="error" @click="handleDelete">刪除帳號</UButton>
+
+<!-- [X] 顯示鈕但點了才說無權（壞 UX，且依賴 API 才知道擋） -->
+```
+
+> ⚠️ 入口隱藏是 UX，不是安全邊界——真正擋住靠下方 middleware + mock requireRole。但仍要隱藏，避免使用者點到死路。
+
+### 路由守門 `[P2]`
+
+`app/middleware/rbac.global.ts` 讀 `route-map.rbac.protected_routes`，當前角色不在 `allow` → 導向 `/403`（never-nav-current、別導到自己造成 loop，比照 `auth.global.ts`）。範本見 [phase-2-skeleton.md](phase-2-skeleton.md)「RBAC route guard」段。
+
+---
+
 ## 程式碼品質檢查規範 `[P5]`
 
-每個頁面實作完成後，**必須依序執行以下三項檢查**，針對本次新增或修改的檔案：
+每個頁面實作完成後，**必須依序執行以下檢查**：
 
 ```bash
-npx eslint <file> --fix          # ESLint 檢查 + 自動修復（@antfu/eslint-config）
+npx eslint <file> --fix          # 自動修復（@antfu/eslint-config；僅修復手段，不作驗證依據）
 npx prettier --write <file>      # Prettier 格式化（含 Tailwind class 排序）
+npm run eslint                    # ESLint 驗證（含 visual-hierarchy-check，與 CI 同一條）
 npm run typelint                  # TypeCheck 型別檢查（nuxi typecheck）
 ```
 
 - 有錯誤 → 修復後重新執行，直到全部通過
-- **三項全部通過才可向用戶輸出確認格式**
+- **全部通過才可向用戶輸出確認格式**
 
 ---
 
@@ -317,22 +410,14 @@ icon 與文字並排，或 icon + `<span class="sr-only">` 保留文字給 scree
 
 ## testid 規範 `[P2, P5]`
 
-### 來源優先級
+> **testid 命名規範的 SSOT 是 [`feature-to-flow/references/testid-conventions.md`](../../feature-to-flow/references/testid-conventions.md)**（優先序、允許清單、禁止清單、命名格式全在該檔）。本節不重列規則——雙寫必漂移。
 
-- **Phase 5**：直接從 `test/e2e/specs/*.spec.ts` 的 `getByTestId()` 複製（唯一來源，不讀 elements.md）
-- **Phase 2**：`spec/e2e-flows/pages/{page}.elements.md`（若存在）→ 下方命名規則（備用）
+**本 skill 要遵守的兩條**：
 
-### 命名格式：`{page}-{element}`
+- **testid 是 fallback，不是預設**：優先給語意 anchor（role + accessible name、label、可見文字）。只有在 SSOT 的「允許清單」情境（role+name 無法消歧、純樣式元素無語意角色、動態狀態屬性）才用 testid
+- **Phase 5 的 testid 唯一來源是 `test/e2e/specs/*.spec.ts`**：spec 用到 `getByTestId` 之處逐字複製，spec 沒用到就不要自己加。**禁止越權**——合約外的 testid 會被 `/vibe-e2e` 判為孤兒（`vibe-e2e/SKILL.md` 的 `orphan-testid`）
 
-| 類型 | 範例 |
-|------|------|
-| 頁面容器 | `teams-page` |
-| 輸入欄位 | `team-name` |
-| 按鈕 | `team-create`, `team-save`, `team-edit`, `team-delete` |
-| 列表 | `team-list` |
-| 確認彈窗 | `confirm-modal`, `confirm-ok`, `confirm-cancel` |
-
-> 確認彈窗 testid 以 `spec/e2e-flows/_common.flow.md` 為準。
+> SSOT 明文**禁止**的幾類（別再產）：`{page}-page` 容器 testid、`{entity}-{field}-input` 等表單欄位 testid（用 `getByLabel(/欄位名/)` 找）、column-level testid。理由與反例見 SSOT 的「禁止清單」段。
 
 ---
 

@@ -29,7 +29,7 @@ spec/gherkin-feature/*.feature（Given event / When command / Then event）
 >
 > `.flow.md` 不是 UI 步驟腳本，是 business invariant 的可執行描述：
 >
-> 1. **Steps 用使用者意圖** — 「觸發匯出此次練習」，不是「點擊 `[data-testid="export-single-practice-button"]`」
+> 1. **Steps 用使用者意圖** — 「觸發匯出此次觀測時段」，不是「點擊 `[data-testid="export-single-watch-button"]`」
 > 2. **Verification 用業務可觀察結果** — API spy / role+text / 狀態變化，不是逐欄 testid 斷言
 > 3. **每個 Scenario 留「不再凍結」段** — 列出 vibe 可自由迭代的 UX 細節
 > 4. **testid 為 fallback** — 僅在 role + accessible name 無法消歧時用
@@ -55,16 +55,22 @@ spec/gherkin-feature/*.feature（Given event / When command / Then event）
 ```
 00-auth.flow.md        # 認證（登入、修改密碼、登出 …）
 01-accounts.flow.md    # 帳號管理（帳號 CRUD、備註）
-02-teams.flow.md       # 隊伍（球員的前置）
-03-players.flow.md     # 球員
-04-practice.flow.md    # 練習主流程
+02-sites.flow.md       # 觀測點（觀測站的前置）
+03-stations.flow.md     # 觀測站
+04-watch.flow.md    # 觀測時段主流程
 05-cameras.flow.md     # 相機（背景同步）
 06-export.flow.md      # 匯出（衍生功能）
 ```
 
 > **`00-` 編號保留給 auth**（capability layer 首要分組，業界主流，見 [references/phase-0-plan.md](references/phase-0-plan.md) 第 2 段）。
+> **條件式**：僅在 feature 含登入需求（登入 / login / 帳號+密碼 / 未登入導向）時才產 `00-auth.flow.md`；
+> 純展示 / 無登入專案不產（編號保留即可）。auth 守門細節（白名單、未登入導向、防迴圈）由 feature-to-api 的 [auth-scaffold.md](../feature-to-api/references/auth-scaffold.md) 處理。
 >
 > 編號必須穩定。Sync 模式（已存在編號）時保留原編號，只在新增模組時往後遞增；不可重排既有編號，否則 `/test e2e` 的 spec 對應會錯位。
+
+> **`_common.flow.md`（共用前置流程，本 skill 產出）**：Phase 1 首次寫檔時先產出／維護 `spec/e2e-flows/_common.flow.md`，再寫各 module flow。內容為跨 module 共用的前置合約：登入步驟與測試帳號引用、確認彈窗、資料重置約定——消費端與欄位合約見 [`/test e2e` setup](../test/e2e/references/setup.md)。已存在時只在共用步驟變更時更新。
+
+> **條件式跨切面關注點**（即時連線 / 影音串流 / 角色分層，偵測到才寫）：哪些要立業務不變式、哪些屬 vibe 自由區不凍結、與 feature-to-api 偵測的分工，見 [phase-1-write.md「條件式跨切面關注點」](references/phase-1-write.md)。Phase 1 寫檔時該章為必讀。
 
 ---
 
@@ -81,7 +87,7 @@ spec/gherkin-feature/*.feature（Given event / When command / Then event）
 | Phase | 名稱 | 輸出 | 必讀規範 |
 |-------|------|------|----------|
 | 0 | 計畫 | module 分組表、Feature → flow 對照表 | [phase-0-plan.md](references/phase-0-plan.md) |
-| 1 | 寫檔 | `spec/e2e-flows/{module}.flow.md` | [phase-1-write.md](references/phase-1-write.md) + [flow-template.md](references/flow-template.md) + [testid-conventions.md](references/testid-conventions.md) |
+| 1 | 寫檔 | `spec/e2e-flows/_common.flow.md`（首次）+ `{module}.flow.md` | [phase-1-write.md](references/phase-1-write.md) + [flow-template.md](references/flow-template.md) + [testid-conventions.md](references/testid-conventions.md) |
 
 ---
 
@@ -99,7 +105,7 @@ spec/gherkin-feature/*.feature（Given event / When command / Then event）
 - 執行 `/feature-to-flow`（無參數）時，**直接開始 Phase 0**，掃描 `spec/gherkin-feature/` 內所有 `*.feature` 檔（含 `*.dsl.feature`）
 - 帶 module 參數時（如 `accounts`），只處理該 module 對應的 Feature 區塊
 - **Phase 0 結束時必須停下來等使用者確認**：列出建議的 module 分組與 Feature → flow 對應，使用者回覆 `OK` / 調整建議後才進入 Phase 1
-- 若 `spec/e2e-flows/{module}.flow.md` 已存在，Phase 1 寫入前要在計畫中標示「覆寫」並等確認
+- 若 `spec/e2e-flows/{module}.flow.md` 已存在，Phase 1 寫入前要在計畫中標示「覆寫」並等確認；確認後、寫檔前，先寫 sentinel 檔 `.claude/tmp/frozen-allow.json`（`{ "reason": "<為何覆寫>", "files": ["spec/e2e-flows/{module}.flow.md"] }`）——凍結 hook 會對清單內目標放行一次，否則覆寫必被擋下
 - 不主動詢問其他細節（命名、testid 規則皆已內建於 references）
 
 ---

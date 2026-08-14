@@ -13,13 +13,13 @@ description: Gate 守門 — 跑 playwright.gate.config.ts（主 spec + vibe spe
 
 主 spec 是 SSOT（Single Source of Truth），凍結，不可被任何 vibe 流程修改。vibe spec 不凍結（可由 `/vibe-e2e` 重生或使用者決定刪改），但 **/vibe-check 本身只報告、永遠不動它**。
 
-pre-push hook 跑的是同一份 gate config——/vibe-check 綠燈 = push 會過。
+pre-push hook 跑的是同一份 gate config，但在 **Docker production build 內執行**（`scripts/docker-gate.sh`；Docker 不可用時 fallback 本機同款）——/vibe-check 綠燈 ≈ push 會過，dev/prod build 差異（SSR/prerender 等 prod-only 問題）屬極少數例外，由 Docker gate 提早抓出。
 
 ## 何時用
 
 - 每次 vibe UI 完，**第一步**先跑這個
 - gate 綠燈才有資格往 `/vibe-setup`、`/vibe-e2e` 推進
-- 想單獨確認守門狀態（= pre-push 會不會過）
+- 想單獨確認守門狀態（≈ pre-push 會不會過，執行環境差異見上方「目的」段）
 
 ## 使用方式
 
@@ -51,13 +51,42 @@ pre-push hook 跑的是同一份 gate config——/vibe-check 綠燈 = push 會�
 
 ### Step 1：跑 gate spec
 
+**先確認 gate 範圍內有測試檔再跑**——Playwright 對「No tests found」回非 0，空模板直接跑裸指令會拿到 exit 1，但沒有任何可分流的失敗 spec（Step 2 的三個紅燈分支全都對不上）：
+
 ```bash
+gate_specs=$(find test/e2e/specs test/e2e/vibe -name '*.spec.ts' -not -path '*/vibe/unstable/*' 2>/dev/null || true)
+if [ -z "$gate_specs" ]; then
+  echo "⚠️  尚無 gate 測試檔（test/e2e/specs｜vibe/*.spec.ts）→ 跳過 gate spec。"
+  echo "   （SDD 流程產出 spec 後，此 gate 才會真正守。）"
+  exit 0
+fi
 npx playwright test --config playwright.gate.config.ts
 ```
 
-不用 fast、不用 diff 分類、不挑 module——全量跑（主 spec + vibe spec，排除 `vibe/unstable/`）。原因：gate 是守門合約，少跑一條都可能漏判；跟 pre-push 跑同一份 config，這裡綠 = push 會過。
+前置檢查與 `.husky/pre-push` 是**同一套邏輯**（該檔 `gate_specs` 段，含 `|| true` 的 errexit 處理）。兩個入口對「沒有測試檔」的判定必須一致——否則「/vibe-check 綠燈 ≈ push 會過」這個承諾在模板初始狀態就不成立。
+
+> **刻意不用 `--pass-with-no-tests`**：那會讓「config 壞掉導致收不到測試」也靜默綠燈，把守門失效偽裝成通過。前置檢查會大聲說出「沒有測試」，訊號強得多。
+
+有測試檔時：不用 fast、不用 diff 分類、不挑 module——全量跑（主 spec + vibe spec，排除 `vibe/unstable/`）。原因：gate 是守門合約，少跑一條都可能漏判；跟 pre-push 跑同一份 config（執行環境差異見「目的」段），這裡綠 ≈ push 會過。
 
 ### Step 2：解析結果（依失敗 spec 路徑分流）
+
+**無測試檔（Step 1 前置檢查已跳過，模板初始狀態的正常情形）**：
+
+```
+=== Vibe Check 跳過 ===
+
+gate 範圍（test/e2e/specs｜vibe/*.spec.ts）尚無測試檔 → 未跑 gate。
+
+這不是失敗：SDD 流程尚未產出 spec，gate 沒有東西可守。
+pre-push 對此情形同樣放行（.husky/pre-push 前置檢查一致）。
+
+下一步建議：
+- 要讓 gate 真正守起來 → 先跑 /test e2e spec 產出主 spec
+- 純 visual 改動可直接 commit
+```
+
+**不要**把這個情形報成紅燈，也**不要**為了「讓 gate 有東西跑」而去生測試檔——產 spec 是 `/test e2e` 的職責，不是 /vibe-check 的。
 
 **綠燈**：
 
@@ -91,7 +120,7 @@ vibe spec：6/6 passed ✅（unstable/ 不計，守門排除）
 失敗清單：
 
 1. 01-accounts.spec.ts › 規則：顯示帳號列表（v2） › 顯示帳號列表
-   失敗訊息：findAccountEntity(/coach_wang/) 找不到 element
+   失敗訊息：findAccountEntity(/observer_wang/) 找不到 element
    對應 flow：spec/e2e-flows/01-accounts.flow.md → Flow: 顯示帳號列表
    可能違反的 invariant：
    - 「列表必須能識別未刪除的帳號實體」
@@ -99,7 +128,7 @@ vibe spec：6/6 passed ✅（unstable/ 不計，守門排除）
    嫌疑 vibe 改動（grep app/pages/accounts/）：
    - app/pages/accounts/index.vue 是否還顯示 username 欄位？是否還能用 username 找到 row？
    建議行動：
-   - 確認 coach_wang 帳號列在 /accounts 頁、且其 username 字串「coach_wang」可被視覺/讀屏識別
+   - 確認 observer_wang 帳號列在 /accounts 頁、且其 username 字串「observer_wang」可被視覺/讀屏識別
    - 不要修改 test/e2e/specs/01-accounts.spec.ts
 
 2. ...
@@ -116,9 +145,9 @@ vibe spec：6/6 passed ✅（unstable/ 不計，守門排除）
 ```
 ⚠️ 以下失敗是 vibe 層 spec（test/e2e/vibe/），不是業務合約：
 
-1. interaction-practice-lazy-load.spec.ts › vibe：投球清單 lazy loading
+1. interaction-watch-lazy-load.spec.ts › vibe：目擊事件清單 lazy loading
    失敗訊息：…
-   來源 hunk（spec 首行 marker）：app/pages/practice/[practiceId].vue:148-180
+   來源 hunk（spec 首行 marker）：app/pages/watch/[watchId].vue:148-180
    這支 spec 守的行為：滾動 lazy load 可持續載入、不在分頁交界卡死
 
    你的選項（請選一個，我不會代你決定）：
@@ -134,6 +163,7 @@ specs/ 與 vibe/ 同時紅時，A、B 兩區塊都要出，並提醒先處理 A�
 
 最後一行明確表態：
 
+- 無測試檔 → 「gate 尚無 spec 可守，已跳過（非失敗）；產出主 spec 後才會真正守」
 - 全綠 → 「業務合約與 vibe 行為守住，可繼續 /vibe-setup 或 commit（pre-push 會過）」
 - specs/ 紅 → 「請對照上方建議調整 vibe，調整後再跑 /vibe-check」
 - vibe/ 紅 → 「請從上方選項選一個處理方式，我等你決定」
