@@ -112,8 +112,13 @@ flow 不存在？
 
 ```bash
 # 取得檔案修改時間（秒級 Unix timestamp）
+# macOS / BSD：
 stat -f %m spec/e2e-flows/04-建立觀測點.flow.md
 stat -f %m test/e2e/specs/04-建立觀測點.spec.ts
+
+# Linux / GNU coreutils（CI runner 多為此）：
+stat -c %Y spec/e2e-flows/04-建立觀測點.flow.md
+stat -c %Y test/e2e/specs/04-建立觀測點.spec.ts
 ```
 
 > flow 的 mtime **嚴格大於** spec 的 mtime 才標記為「更新」。相等視為同步。

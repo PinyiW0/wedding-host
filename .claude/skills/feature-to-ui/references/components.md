@@ -22,7 +22,7 @@
     <UInput v-model="state.number" class="w-full" />
   </UFormField>
   <UFormField label="緯度" name="latitude">
-    <UInput v-model="state.height" class="w-full" />
+    <UInput v-model="state.latitude" class="w-full" />
   </UFormField>
 </div>
 ```

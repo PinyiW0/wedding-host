@@ -33,7 +33,7 @@ find spec/gherkin-feature -maxdepth 1 -type f -name '*.feature'
 
 ### 2. 推導 module 分組（兩段式：capability 優先、aggregate 次要）
 
-> **業界對齊**：Cucumber 官方調查與 BDD 主流（[Cucumber blog](https://cucumber.io/blog/bdd/solving-how-to-organise-feature-files/)、[andredesousa/gherkin-best-watches](https://github.com/andredesousa/gherkin-best-watches)）首選**按 capability / functional area 分組**，aggregate 為次要。理由：feature file 服務使用者場景（login vs. account management 是兩個不同使用者目的），aggregate boundary 多是 source code 的事。
+> **業界對齊**：Cucumber 官方調查與 BDD 主流（[Cucumber blog](https://cucumber.io/blog/bdd/solving-how-to-organise-feature-files/)、[andredesousa/gherkin-best-practices](https://github.com/andredesousa/gherkin-best-practices)）首選**按 capability / functional area 分組**，aggregate 為次要。理由：feature file 服務使用者場景（login vs. account management 是兩個不同使用者目的），aggregate boundary 多是 source code 的事。
 >
 > **歷史教訓**：曾將 `Feature: 登入`、`Feature: 修改密碼` 全塞進 `accounts`（理由是同 Account aggregate / `acc-001` stream）。結果 module 名與 URL 邊界不一致（`accounts` 卻涵蓋 `/login`）、語意搜尋失靈（找 login 測試要翻 `01-accounts.spec.ts`）。修法：用 capability layer 把 auth 切出來。
 
