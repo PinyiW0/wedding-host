@@ -136,13 +136,7 @@ export function useSeatingCanvasDrag(deps: CanvasDragDeps) {
   const localStagePos = ref<{ x: number, y: number } | null>(null)
   const isMovingStage = ref(false)
   let stageDragStart = { px: 0, py: 0, ox: 0, oy: 0 }
-  const stageBox = computed(() => {
-    const layout = toValue(deps.venueLayout)
-    if (!layout)
-      return null
-    const pos = localStagePos.value ?? { x: layout.stagePositionX, y: layout.stagePositionY }
-    return { x: pos.x, y: pos.y, width: layout.stageWidth, height: layout.stageHeight }
-  })
+  const stageBox = computed(() => computeStageBox(toValue(deps.venueLayout), localStagePos.value))
 
   function onStagePointerDown(event: PointerEvent) {
     if (event.button !== 0 || !stageBox.value)
@@ -192,33 +186,14 @@ export function useSeatingCanvasDrag(deps: CanvasDragDeps) {
   }
 
   // 畫布尺寸：依最遠的桌位、標記、舞台與參考圖推算，確保可容納並可捲動
-  const canvasSize = computed(() => {
-    const BLOCK = 290
-    const PAD = 48
-    let maxX = 0
-    let maxY = 0
-    for (const t of toValue(deps.tables) ?? []) {
-      const p = tablePos(t)
-      maxX = Math.max(maxX, p.x + BLOCK)
-      maxY = Math.max(maxY, p.y + BLOCK)
-    }
-    for (const m of toValue(deps.venueMarkers) ?? []) {
-      const p = markerPos(m)
-      maxX = Math.max(maxX, p.x + m.width)
-      maxY = Math.max(maxY, p.y + m.height)
-    }
-    const stage = stageBox.value
-    if (stage) {
-      maxX = Math.max(maxX, stage.x + stage.width)
-      maxY = Math.max(maxY, stage.y + stage.height)
-    }
-    const refBox = toValue(deps.refImageBox)
-    if (refBox) {
-      maxX = Math.max(maxX, refBox.x + refBox.width)
-      maxY = Math.max(maxY, refBox.y + refBox.height)
-    }
-    return { width: Math.max(640, maxX + PAD), height: Math.max(420, maxY + PAD) }
-  })
+  const canvasSize = computed(() => computeCanvasSize({
+    tables: toValue(deps.tables) ?? [],
+    markers: toValue(deps.venueMarkers) ?? [],
+    tablePos,
+    markerPos,
+    stageBox: stageBox.value,
+    refImageBox: toValue(deps.refImageBox),
+  }))
 
   // 卸載時清掉殘留的 window 拖曳監聽（避免拖曳中途切頁洩漏）
   onBeforeUnmount(() => {
