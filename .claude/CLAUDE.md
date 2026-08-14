@@ -52,6 +52,7 @@ npm run db:create-admin  # 建立管理者帳號
 - **Pinia store 採 `@pinia/nuxt` 預設 auto-import** — `app/stores/` 下的 store 直接使用、不需手動 import（與 `pinia` skill 一致）
 - **本專案是 Nuxt 4** — `nuxt` skill 基於 3.x（整體相容），目錄結構與設定以 Nuxt 4 官方為準
   - data fetching 兩處需注意：`useFetch`/`useAsyncData` 的 `data` 是 `shallowRef`（深層 mutate 不觸發響應、預設值 `undefined`）；`immediate: false` 時初始 `status` 是 `'idle'` 非 `'pending'`
+- **本專案 auth 無 refresh token** — `feature-to-api/references/auth-scaffold.md` 是**新專案 scaffold 用**的範本，教的是 access + refresh 雙 token（`/auth/refresh`、single-flight refresh、401→refresh→retry）。本專案認證是**單一 JWT（7 天）**，`server/api/v1/auth/` 只有 `login.post.ts`，沒有 refresh 端點也不打算加。改既有 auth 時不得照該檔補 refresh 機制——那是憑空造一個不存在的東西。該檔僅在未來 scaffold 全新專案時參考
 
 > 維持與官方同步：
 > - 升級框架 major/minor 時，重跑 `npx skills add antfu/skills --skill=vue --skill=nuxt --skill=pinia` 重抓快照
@@ -106,6 +107,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | `/verify-ac` | 對照 issue AC 逐條驗收，未過自動修（上限 2 輪），結果勾回 issue | issue 有 `## 驗收標準`、編號可解析 |
 | `/commit` | 依 SDD 階段分群產生 Conventional Commits（列草案待確認） | 有工作區改動 |
 | `/pr` | push → PR 草案 → `gh pr create`（分支含 `#N` → 自動 Closes #N） | 已有 commit |
+| `/sdd-status` | 唯讀盤點 SDD 管線七站進度（每站標完成／部分／未開始＋判定依據），建議下一步 | 無 |
 | `/feature-to-flow` | Feature → `.flow.md`（business invariant + UX-agnostic E2E 流程） | `.feature` 已放入 `spec/gherkin-feature/` |
 | `/feature-to-api` | Feature → 型別定義 + Mock API | `.flow.md` 已放入 `spec/e2e-flows/` |
 | `/feature-to-ui` | Feature → 完整 UI 畫面 | `/feature-to-api` 已完成 |
