@@ -15,8 +15,12 @@
 SECRET_KEY_PATTERN='(^|_)(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS)(_|$)|^NUXT_PRIVATE_'
 
 # 本次 commit 中 staged 的 .env 系列檔（.env、.env.example、.env.production…）
+# diff-filter 必須含 R 與 T，不能只有 ACM：
+#   R（rename）— `git mv 已版控的檔 .env` 產生的是 R，只濾 ACM 會整個漏掉，
+#                機敏值可藉此改名進 .env* 而不被掃到（實測可繞過）。
+#   T（type change）— symlink ↔ 一般檔的轉換算 T 不算 M，同樣會漏。
 # 注意：husky 以 `sh -e` 執行本檔，grep 無命中時回傳 1 會觸發 errexit，故加 || true
-staged_envs=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env($|\.)' || true)
+staged_envs=$(git diff --cached --name-only --diff-filter=ACMRT | grep -E '(^|/)\.env($|\.)' || true)
 
 if [ -z "$staged_envs" ]; then
   exit 0
