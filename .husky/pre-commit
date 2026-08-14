@@ -1,0 +1,77 @@
+#!/usr/bin/env sh
+# Pre-commit gate: 擋下 staged 的 .env 系列檔帶真機敏值。
+#
+# 為什麼需要這道 hook：本專案 .env 未進版控（.gitignore 擋著），但 .gitignore 擋不住
+# `git add -f .env` 誤加，也管不到「本來就進版控」的 .env.example——一旦有人在
+# .env.example 填入真 key（或誤 add .env），commit 會毫無阻力地把它帶走。
+# 凍結區有 frozen-paths-guard、server 安全有 server-security-guard，都是 hook 技術強制；
+# 本檔補上機敏值這條紅線的同等防線。
+#
+# 註：檢查的是 index（staged）內容而非工作目錄——commit 送出的是 index。
+# 誤判（變數名含 KEY 但值確實可公開）可用 git commit --no-verify 跳過。
+
+# 機敏變數名樣式：NUXT_PRIVATE_* 前綴，或名稱含 KEY/SECRET/TOKEN/PASSWORD/CREDENTIAL 字段。
+# 用「字段」而非「子字串」比對，避免 MONKEY、TOKENIZER 這類誤傷。
+SECRET_KEY_PATTERN='(^|_)(KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS)(_|$)|^NUXT_PRIVATE_'
+
+# 本次 commit 中 staged 的 .env 系列檔（.env、.env.example、.env.production…）
+# diff-filter 必須含 R 與 T，不能只有 ACM：
+#   R（rename）— `git mv 已版控的檔 .env` 產生的是 R，只濾 ACM 會整個漏掉，
+#                機敏值可藉此改名進 .env* 而不被掃到（實測可繞過）。
+#   T（type change）— symlink ↔ 一般檔的轉換算 T 不算 M，同樣會漏。
+# 注意：husky 以 `sh -e` 執行本檔，grep 無命中時回傳 1 會觸發 errexit，故加 || true
+staged_envs=$(git diff --cached --name-only --diff-filter=ACMRT | grep -E '(^|/)\.env($|\.)' || true)
+
+if [ -z "$staged_envs" ]; then
+  exit 0
+fi
+
+violations=''
+
+for f in $staged_envs; do
+  content=$(git show ":${f}" 2>/dev/null || true)
+  [ -z "$content" ] && continue
+
+  # heredoc 餵給 while（非 pipeline）→ 迴圈內對 violations 的賦值能保留到迴圈外
+  while IFS= read -r line; do
+    # 略過空行與註解
+    case "$line" in
+      '' | \#*) continue ;;
+    esac
+    # 只看 KEY=VALUE 形式
+    case "$line" in
+      *=*) ;;
+      *) continue ;;
+    esac
+
+    key=${line%%=*}
+    value=${line#*=}
+
+    # 值：去頭尾空白，再剝一層引號；空值＝僅宣告 passthrough，合法
+    value=$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s/^['\"]//" -e "s/['\"]\$//")
+    [ -z "$value" ] && continue
+
+    # 變數名：去空白與 export 前綴
+    key=$(printf '%s' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^export[[:space:]]*//')
+
+    if printf '%s' "$key" | grep -qE "$SECRET_KEY_PATTERN"; then
+      violations="${violations}  ${f} → ${key}\n"
+    fi
+  done <<EOF
+$content
+EOF
+done
+
+if [ -n "$violations" ]; then
+  echo "❌ Commit 已擋下：staged 的 .env 系列檔中有機敏變數帶了非空值。"
+  echo ""
+  printf '%b' "$violations"
+  echo ""
+  echo "   .env 不進版控、.env.example 只放空值或假值佔位——"
+  echo "   真機敏值一律走本機 .env（git 忽略）或部署平台的環境變數注入。"
+  echo ""
+  echo "   確認是誤判（變數名含 KEY 但值可公開）→ git commit --no-verify"
+  exit 1
+fi
+
+exit 0

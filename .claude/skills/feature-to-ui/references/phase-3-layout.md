@@ -8,8 +8,10 @@
 - ui-config.yaml > colorMode（深淺模式）
 - ui-config.yaml > responsive.sidebar（響應式設定）
 - ui-config.yaml > icons.common（常用 icon）
+- ui-config.yaml > loading.pageIndicator（分頁切換進度條開關）
 - spec/report/route-map.yaml > routes（所有路由，用於建立 sidebar 導航項目）
 - rules.md [P3] 段落（配色策略、深淺模式與對比色、Layout 規範）
+- .claude/rules/visual-hierarchy.md（文字/顏色層級、按鈕尺寸——Layout 的標題與導航文字層級依此）
 
 執行 /nuxt-ui 載入組件文檔
 ```
@@ -51,6 +53,7 @@ Phase 3 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 <template>
   <div>
     <NuxtRouteAnnouncer />
+    <NuxtLoadingIndicator color="var(--ui-primary)" />
     <UApp :toaster="{ position: '...from ui-config.yaml > toast.position', duration: ...from ui-config.yaml > toast.duration }">
       <NuxtLayout>
         <NuxtPage />
@@ -67,6 +70,7 @@ Phase 3 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 <template>
   <div>
     <NuxtRouteAnnouncer />
+    <NuxtLoadingIndicator color="var(--ui-primary)" />
     <UApp :toaster="{ position: '...from ui-config.yaml > toast.position', duration: ...from ui-config.yaml > toast.duration }">
       <NuxtPage />
     </UApp>
@@ -77,6 +81,8 @@ Phase 3 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 > ⚠️ **toaster 設定** 必須從 `ui-config.yaml > toast` 讀取 `position` 和 `duration`，完整帶入 `:toaster="{ position, duration }"`
 >
 > ⚠️ **不要在 `<UApp>` 之外額外放 `<UToaster>`**
+>
+> ⚠️ **`<NuxtLoadingIndicator>`** 是分頁切換的頂部進度條：`ui-config.yaml > loading.pageIndicator.enabled: false` 時省略此行；`color` 用 NuxtUI 主題變數 `var(--ui-primary)` 對齊主色，不寫死色值
 
 ## Layout 偏好判斷（從 ui-config.yaml 自動讀取，不詢問用戶）
 
@@ -110,8 +116,8 @@ const isCollapsed = ref(false)
 
 const navigation = [
   { label: '首頁', icon: 'i-heroicons-home', to: '/' },
-  { label: '球隊', icon: 'i-heroicons-user-group', to: '/teams' },
-  { label: '球員', icon: 'i-heroicons-users', to: '/players' },
+  { label: '觀測點', icon: 'i-heroicons-user-group', to: '/sites' },
+  { label: '觀測站', icon: 'i-heroicons-users', to: '/stations' },
 ]
 
 function toggleSidebar() {
@@ -171,13 +177,20 @@ async function handleLogout() {
           :class="isCollapsed ? 'justify-center' : 'gap-3'"
           @click="toggleColorMode"
         >
-          <UIcon
-            :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'"
-            class="size-5 shrink-0"
-          />
-          <span v-if="!isCollapsed" class="truncate text-sm">
-            {{ colorMode.value === 'dark' ? '淺色模式' : '深色模式' }}
-          </span>
+          <!-- colorMode.value 兩端不同 → 包 ClientOnly + 同尺寸 fallback（見 rules.md > SSR / Hydration 安全） -->
+          <ClientOnly>
+            <UIcon
+              :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'"
+              class="size-5 shrink-0"
+            />
+            <span v-if="!isCollapsed" class="truncate text-sm">
+              {{ colorMode.value === 'dark' ? '淺色模式' : '深色模式' }}
+            </span>
+            <template #fallback>
+              <UIcon name="i-heroicons-moon" class="size-5 shrink-0" />
+              <span v-if="!isCollapsed" class="truncate text-sm">深色模式</span>
+            </template>
+          </ClientOnly>
         </button>
 
         <!-- 會員名稱 + 登出 -->
@@ -187,7 +200,7 @@ async function handleLogout() {
         >
           <UIcon name="i-heroicons-user-circle" class="size-5 shrink-0 text-primary-600 dark:text-primary-400" />
           <span class="flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">
-            {{ authStore.user?.account ?? '未登入' }}
+            {{ authStore.account ?? '未登入' }}
           </span>
           <UButton
             icon="i-heroicons-arrow-right-on-rectangle"
@@ -248,16 +261,22 @@ async function handleLogout() {
               class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-300 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
               @click="toggleColorMode"
             >
-              <UIcon
-                :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'"
-                class="size-5"
-              />
-              <span class="text-sm">{{ colorMode.value === 'dark' ? '淺色模式' : '深色模式' }}</span>
+              <ClientOnly>
+                <UIcon
+                  :name="colorMode.value === 'dark' ? 'i-heroicons-sun' : 'i-heroicons-moon'"
+                  class="size-5"
+                />
+                <span class="text-sm">{{ colorMode.value === 'dark' ? '淺色模式' : '深色模式' }}</span>
+                <template #fallback>
+                  <UIcon name="i-heroicons-moon" class="size-5" />
+                  <span class="text-sm">深色模式</span>
+                </template>
+              </ClientOnly>
             </button>
             <div class="flex items-center gap-3 rounded-lg px-3 py-2">
               <UIcon name="i-heroicons-user-circle" class="size-5 text-primary-600 dark:text-primary-400" />
               <span class="flex-1 truncate text-sm text-neutral-700 dark:text-neutral-300">
-                {{ authStore.user?.account ?? '未登入' }}
+                {{ authStore.account ?? '未登入' }}
               </span>
               <UButton
                 icon="i-heroicons-arrow-right-on-rectangle"
@@ -288,6 +307,12 @@ async function handleLogout() {
   </div>
 </template>
 ```
+
+> **Hydration 注意**（詳見 [rules.md](rules.md) > SSR / Hydration 安全）：
+> - `colorMode.value` 的渲染一律包 `<ClientOnly>` + 同尺寸 fallback——server 不知道 client 深淺偏好。
+> - `authStore.account` 等登入欄位**不需要**包 `<ClientOnly>`——persist 預設存 cookie，SSR 請求帶 cookie、
+>   server 端 store 還原出同一份登入狀態，兩端渲染一致。包了反而造成登入後首屏閃「未登入」。
+>   （欄位名以 auth-scaffold 產出的 store 為準：扁平的 `account` / `name` / `roles`，**沒有** `user` 物件。）
 
 ## auth.vue 範例
 

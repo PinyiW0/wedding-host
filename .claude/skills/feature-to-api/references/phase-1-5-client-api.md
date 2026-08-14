@@ -11,7 +11,7 @@
 ```
 僅需讀取：
 - ../references/openapi-conventions.md（命名、HTTP method、path 樣式）
-- app/types/api/*.ts（Phase 0 已建立，作為 function signature 來源）
+- app/types/api/*.ts（Phase 0 已建立，作為 function signature 來源；OpenAPI 模式下為 `_schema.d.ts` 的 view alias，見 ../references/openapi-codegen.md）
 - spec/report/route-map.yaml > api_contract.path_prefix
 - spec/report/route-map.yaml > api_contract.endpoints
 - app/composables/useHttp.ts（理解 useHttp().get / getOnce / post / put / patch / delete 的 options 形態，型別 HttpGetOptions / HttpRequestOptions）
@@ -27,7 +27,7 @@ Sync 模式額外讀取：
 
 ## 統一 HTTP 入口（單一 useHttp）
 
-所有 client 呼叫只走一個 composable —— `useHttp()`，共用 `runtimeConfig.public.apiBase` 這個 domain。path 替換、baseURL 由 `useHttp` 內部統一處理，無副作用（本模板不含 auth / 401 / envelope）。
+所有 client 呼叫只走一個 composable —— `useHttp()`，共用 `runtimeConfig.public.apiBase` 這個 domain。path 替換、baseURL、envelope 拆封由 `useHttp` 內部統一處理（envelope 預設拆、`apiEnvelope=false` 可關；本模板尚不含 auth / 401，由 auth scaffold 偵測到登入需求時注入）。
 
 ```
 useHttp().get        ← page 層用，useFetch，SSR-friendly，reactive url，回 AsyncData
@@ -51,18 +51,22 @@ useHttp().post/put/patch/delete ← 寫入，$fetch，回 Promise
 
 ## 函式命名規則
 
+> ⚠️ 以下範例一律用**假想的 notes 領域**（notebooks / notes / members / tags / attachments）示意，**不是本專案的實際端點**。實際產出以 `route-map.yaml > api_contract.endpoints` 為準，禁止照抄範例路徑。
+>
+> **唯一例外**：`/auth/login`（見下方命名表與「登入端點」段）刻意沿用跨專案通用的登入慣例，因此與 `spec/api/api-spec.yml` 的實際端點同名。它示範的是**命名規則**（`login{Subject}`），不是本專案的授權模型——實際路徑仍以 `route-map.yaml` 為準。
+
 | Endpoint pattern | Function name | 範例 |
 |---|---|---|
-| `GET /{resource}` | `list{Resource}` | `listTeams`, `listPlayers` |
-| `GET /{resource}/{id}` | `get{Resource}` | `getTeam`, `getPracticeDetail` |
-| `POST /{resource}` | `create{Resource}` | `createTeam`, `createPlayer` |
-| `PATCH /{resource}/{id}` | `update{Resource}` | `updateTeam`, `updatePlayer` |
-| `DELETE /{resource}/{id}` | `delete{Resource}` | `deleteTeam`, `deletePlayer` |
-| `POST /{resource}/{id}/{action}` | `{action}{Resource}` | `endPractice`, `favoritePitch`, `unfavoritePitch` |
-| `PATCH /{resource}/{id}/{action}` | `{action}{Resource}` | `changeAccountPassword`, `resetAccountPassword` |
-| `POST /auth/login` | `login{Subject}` | `loginCoach`, `loginAdmin` |
+| `GET /{resource}` | `list{Resource}` | `listNotebooks`, `listNotes` |
+| `GET /{resource}/{id}` | `get{Resource}` | `getNotebook`, `getNoteDetail` |
+| `POST /{resource}` | `create{Resource}` | `createNotebook`, `createNote` |
+| `PATCH /{resource}/{id}` | `update{Resource}` | `updateNotebook`, `updateNote` |
+| `DELETE /{resource}/{id}` | `delete{Resource}` | `deleteNotebook`, `deleteNote` |
+| `POST /{resource}/{id}/{action}` | `{action}{Resource}` | `archiveNote`, `pinNote`, `unpinNote` |
+| `PATCH /{resource}/{id}/{action}` | `{action}{Resource}` | `moveNote`, `renameNotebook` |
+| `POST /auth/login` | `login{Subject}` | `loginMember`, `loginAdmin` |
 
-> 命名遵循「動詞 + 資源」。多字資源用 PascalCase 連寫（`PracticePitch` 不是 `Practice_Pitch`）。
+> 命名遵循「動詞 + 資源」。多字資源用 PascalCase 連寫（`NotebookNote` 不是 `Notebook_Note`）。
 
 ---
 
@@ -71,12 +75,12 @@ useHttp().post/put/patch/delete ← 寫入，$fetch，回 Promise
 ### GET 列表（reactive，主流用法）
 
 ```typescript
-import type { TeamListItem } from '~/types/api/teams'
+import type { NotebookListItem } from '~/types/api/notebooks'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import { useHttp } from '~/composables/useHttp'
 
-export function listTeams(options?: HttpGetOptions<TeamListItem[]>) {
-  return useHttp().get<TeamListItem[]>('/api/v1/teams', options)
+export function listNotebooks(options?: HttpGetOptions<NotebookListItem[]>) {
+  return useHttp().get<NotebookListItem[]>('/api/v1/notebooks', options)
 }
 ```
 
@@ -85,83 +89,88 @@ export function listTeams(options?: HttpGetOptions<TeamListItem[]>) {
 ```typescript
 import type { MaybeRefOrGetter } from 'vue'
 
-export function listPracticePitches(
-  practiceId: MaybeRefOrGetter<string>,
-  options?: HttpGetOptions<PracticePitchItem[]>,
+export function listNotebookNotes(
+  notebookId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<NotebookNoteItem[]>,
 ) {
-  return useHttp().get<PracticePitchItem[]>(
-    () => `/api/v1/practices/${toValue(practiceId)}/pitches`,
+  return useHttp().get<NotebookNoteItem[]>(
+    () => `/api/v1/notebooks/${toValue(notebookId)}/notes`,
     options,
   )
 }
 ```
 
-> ⚠️ path param 用 reactive 時必須包成 getter 函式（`() => ...`），不可寫字串拼接 `/api/v1/practices/${practiceId}/pitches`（會在 ref 變動時不會重抓）。
+> ⚠️ path param 用 reactive 時必須包成 getter 函式（`() => ...`），不可寫字串拼接 `/api/v1/notebooks/${notebookId}/notes`（會在 ref 變動時不會重抓）。
 
 ### GET 詳情
 
 ```typescript
-export function getPracticeDetail(
-  practiceId: MaybeRefOrGetter<string>,
-  options?: HttpGetOptions<PracticeDetail>,
+export function getNoteDetail(
+  noteId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<NoteDetail>,
 ) {
-  return useHttp().get<PracticeDetail>(
-    () => `/api/v1/practices/${toValue(practiceId)}`,
+  return useHttp().get<NoteDetail>(
+    () => `/api/v1/notes/${toValue(noteId)}`,
     options,
   )
 }
 ```
 
+> 💡 **資料新鮮度**：`get()` 回傳的是 `AsyncData`，本來就帶 `refresh`。頁面需要「寫入後刷新」時，
+> 解構出 `refresh` 即可（`const { data, refresh } = listNotebooks({ key: 'notebooks' })`），寫入成功後 `await refresh()`。
+> 跨元件刷新傳穩定 `key` 並用 `refreshNuxtData(key)`。詳見 feature-to-ui `page-builder.md` 的「資料新鮮度」段。
+> client function **不需**自己包刷新邏輯——保持薄包裝，刷新由呼叫端（page）決定時機。
+
 ### POST 建立
 
 ```typescript
-import type { CreateTeamBody, TeamCreatedEvent } from '~/types/api/teams'
+import type { CreateNotebookBody, NotebookCreatedEvent } from '~/types/api/notebooks'
 import { useHttp } from '~/composables/useHttp'
 
-export function createTeam(body: CreateTeamBody) {
-  return useHttp().post<TeamCreatedEvent>('/api/v1/teams', { body })
+export function createNotebook(body: CreateNotebookBody) {
+  return useHttp().post<NotebookCreatedEvent>('/api/v1/notebooks', { body })
 }
 ```
 
 ### PATCH 更新（含 path param）
 
 ```typescript
-export function updatePlayer(playerId: string, body: UpdatePlayerBody) {
-  return useHttp().patch<PlayerUpdatedEvent>('/api/v1/players/{playerId}', {
-    pathParams: { playerId },
+export function updateNote(noteId: string, body: UpdateNoteBody) {
+  return useHttp().patch<NoteUpdatedEvent>('/api/v1/notes/{noteId}', {
+    pathParams: { noteId },
     body,
   })
 }
 ```
 
-> ⚠️ path 字串保留 `{paramName}` 原樣，path 變數透過 `pathParams` 物件傳入（由 `useHttp` 內部 path 替換處理）。**不要寫 `/api/v1/players/${playerId}`** —— 失去 endpoint template 的可追蹤性。
+> ⚠️ path 字串保留 `{paramName}` 原樣，path 變數透過 `pathParams` 物件傳入（由 `useHttp` 內部 path 替換處理）。**不要寫 `/api/v1/notes/${noteId}`** —— 失去 endpoint template 的可追蹤性。
 
 ### DELETE 軟刪除
 
 ```typescript
-export function deleteTeam(teamId: string) {
-  return useHttp().delete<void>('/api/v1/teams/{teamId}', {
-    pathParams: { teamId },
+export function deleteNotebook(notebookId: string) {
+  return useHttp().delete<void>('/api/v1/notebooks/{notebookId}', {
+    pathParams: { notebookId },
   })
 }
 ```
 
-> 軟刪除 server 回 204 無 body，回傳型別寫 `void`（即使型別檔有定義 `TeamDeletedEvent`，server 也不會回）。
+> 軟刪除 server 回 204 無 body，回傳型別寫 `void`（即使型別檔有定義 `NotebookDeletedEvent`，server 也不會回）。
 
 ### 動作端點（POST /resource/{id}/{action}）
 
 ```typescript
-export function endPractice(practiceId: string) {
-  return useHttp().post<PracticeEndedEvent>(
-    '/api/v1/practices/{practiceId}/end',
-    { pathParams: { practiceId } },
+export function archiveNote(noteId: string) {
+  return useHttp().post<NoteArchivedEvent>(
+    '/api/v1/notes/{noteId}/archive',
+    { pathParams: { noteId } },
   )
 }
 
-export function favoritePitch(practiceId: string, pitchId: string) {
-  return useHttp().post<PitchFavoritedEvent>(
-    '/api/v1/practices/{practiceId}/pitches/{pitchId}/favorite',
-    { pathParams: { practiceId, pitchId } },
+export function pinNote(notebookId: string, noteId: string) {
+  return useHttp().post<NotePinnedEvent>(
+    '/api/v1/notebooks/{notebookId}/notes/{noteId}/pin',
+    { pathParams: { notebookId, noteId } },
   )
 }
 ```
@@ -169,14 +178,14 @@ export function favoritePitch(practiceId: string, pitchId: string) {
 ### PATCH 動作（含 body）
 
 ```typescript
-export function changeAccountPassword(
-  accountId: string,
-  body: ChangePasswordBody,
+export function moveNote(
+  noteId: string,
+  body: MoveNoteBody,
 ) {
-  return useHttp().patch<AccountPasswordChangedEvent>(
-    '/api/v1/accounts/{accountId}/change-password',
+  return useHttp().patch<NoteMovedEvent>(
+    '/api/v1/notes/{noteId}/move',
     {
-      pathParams: { accountId },
+      pathParams: { noteId },
       body,
     },
   )
@@ -186,26 +195,26 @@ export function changeAccountPassword(
 ### 登入端點
 
 ```typescript
-export function loginCoach(body: LoginBody) {
-  return useHttp().post<CoachLoggedInEvent>('/api/v1/auth/login', { body })
+export function loginMember(body: LoginBody) {
+  return useHttp().post<MemberLoggedInEvent>('/api/v1/auth/login', { body })
 }
 ```
 
-> ℹ️ 本模板不含 auth / 401 攔截層，登入與一般寫入一樣用 `useHttp().post`。若日後加入 auth（token 注入 / 401 refresh），請在 `useHttp` 內以 `onRequest` / `onResponse` hook 擴充，並為「不需 token 即可呼叫」的端點（login / register）保留略過攔截的選項，不要散落在各 `*.api.ts`。
+> ℹ️ 模板預設 auth 中立，登入與一般寫入一樣用 `useHttp().post`。偵測到 auth 時**不要自行在 `useHttp` 擴充攔截**——`useHttp` 已內建 Authorization / 401→refresh→retry 注入點，照 [auth-scaffold.md](auth-scaffold.md) §3a 覆蓋 `useHttpAuth.ts` 提供 handler 即啟用；login / refresh / logout 等免 token 端點以 `handleUnauthorized:false` 略過攔截（同見 §3a），不要散落在各 `*.api.ts`。
 
 ### Blob 下載（imperative GET，走 getOnce）
 
 ```typescript
-export function getPitchVideo(
-  practiceId: string,
-  pitchId: string,
-  angle?: 'front' | 'side',
+export function getNoteAttachmentFile(
+  noteId: string,
+  attachmentId: string,
+  variant?: 'thumbnail' | 'original',
 ) {
   return useHttp().getOnce<Blob>(
-    '/api/v1/practices/{practiceId}/pitches/{pitchId}/video',
+    '/api/v1/notes/{noteId}/attachments/{attachmentId}/file',
     {
-      pathParams: { practiceId, pitchId },
-      query: angle ? { angle } : undefined,
+      pathParams: { noteId, attachmentId },
+      query: variant ? { variant } : undefined,
       responseType: 'blob',
     },
   )
@@ -222,35 +231,31 @@ export function getPitchVideo(
 app/api/
 ├── index.ts                  # 統一 re-export 所有 function
 ├── auth.api.ts               # login / register
-├── accounts.api.ts           # /accounts/*
-├── teams.api.ts              # /teams/*
-├── players.api.ts            # /players/*
-├── practices.api.ts          # /practices（不含子資源）
-├── pitches.api.ts            # /practices/*/pitches/* （子資源獨立成檔）
-├── cameras.api.ts            # /cameras/*
-└── exports.api.ts            # /exports
+├── members.api.ts            # /members/*
+├── notebooks.api.ts          # /notebooks（不含子資源）
+├── notes.api.ts              # /notebooks/*/notes/* 與 /notes/*（子資源獨立成檔）
+├── tags.api.ts               # /tags/*
+└── attachments.api.ts        # /notes/*/attachments/*
 ```
 
 ### 分檔規則
 
-- **一個資源一個檔**：`/teams` 與 `/teams/{id}/...` 全部進 `teams.api.ts`
-- **子資源獨立成檔**：若子資源端點 ≥ 3 個（如 `/practices/{id}/pitches/*`），抽到 `{subresource}.api.ts`（避免父檔過大）
-- **動作端點歸屬主資源**：`/practices/{id}/end` 進 `practices.api.ts`、`/accounts/{id}/change-password` 進 `accounts.api.ts`
+- **一個資源一個檔**：`/notebooks` 與 `/notebooks/{id}/...` 全部進 `notebooks.api.ts`
+- **子資源獨立成檔**：若子資源端點 ≥ 3 個（如 `/notebooks/{id}/notes/*`），抽到 `{subresource}.api.ts`（避免父檔過大）
+- **動作端點歸屬主資源**：`/notes/{id}/archive` 進 `notes.api.ts`、`/notebooks/{id}/rename` 進 `notebooks.api.ts`
 - **`auth` 永遠獨立**：登入相關全部進 `auth.api.ts`
 
 ### index.ts 範例
 
 ```typescript
+export { loginMember } from './auth.api'
 export {
-  changeAccountPassword,
-  createAccount,
-  deleteAccount,
-  listAccounts,
-  resetAccountPassword,
-  updateAccountRemark,
-} from './accounts.api'
-export { loginCoach } from './auth.api'
-export { listCameras, registerCamera, updateCameraStatus } from './cameras.api'
+  createMember,
+  deleteMember,
+  listMembers,
+  updateMemberRole,
+} from './members.api'
+export { archiveNote, listNotebookNotes, moveNote } from './notes.api'
 // ...
 ```
 
@@ -285,8 +290,8 @@ Phase 1.5 開始前，先掃描 `app/api/` 是否存在檔案：
 
 | Function | 狀態 | 建議動作 |
 |---|---|---|
-| `switchPracticePitcher` | 🟡 endpoint 已從 route-map 移除 | 確認 feature 是否真已移除，若是請手動刪除此 function 與其 import |
-| `fetchPracticePitches` | 🟢 額外保留（route-map 無此「imperative GET 版本」標記，但 store 需要） | 保留，無須處理 |
+| `switchNotebookOwner` | 🟡 endpoint 已從 route-map 移除 | 確認 feature 是否真已移除，若是請手動刪除此 function 與其 import |
+| `fetchNotebookNotes` | 🟢 額外保留（route-map 無此「imperative GET 版本」標記，但 store 需要） | 保留，無須處理 |
 ```
 
 > ⚠️ **絕不靜默刪除既有 function**——一旦刪除，所有 import 它的 store / page / component 會立即 typecheck 失敗，使用者無從追溯。永遠列在報告讓使用者自己決定。

@@ -1,6 +1,6 @@
 ---
 name: test
-description: E2E 測試開發流程 — Playwright
+description: E2E 測試開發流程 — Playwright。Use when 要產出或更新 E2E 測試（spec/red/green/pipeline 各模式）、修 E2E 紅燈、驗證 UI 是否通過測試合約、或提到 /test e2e、E2E、Playwright 測試時。前置：.flow.md 已在 spec/e2e-flows/。
 ---
 
 # E2E 測試開發流程
@@ -34,7 +34,7 @@ description: E2E 測試開發流程 — Playwright
 
 ## 現有 Feature 檔案
 
-!`ls -1 spec/gherkin-feature/*.dsl.feature 2>/dev/null | head -15 || echo "(無)"`
+!`ls -1 spec/gherkin-feature/*.feature 2>/dev/null | head -15 || echo "(無)"`
 
 ---
 

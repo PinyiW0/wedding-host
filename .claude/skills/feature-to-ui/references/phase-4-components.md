@@ -10,6 +10,8 @@
 - ui-config.yaml > table（表格設定）
 - ui-config.yaml > delete.confirmation（刪除確認）
 - ui-config.yaml > colorMode（深淺模式）
+- ui-config.yaml > button（按鈕 color/variant 預設）
+- .claude/rules/visual-hierarchy.md（元件內文字層級、按鈕尺寸、空狀態層級）
 - spec/report/route-map.yaml > enabled_features（PM 啟用的額外功能）
 - features.md（額外功能的元件模板，僅 enabled_features 有啟用時需讀取）
 - rules.md [P4] 段落（配色策略、深淺模式、Nuxt UI 類型規範、表單型別安全、第三方元件 import）

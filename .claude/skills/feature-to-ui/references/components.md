@@ -18,11 +18,11 @@
 
 <!-- 多欄並排：grid -->
 <div class="grid grid-cols-2 gap-4">
-  <UFormField label="背號" name="number">
+  <UFormField label="站號" name="number">
     <UInput v-model="state.number" class="w-full" />
   </UFormField>
-  <UFormField label="身高" name="height">
-    <UInput v-model="state.height" class="w-full" />
+  <UFormField label="緯度" name="latitude">
+    <UInput v-model="state.latitude" class="w-full" />
   </UFormField>
 </div>
 ```
@@ -85,7 +85,7 @@ const pageSizeOptions = [
 ```vue
 <script setup lang="ts">
 // ⚠️ 必須從 types/api/ import 型別，禁止定義 local interface
-import type { TeamItem } from '~/types/api/teams'
+import type { SiteItem } from '~/types/api/sites'
 import { useAuthStore } from '~/stores/auth'
 
 const authStore = useAuthStore()
@@ -94,12 +94,12 @@ const pageSize = 10
 
 // ⚠️ 呼叫前先讀取對應的 API endpoint 原始碼確認回傳格式
 const { data } = await useFetch<{
-  status: string
-  data: TeamItem[]
-}>('/api/teams', {
+  success: boolean
+  data: SiteItem[]
+}>('/api/sites', {
   query: computed(() => ({
-    user: authStore.userAccount,
-    role: authStore.userRole,
+    user: authStore.account,
+    roles: authStore.roles,
   })),
 })
 
@@ -115,7 +115,7 @@ const totalItems = computed(() => items.value.length)
         列表標題
       </h1>
       <UButton
-        data-testid="team-create"
+        data-testid="site-create"
         icon="i-heroicons-plus"
       >
         新增
@@ -130,7 +130,7 @@ const totalItems = computed(() => items.value.length)
         :page-size="pageSize"
       >
         <UTable
-          data-testid="team-list"
+          data-testid="site-list"
           :data="items"
           :columns="columns"
           class="[&_th]:h-10 [&_td]:h-12"
@@ -140,13 +140,13 @@ const totalItems = computed(() => items.value.length)
           <template #actions-cell="{ row }">
             <div class="flex items-center gap-1">
               <UButton
-                data-testid="team-edit"
+                data-testid="site-edit"
                 icon="i-heroicons-pencil"
                 variant="ghost"
                 size="xs"
               />
               <UButton
-                data-testid="team-delete"
+                data-testid="site-delete"
                 icon="i-heroicons-trash"
                 variant="ghost"
                 color="error"
@@ -155,7 +155,7 @@ const totalItems = computed(() => items.value.length)
             </div>
           </template>
           <template #empty>
-            <CommonEmptyState title="目前沒有球隊" />
+            <CommonEmptyState title="目前沒有觀測點" />
           </template>
         </UTable>
       </CommonListContainer>
@@ -164,7 +164,7 @@ const totalItems = computed(() => items.value.length)
 </template>
 ```
 
-> **data-testid 說明**：列表內的按鈕（`team-edit`, `team-delete`）可重複，E2E 測試時用 `first()`, `nth()`, 或 `filter({ hasText })` 定位
+> **data-testid 說明**：列表內的按鈕（`site-edit`, `site-delete`）可重複，E2E 測試時用 `first()`, `nth()`, 或 `filter({ hasText })` 定位
 
 ---
 
@@ -260,6 +260,8 @@ const totalItems = computed(() => items.value.length)
 </UModal>
 ```
 
+> 確認彈窗的 `confirm-*` testid 對應 `_common.flow.md` 的共用約定（`test/e2e/helpers` 的 `confirmDelete` 依賴它）。v2 的 spec 預設改用 `maybeConfirm`（`getByRole('dialog')` + 動詞 regex），該路徑不需要這些 testid——UModal 本身已提供 `dialog` role。
+
 ---
 
 ## 空狀態
@@ -269,12 +271,12 @@ const totalItems = computed(() => items.value.length)
 ```vue
 <!-- ❌ 禁止：UTable 外的 v-if 判斷（會導致 UTable 自己渲染 "No data" 行） -->
 <UTable :data="items" :columns="columns" />
-<CommonEmptyState v-if="!items.length" title="目前沒有球隊" />
+<CommonEmptyState v-if="!items.length" title="目前沒有觀測點" />
 
 <!-- ✅ 正確：使用 #empty slot 取代 UTable 預設的 "No data" -->
 <UTable :data="items" :columns="columns">
   <template #empty>
-    <CommonEmptyState title="目前沒有球隊" />
+    <CommonEmptyState title="目前沒有觀測點" />
   </template>
 </UTable>
 ```
@@ -286,7 +288,7 @@ const totalItems = computed(() => items.value.length)
 ```vue
 <UInput
   v-model="searchQuery"
-  data-testid="team-search"
+  data-testid="site-search"
   icon="i-heroicons-magnifying-glass"
   placeholder="搜尋..."
   class="w-64"
@@ -300,18 +302,18 @@ const totalItems = computed(() => items.value.length)
 ```vue
 <script setup lang="ts">
 // [O] 用 undefined 代表「全部」
-const selectedTeamId = ref<string | undefined>(undefined)
-const teamOptions = computed(() =>
-  teams.value.map(t => ({ label: t.name, value: String(t.id) })),
+const selectedSiteId = ref<string | undefined>(undefined)
+const siteOptions = computed(() =>
+  sites.value.map(t => ({ label: t.name, value: String(t.id) })),
 )
 </script>
 
 <template>
   <USelect
-    v-model="selectedTeamId"
-    :items="teamOptions"
+    v-model="selectedSiteId"
+    :items="siteOptions"
     value-key="value"
-    placeholder="全部球隊"
+    placeholder="全部觀測點"
     class="w-40"
   />
 </template>

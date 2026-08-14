@@ -24,7 +24,7 @@ argument-hint: "[feature 名(選填)]"
 
 | 模式 | 狀態 | 觸發 | 輸出 | 安全深度 |
 |------|------|------|------|----------|
-| local | 現行 | 手動 `/sdd-review` | 終端報告 | 輕量(動 `server/` 才點出可疑處) |
+| local | 現行 | 手動 `/sdd-review` | 終端報告 | 輕量(動 `server/` 或 `app/` 才點出可疑處) |
 | pr | Phase 1 | GitHub Action(PR 事件) | PR 留言 | 完整(推敲 authz / 敏感資料) |
 
 > 兩模式共用本 SKILL 的流程與 [checks.md](references/checks.md),差別只在安全深度與輸出。
@@ -40,8 +40,8 @@ flowchart TD
     DIFF --> EMPTY{有 .vue/store/server 改動?}
     EMPTY -->|否| SKIP[回報無需審查]
     EMPTY -->|是| CONV[查框架慣例 + Nuxt 4 行為]
-    CONV --> SVR{有動 server/?}
-    SVR -->|是| SEC[輕量掃邏輯安全]
+    CONV --> SVR{有動 server/ 或 app/?}
+    SVR -->|是| SEC[輕量掃邏輯安全<br>server §3／前端 §4]
     SVR -->|否| REPORT
     SEC --> REPORT[終端報告 + Verdict]
     REPORT --> DONE[完成]
@@ -51,7 +51,7 @@ flowchart TD
 
 1. 跑 `git diff`(working tree + staged),挑出 `app/**/*.vue`、`app/stores/**`、`server/**/*.ts`。無相關改動則回報「無需審查」並結束。
 2. 對每個改動檔套用 6 項框架語意慣例 + Nuxt 4 行為檢查,判斷細節見 [checks.md](references/checks.md) 第 1、2 節。
-3. 若 diff 動到 `server/`,加做輕量邏輯安全掃描(見 checks.md 安全段)。
+3. 若 diff 動到 `server/`,加做輕量邏輯安全掃描(checks.md §3);動到 `app/` 或 `nuxt.config.ts`,加做前端安全掃描(checks.md §4)。
 4. 輸出終端報告(格式見第 4 節)。**懷疑某項時才** deep-read 對應的單一 antfu reference,不整包載入。
 
 ## 4. 報告格式

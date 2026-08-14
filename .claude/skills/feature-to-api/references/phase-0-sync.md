@@ -3,6 +3,14 @@
 > 僅當 `spec/report/route-map.yaml` 存在時進入此流程。
 > 全量模式步驟 → 詳見 [phase-0-prep.md](phase-0-prep.md)
 
+> **先正規化 spec 檔名**：後端更新常以別名（如底線版 `api_spec.yml`）置入；Sync 開始前同樣先做 phase-0-prep 的「定位並正規化 spec 檔名」（別名 → 連字號 canonical），否則下方 codegen 重生會「找不到來源」。
+
+> **OpenAPI 模式 Sync（`spec/api/api-spec.yml` 存在）先做 codegen 重生**：
+> `npm run gen:api` 重生 `app/types/api/_schema.d.ts`（決定性、與 spec 永遠同步）→ `npm run typelint`
+> → breaking change 的 view alias / client / page 編譯紅燈 → 依紅燈逐點修 → 重跑到綠。
+> codegen 只定位不改寫（要編譯器尖叫，別默默編過）。完整 loop 見 [openapi-codegen.md](openapi-codegen.md) § 6。
+> 下方步驟 4 / 9 的「型別比對 / 更新」在 OpenAPI 模式即「比對重生後的 `_schema` 與既有 view alias」。
+
 ---
 
 ### 步驟 1：讀取 PM 設定 + 設定檔變更偵測
@@ -70,9 +78,9 @@
 - ❌ 默默把既有 endpoint 路徑全部改寫
 - ❌ 把 host name 寫進 path_prefix（OpenAPI `servers.url` 含絕對 URL 時，**只取 path 段**）
 
-### 步驟 3：掃描所有新版 .dsl.feature
+### 步驟 3：掃描所有新版 .feature
 
-- 路徑：`spec/gherkin-feature/*.dsl.feature`
+- 路徑：`spec/gherkin-feature/*.feature`（含 `.dsl.feature` 變體）
 - 計算每個檔案的 `content_hash`
 
 ### 步驟 4：讀取現有型別定義
@@ -110,9 +118,9 @@
 
 4. 計算新增 Scenario 數量，並逐一分類：
      a) 「欄位驗證型」：Scenario 名稱或內容可明確對應到新增欄位
-        （如：「體重超出範圍」對應新增的 weight 欄位）
+        （如：「經度超出範圍」對應新增的 weight 欄位）
      b) 「新功能型」：無法對應到任何新增欄位
-        （如：「搜尋球員」「AI 狀態篩選」「分頁」）
+        （如：「搜尋觀測站」「AI 狀態篩選」「分頁」）
 
      → 存在任何「新功能型」Scenario → rebuild（停止）
      → 全部都是「欄位驗證型」→ patch（停止）
@@ -126,7 +134,7 @@
 在變更報告的「Feature 變更總覽」表格中，`說明` 欄須包含判定依據：
 
 ```markdown
-| 04-建立球隊 | 修改 | patch | /teams | 新增 1 欄位(簡介) + 2 Scenario 皆為該欄位驗證 → checklist #4a → patch |
+| 04-建立觀測點 | 修改 | patch | /sites | 新增 1 欄位(簡介) + 2 Scenario 皆為該欄位驗證 → checklist #4a → patch |
 | 12-查詢訓練列表 | 修改 | rebuild | /trainings | 新增 6 Scenario 含搜尋/篩選/分頁(新功能型) → checklist #4b → rebuild |
 ```
 
@@ -176,9 +184,9 @@
 
 | 例外類型 | 範例 | 處理 |
 |---------|------|------|
-| 過渡兼容欄位（feature 已遷移，server 為兼容 UI 保留） | `PracticeHistoryItem.startedAt` 為兼容欄位 | type 加 `@deprecated` 註解，報告標「兼容」不視為孤兒 |
+| 過渡兼容欄位（feature 已遷移，server 為兼容 UI 保留） | `WatchHistoryItem.startedAt` 為兼容欄位 | type 加 `@deprecated` 註解，報告標「兼容」不視為孤兒 |
 | 基礎設施路由 | `/api/__test__/reset`、`/api/health` | 跳過 |
-| UI extension（feature 未定義但 UI 有額外需求） | `ExportType: 'selected-pitches'` | 報告標「UI extension」，待 feature 補對應 Scenario，不視為孤兒 |
+| UI extension（feature 未定義但 UI 有額外需求） | `ExportType: 'selected-sightings'` | 報告標「UI extension」，待 feature 補對應 Scenario，不視為孤兒 |
 
 #### 偵測指令範例
 
@@ -284,38 +292,38 @@ sync_version: 2
 
 | Feature 檔 | 狀態 | 模式 | 影響頁面 | 說明 |
 |------------|------|------|---------|------|
-| 03-查詢球隊列表.dsl.feature | 無變化 | skip | — | hash 相同 |
-| 04-建立球隊.dsl.feature | 修改 | patch | /teams | 新增 1 個欄位 |
-| 12-新增教練.dsl.feature | 新增 | build | /coaches | 全新功能 |
-| 05-刪除球隊.dsl.feature | 刪除 | — | /teams | feature 檔已不存在 |
+| 03-查詢觀測點列表.dsl.feature | 無變化 | skip | — | hash 相同 |
+| 04-建立觀測點.dsl.feature | 修改 | patch | /sites | 新增 1 個欄位 |
+| 12-新增觀測員.dsl.feature | 新增 | build | /observers | 全新功能 |
+| 05-刪除觀測點.dsl.feature | 刪除 | — | /sites | feature 檔已不存在 |
 
 ## 型別變更
 
 | 檔案 | 動作 | 詳細變更 |
 |------|------|---------|
-| app/types/api/teams.ts | 修改 | CreateTeamBody 新增 `description` 欄位 |
-| app/types/api/coaches.ts | 新增 | CoachItem, CreateCoachBody |
+| app/types/api/sites.ts | 修改 | CreateSiteBody 新增 `description` 欄位 |
+| app/types/api/observers.ts | 新增 | ObserverItem, CreateObserverBody |
 
 ## 端點變更
 
 | 端點 | 動作 | 影響型別 | 影響頁面 |
 |------|------|---------|---------|
-| POST /api/teams | 修改 | CreateTeamBody | /teams |
-| GET /api/coaches | 新增 | CoachItem[] | /coaches |
-| POST /api/coaches | 新增 | CreateCoachBody | /coaches |
+| POST /api/sites | 修改 | CreateSiteBody | /sites |
+| GET /api/observers | 新增 | ObserverItem[] | /observers |
+| POST /api/observers | 新增 | CreateObserverBody | /observers |
 
 ## 路由變更
 
 | 路由 | 動作 | 頁面 | Features |
 |------|------|------|---------|
-| /coaches | 新增 | app/pages/coaches/index.vue | 12-新增教練 |
+| /observers | 新增 | app/pages/observers/index.vue | 12-新增觀測員 |
 
 ## 頁面實作指令
 
 | 頁面 | 模式 | 變更的 Features | 說明 |
 |------|------|----------------|------|
-| /teams | patch | 04-建立球隊 | 新增欄位，Edit 受影響區塊 |
-| /coaches | build | 12-新增教練 | 全新頁面 |
+| /sites | patch | 04-建立觀測點 | 新增欄位，Edit 受影響區塊 |
+| /observers | build | 12-新增觀測員 | 全新頁面 |
 | /login | skip | — | 無變化 |
 
 ## Phase 執行建議
@@ -336,9 +344,9 @@ sync_version: 2
 
 | 類型 | 路徑 | 原因 |
 |------|------|------|
-| feature 參照 | route-map.yaml > /teams > 05-刪除球隊 | feature 檔已不存在 |
-| 型別（待確認） | app/types/api/teams.ts > DeleteTeamBody | 若 05 是唯一使用者 |
-| 端點（待確認） | DELETE /api/teams/[id] | 若 05 是唯一使用者 |
+| feature 參照 | route-map.yaml > /sites > 05-刪除觀測點 | feature 檔已不存在 |
+| 型別（待確認） | app/types/api/sites.ts > DeleteSiteBody | 若 05 是唯一使用者 |
+| 端點（待確認） | DELETE /api/sites/[id] | 若 05 是唯一使用者 |
 
 ## 🗑️ 孤兒清單（codebase 有，feature 不再引用）
 
@@ -347,9 +355,9 @@ sync_version: 2
 
 | 類型 | 路徑 / symbol | feature 對應狀態 | 建議動作 | 負責方 |
 |------|--------------|----------------|---------|--------|
-| Type | `app/types/api/practice.ts > SwitchPitcherBody` | feature 已移除「切換投手」Feature（commit XXX）| 清除 interface + 所有 import | UI |
-| Endpoint | `server/api/v1/practices/[practiceId]/pitcher.patch.ts` | 同上 | 刪除整檔 | Backend |
-| UI 元素 | `app/pages/practice/[practiceId].vue` 切換投手按鈕、Modal、form、handler | 同上 | 移除 UI 區塊 | UI |
+| Type | `app/types/api/watch.ts > SwitchSightingerBody` | feature 已移除「切換觀測站」Feature（commit XXX）| 清除 interface + 所有 import | UI |
+| Endpoint | `server/api/v1/watches/[watchId]/station.patch.ts` | 同上 | 刪除整檔 | Backend |
+| UI 元素 | `app/pages/watch/[watchId].vue` 切換觀測站按鈕、Modal、form、handler | 同上 | 移除 UI 區塊 | UI |
 
 > **負責方分類**：
 > - `UI`：claude 或前端工程師可直接清，主 spec 仍會綠

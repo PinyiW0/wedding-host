@@ -48,7 +48,7 @@ glob test/e2e/helpers/actions.ts
 
 | 結果 | 判定 | 動作 |
 |------|------|------|
-| 不存在 | **全量模式** | 提示：需依序執行 `setup` → `spec auto` → `green auto` |
+| 不存在 | **全量模式** | 提示：需依序執行 `setup` → `/feature-to-api` → `spec auto` → `/feature-to-ui` → `green auto` |
 | 存在 | 增量模式 | 進入 Step 2 |
 
 ### 全量模式輸出格式
@@ -59,14 +59,15 @@ E2E 偵測結果：全量模式（首次建立）
 測試基礎架構尚未建立，需依序執行：
 
 1. /test e2e setup          — 建立 Playwright 環境、helpers
-2. /test e2e spec auto      — 為所有 .flow.md 生成 .spec.ts
-3. /feature-to-ui           — 建立 UI 頁面（spec 是合約，UI 為通過合約而建）
-4. /test e2e green auto     — 跑測試並修復 UI/mock/API 差異
+2. /feature-to-api          — 產出 types + mock API + route-map（spec 與 UI 皆依賴）
+3. /test e2e spec auto      — 為所有 .flow.md 生成 .spec.ts
+4. /feature-to-ui           — 建立 UI 頁面（spec 是合約，UI 為通過合約而建）
+5. /test e2e green auto     — 跑測試並修復 UI/mock/API 差異
 
 確認開始執行？（將從 step 1 開始）
 ```
 
-> 使用者確認後，依序呼叫 setup → spec auto。spec auto 完成後提示使用者執行 `/feature-to-ui` 建立 UI，UI 建好後再執行 `/test e2e green auto`。
+> 使用者確認後，先呼叫 setup，接著提示使用者執行 `/feature-to-api` 產出 types + mock API + route-map，完成後再呼叫 spec auto。spec auto 完成後提示使用者執行 `/feature-to-ui` 建立 UI，UI 建好後再執行 `/test e2e green auto`。
 >
 > ⚠️ green 的定位是「最小修復讓測試通過」，**不是從零建立 UI**。若 UI 頁面不存在，必須先用 `/feature-to-ui` 建立。
 
@@ -111,11 +112,27 @@ flow 不存在？
 
 ```bash
 # 取得檔案修改時間（秒級 Unix timestamp）
-stat -f %m spec/e2e-flows/04-建立球隊.flow.md
-stat -f %m test/e2e/specs/04-建立球隊.spec.ts
+# macOS / BSD：
+stat -f %m spec/e2e-flows/04-建立觀測點.flow.md
+stat -f %m test/e2e/specs/04-建立觀測點.spec.ts
+
+# Linux / GNU coreutils（CI runner 多為此）：
+stat -c %Y spec/e2e-flows/04-建立觀測點.flow.md
+stat -c %Y test/e2e/specs/04-建立觀測點.spec.ts
 ```
 
 > flow 的 mtime **嚴格大於** spec 的 mtime 才標記為「更新」。相等視為同步。
+
+### api-spec 陳舊偵測（flow/spec 盲區補充）
+
+後端只更新 `spec/api/api-spec.yml` 而 flow 沒動時，上面的 flow↔spec mtime 比對會全標「同步」——這是盲區。補一個檢查：
+
+```
+spec/api/api-spec.yml 存在且 mtime > 所有 flow 的 mtime？
+  → 是 → 標記「⚠️ API 合約可能領先」— 提示使用者走 spec 變更迭代流
+         （/feature-to-api Sync → /test e2e spec），本 skill 不自動重生
+  → 否 → 無需操作
+```
 
 ---
 
@@ -149,25 +166,25 @@ git diff --cached --name-only -- 'server/api/**/*.ts'
 對每個修改的 .vue 檔案：
   1. 在 route-map.yaml 的 routes 中找到 page 匹配的路由
   2. 取得該路由的 features 陣列
-  3. 從 feature 檔名提取編號（如 07-查詢球員列表 → 07）
-  4. 對應到 spec 檔案（07-查詢球員列表.spec.ts）
+  3. 從 feature 檔名提取編號（如 07-查詢觀測站列表 → 07）
+  4. 對應到 spec 檔案（07-查詢觀測站列表.spec.ts）
   5. 標記為「驗證」— 建議跑 red
 ```
 
 範例：
 
 ```
-git diff 偵測到：app/pages/players/index.vue 有修改
+git diff 偵測到：app/pages/stations/index.vue 有修改
   ↓
-route-map.yaml：/players → features: [07, 08, 09, 10]
+route-map.yaml：/stations → features: [07, 08, 09, 10]
   ↓
-建議跑 red：07-查詢球員列表、08-新增球員、09-編輯球員、10-刪除球員
+建議跑 red：07-查詢觀測站列表、08-新增觀測站、09-編輯觀測站、10-刪除觀測站
 ```
 
 #### mock data 變更反查
 
 ```
-git diff 偵測到：server/mock/data/players.ts 有修改
+git diff 偵測到：server/mock/data/stations.ts 有修改
   ↓
 mock 資料是所有 spec 共用的，無法精確判斷影響範圍
   ↓
@@ -180,7 +197,7 @@ mock 資料是所有 spec 共用的，無法精確判斷影響範圍
 
 ```
 對每個修改的 API 檔案：
-  1. 從檔案路徑推斷 API 路由（如 server/api/players/index.get.ts → /api/players）
+  1. 從檔案路徑推斷 API 路由（如 server/api/stations/index.get.ts → /api/stations）
   2. 在 route-map.yaml 的 api_contract.endpoints 中找到匹配的端點
   3. 取得關聯的 features
   4. 標記為「驗證」— 建議跑 red
@@ -213,15 +230,15 @@ E2E 偵測完成
 
 | # | Feature | 偵測結果 | E2E 動作 | 來源 |
 |---|---------|---------|----------|------|
-| 1 | 11-調整球員排序 | 孤兒 spec | 刪除 spec | flow 不存在 |
-| 2 | 04-建立球隊 | flow 較新 | spec → green | flow vs spec |
-| 3 | 07-查詢球員列表 | flow 較新 | spec → green | flow vs spec |
+| 1 | 11-調整觀測站排序 | 孤兒 spec | 刪除 spec | flow 不存在 |
+| 2 | 04-建立觀測點 | flow 較新 | spec → green | flow vs spec |
+| 3 | 07-查詢觀測站列表 | flow 較新 | spec → green | flow vs spec |
 | 4 | 27-匯出訓練報告 | spec 不存在 | spec → green | 新 flow |
-| 5 | 03-查詢球隊列表 | .vue 有變更 | red → green | git diff |
+| 5 | 03-查詢觀測點列表 | .vue 有變更 | red → green | git diff |
 | — | 其餘 21 個 | 同步 | 跳過 | — |
 
 建議執行順序：
-1. 清理孤兒：刪除 test/e2e/specs/11-調整球員排序.spec.ts
+1. 清理孤兒：刪除 test/e2e/specs/11-調整觀測站排序.spec.ts
 2. 生成/更新 spec：04, 07, 27
 3. 跑測試並修復：04, 07, 27（spec → green）
 4. 驗證 .vue 變更：03（red → green）
@@ -306,13 +323,15 @@ E2E 執行完成
 
 | Feature | 動作 | 結果 |
 |---------|------|------|
-| 11-調整球員排序 | 刪除 spec | ✅ 已刪除 |
-| 04-建立球隊 | spec → green | ✅ 通過（迭代 1 次） |
-| 07-查詢球員列表 | spec → green | ✅ 通過（迭代 3 次） |
+| 11-調整觀測站排序 | 刪除 spec | ✅ 已刪除 |
+| 04-建立觀測點 | spec → green | ✅ 通過（迭代 1 次） |
+| 07-查詢觀測站列表 | spec → green | ✅ 通過（迭代 3 次） |
 | 27-匯出訓練報告 | spec → green | ✅ 通過（迭代 2 次） |
-| 03-查詢球隊列表 | red → green | ✅ 通過 |
+| 03-查詢觀測點列表 | red → green | ✅ 通過 |
 
 全量煙霧測試：✅ 全部通過（25 specs）
+
+下一步：有 vibe 改動先跑 /vibe-check，否則 /commit
 ```
 
 ---

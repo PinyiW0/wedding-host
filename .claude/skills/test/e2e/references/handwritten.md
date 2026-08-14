@@ -67,13 +67,13 @@ git diff --cached -- app/pages app/components app/layouts
     新增 @keydown.esc="closeModal" 於 account-create-modal
     建議測試：accounts | esc 關閉建立帳號 modal
 
-[2] app/components/PracticeCard.vue:45
+[2] app/components/WatchCard.vue:45
     新增 :data-state="loading ? 'loading' : 'idle'"
-    建議測試：practice-card | loading 狀態屬性
+    建議測試：watch-card | loading 狀態屬性
 
-[3] app/pages/practice/[practiceId].vue:528
-    pitch-favorite-button 新增 :data-favorited
-    跳過：04-practice.spec.ts:56 已涵蓋
+[3] app/pages/watch/[watchId].vue:528
+    sighting-favorite-button 新增 :data-favorited
+    跳過：04-watch.spec.ts:56 已涵蓋
 
 要產出 [1][2] 嗎？(y / n / 1,2 / 選擇)
 ```
@@ -88,8 +88,8 @@ git diff --cached -- app/pages app/components app/layouts
 
 - `page-slug` 從變動檔路徑推：
   - `app/pages/accounts/index.vue` → `accounts`
-  - `app/pages/practice/[practiceId].vue` → `practice-detail`
-  - `app/components/PracticeCard.vue` → `practice-card`
+  - `app/pages/watch/[watchId].vue` → `watch-detail`
+  - `app/components/WatchCard.vue` → `watch-card`
   - `app/layouts/default.vue` → `default-layout`
 
 若檔已存在：**新增 describe，不覆寫**現有的。
@@ -97,9 +97,8 @@ git diff --cached -- app/pages app/components app/layouts
 範本：
 
 ```typescript
-import { expect, test } from '@playwright/test'
-
-import { login, resetMockData } from '../helpers'
+// test/expect 走 ../helpers（掛 hydration 守門 fixture），不直接 import @playwright/test
+import { expect, login, resetMockData, test } from '../helpers'
 
 test.beforeEach(async ({ page }) => {
   await resetMockData(page)
@@ -107,17 +106,17 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('accounts | esc 關閉建立帳號 modal', () => {
   test('開啟 modal 後按 Esc 關閉', async ({ page }) => {
-    // Given
+    // Given —— 語意 locator：按鈕用 role+name、modal 用 dialog role
     await login(page, 'admin', 'admin888')
     await page.goto('/accounts', { waitUntil: 'networkidle' })
-    await page.getByTestId('account-create-button').click()
-    await expect(page.getByTestId('account-create-modal')).toBeVisible()
+    await page.getByRole('button', { name: /新增帳號/ }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
 
     // When
     await page.keyboard.press('Escape')
 
     // Then
-    await expect(page.getByTestId('account-create-modal')).not.toBeVisible()
+    await expect(page.getByRole('dialog')).not.toBeVisible()
   })
 })
 
@@ -135,7 +134,7 @@ test.describe('accounts | <下一個主題>', () => {
 3. **純展示變動不寫**：色、文字、icon、間距不該綁死，會卡死後續微調
 4. **業務邏輯變動不寫**：回報「這應改 flow.md 重生 spec」，handwritten 不補救
 5. **同頁同檔**：合併到單一 .spec.ts，多 describe，便於檢視
-6. **只用 testid 與 `data-*`**：禁止用文字/class/selector 定位
+6. **語意 locator 優先，testid 是 fallback**：先用 `getByRole` + accessible name、`getByLabel`、可見文字；只有語意無法消歧時才用 testid，且**限用主 spec 合約白名單內既有的 testid**，不自創（自創 = 孤兒，見 `vibe-e2e/SKILL.md` 的 `orphan-testid`）。規範 SSOT 見 [testid-conventions.md](../../../feature-to-flow/references/testid-conventions.md)。禁止用 class / CSS selector 定位（那才是真的會被 vibe 改壞的東西）
 7. **不要動 spec/flow**：和 green phase 一樣，這是合約
 
 ---
@@ -145,10 +144,10 @@ test.describe('accounts | <下一個主題>', () => {
 ```
 E2E Handwritten 已建立 / 更新：
 - test/e2e/handwritten/accounts.spec.ts（新增 2 個 describe）
-- test/e2e/handwritten/practice-card.spec.ts（新檔，1 個 describe）
+- test/e2e/handwritten/watch-card.spec.ts（新檔，1 個 describe）
 
 跳過（spec 已涵蓋）：
-- pitch-favorite-button data-favorited → 04-practice.spec.ts:56
+- sighting-favorite-button data-favorited → 04-watch.spec.ts:56
 
 純展示變動（不鎖）：
 - accounts 列表 hover 顏色從 neutral-50 → primary-50
@@ -157,6 +156,10 @@ E2E Handwritten 已建立 / 更新：
 - npx playwright test test/e2e/handwritten/
 - 紅燈：直接調 UI 或測試本體（不像 spec 是合約）
 ```
+
+---
+
+> ⚠️ **執行範圍**：`test/e2e/handwritten/` 不在任何 playwright config 的 testDir / gate 範圍內（設計如此）——只能手動 `npx playwright test test/e2e/handwritten/` 執行，pre-push gate 不會跑它。
 
 ---
 

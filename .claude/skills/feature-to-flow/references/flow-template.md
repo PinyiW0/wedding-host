@@ -12,7 +12,7 @@
 ```markdown
 # Flow: {模組中文名稱}
 
-> 對應規格：spec/gherkin-feature/{filename}.feature
+> 對應規格：spec/gherkin-feature/{file-a}.feature, spec/gherkin-feature/{file-b}.feature
 > 涵蓋頁面：/route-a, /route-b
 
 ## Background
@@ -22,10 +22,14 @@
 
 ## Business Invariants（合約核心）
 
-{以條列描述本模組業務合約，與 UI 形式無關}
+{以條列描述本模組業務合約，與 UI 形式無關。寫**意圖層**（可識別／可達／可感知），不寫**斷言層**（可見／顯示）——正反例與判斷法見 phase-1-write.md「意圖 vs 斷言」}
 1. {使用者能執行 X 操作}
 2. {資料 Y 可被使用者讀到（不限位置與形式）}
 3. {狀態 Z 變更後使用者能感知（toast / banner / 任何語意反饋皆可）}
+
+<!-- （條件式）角色可見性不變式 — 僅當 feature 有角色分層時才寫。UX-agnostic：不指定守門形式 -->
+4. {操作 / 資源 W 僅 {role} 可達}
+5. {無權角色被擋——看不到入口、或被導離、或操作被拒（任一語意反饋皆可）}
 
 ---
 
@@ -38,7 +42,7 @@
 
 ### E2E 驗證流程
 1. {使用者意圖，自然語言，非 testid 命令}
-2. {互動的「動詞 + 對象語意」，例：「觸發匯出此次練習」、「在 pitch-001 旁觸發收藏」}
+2. {互動的「動詞 + 對象語意」，例：「觸發匯出此次觀測時段」、「在 sighting-001 旁觸發收藏」}
 3. ...
 
 ### Verification 策略
@@ -65,48 +69,50 @@
 - {API 端點與 payload 期待}
 ```
 
+> **`> 對應規格` 允許列多個來源檔**（逗號分隔）：一個 flow 模組整併多個逐 feature 檔時全數列出；來源是單一大檔（一檔含多個 `Feature:` 區塊）時列該檔即可。下游把這行當 feature 清單消費——`/test e2e spec` Step 2a 據此定位 Background、`/sdd-status` 據此做模組 ↔ route-map 對應，漏列會造成對應判定缺漏。
+
 ---
 
-## 完整範例：練習投球管理（節錄）
+## 完整範例：觀測時段目擊事件管理（節錄）
 
 以下展示**抽象化**的寫法，對照 v1 的 testid-heavy 版本。
 
 ```markdown
-# Flow: 練習與投球管理
+# Flow: 觀測時段與目擊事件管理
 
 > 對應規格：spec/gherkin-feature/gherkin-export.feature
-> 涵蓋頁面：/practice/history, /practice/{practiceId}（含 live）
+> 涵蓋頁面：/watch/history, /watch/{watchId}（含 live）
 
 ## Background
 - 已登入為管理者（admin / admin888）
-- 既存資料：player-001（陳小明）、player-002（林大華）
+- 既存資料：station-001（陳小明）、station-002（林大華）
 
 ---
 
 ## Business Invariants
 
-1. 在歷史頁面能找到所有未刪除的 practice，且能識別 item / player / 狀態
-2. 在練習詳情下能看到所有未刪除的 pitch（透過 row / card / drawer 任一形式）
-3. 每球的關鍵屬性（pitch-type、player、收藏狀態）可被使用者識別
-4. 完整 metric（speed / spin-rate / approach-angle / 等 14 欄）必須可被使用者讀到——可以**全在 row**、**部分在 row 部分在 detail**、**全在 drawer 點開**，由 UI 決定，但**不可漏**
-5. 收藏 / 取消 / 刪除 / 結束 / 切換投手等操作必須可觸發，且操作後可感知結果
+1. 在歷史頁面能找到所有未刪除的 watch，且能識別 item / station / 狀態
+2. 在觀測時段詳情下所有未刪除的 sighting 皆可達（透過 row / card / drawer 任一形式）
+3. 每球的關鍵屬性（shower-code、station、收藏狀態）可被使用者識別
+4. 完整 metric（speed / light-peak / approach-angle / 等 14 欄）必須可被使用者讀到——可以**全在 row**、**部分在 row 部分在 detail**、**全在 drawer 點開**，由 UI 決定，但**不可漏**
+5. 收藏 / 取消 / 刪除 / 結束 / 切換觀測站等操作必須可觸發，且操作後可感知結果
 
 ---
 
-## Flow: 顯示練習歷史（happy-path）
+## Flow: 顯示觀測時段歷史（happy-path）
 
-> 對應 Feature: 練習歷史總覽 → Scenario: 顯示練習歷史
+> 對應 Feature: 觀測時段歷史總覽 → Scenario: 顯示觀測時段歷史
 
 ### 業務脈絡
-- mock seed 有 practice-001：投球訓練 / 陳小明 / 2 球 / 已結束
+- mock seed 有 watch-001：英仙座觀測 / 陳小明 / 2 球 / 已結束
 
 ### E2E 驗證流程
-1. 進入 `/practice/history`
-2. 若採 calendar / drill-down UX，互動進入有練習紀錄的範圍（如點日期格）
-3. 期待：能找到含「投球訓練」、「陳小明」資訊的可識別實體
+1. 進入 `/watch/history`
+2. 若採 calendar / drill-down UX，互動進入有觀測時段紀錄的範圍（如點日期格）
+3. 期待：能找到含「英仙座觀測」、「陳小明」資訊的可識別實體
 
 ### Verification 策略
-- 用 `getByText(/投球訓練/)`、`getByText(/陳小明/)` 找文字
+- 用 `getByText(/英仙座觀測/)`、`getByText(/陳小明/)` 找文字
 - 狀態（已結束）依 UX 取捨：若日曆隱含、則不必硬斷言；若 list 顯示則加 `getByText(/已結束/)`
 
 ### 不再凍結
@@ -116,23 +122,23 @@
 
 ---
 
-## Flow: 顯示投球清單（happy-path）
+## Flow: 顯示目擊事件清單（happy-path）
 
-> 對應 Feature: 練習投球清單 → Scenario: 顯示投球清單
+> 對應 Feature: 觀測時段目擊事件清單 → Scenario: 顯示目擊事件清單
 
 ### 業務脈絡
-- practice-001 含 pitch-001 (FF, 已收藏) 與 pitch-002 (CB, 未收藏)
+- watch-001 含 sighting-001 (PER, 已收藏) 與 sighting-002 (GEM, 未收藏)
 
 ### E2E 驗證流程
-1. 進入 `/practice/practice-001`
-2. 識別 pitch-001（pitch-type = FF）：用 `getByRole('row', { name: /FF/ })` 或 `getByRole('article', { name: /FF/ })`
-3. 識別 pitch-002（pitch-type = CB）：同上
-4. 驗證 pitch-001 顯示「已收藏」（有對應的「取消收藏」按鈕）
-5. 驗證 pitch-002 顯示「未收藏」（有「收藏」按鈕）
+1. 進入 `/watch/watch-001`
+2. 識別 sighting-001（shower-code = PER）：用 `getByRole('row', { name: /PER/ })` 或 `getByRole('article', { name: /PER/ })`
+3. 識別 sighting-002（shower-code = GEM）：同上
+4. 驗證 sighting-001 顯示「已收藏」（有對應的「取消收藏」按鈕）
+5. 驗證 sighting-002 顯示「未收藏」（有「收藏」按鈕）
 
 ### Verification 策略（metric 完整性）
-- **主流 invariant**：pitch-type / favorite 狀態用 role/text 驗，不鎖具體格式
-- **深度 invariant**（可選 sub-flow）：開啟某 pitch 的 detail / drawer，驗證至少 3-4 個關鍵 metric（speed / spin-rate / pitch-type / player）可達。**不必驗 14 欄具體值**，因為單位/格式可能迭代（°→HH:mm、imperial→metric）
+- **主流 invariant**：shower-code / favorite 狀態用 role/text 驗，不鎖具體格式
+- **深度 invariant**（可選 sub-flow）：開啟某 sighting 的 detail / drawer，驗證至少 3-4 個關鍵 metric（speed / light-peak / shower-code / station）可達。**不必驗 14 欄具體值**，因為單位/格式可能迭代（°→HH:mm、imperial→metric）
 
 ### 不再凍結
 - 14 個 metric 是否全顯在 row（可移至 drawer / detail）
@@ -141,20 +147,20 @@
 
 ---
 
-## Flow: 成功收藏單球（happy-path）
+## Flow: 成功收藏單筆（happy-path）
 
-> 對應 Feature: 收藏單球 → Scenario: 成功收藏
+> 對應 Feature: 收藏單筆 → Scenario: 成功收藏
 
 ### 業務脈絡
-- pitch-002 未收藏
+- sighting-002 未收藏
 
 ### E2E 驗證流程
-1. 進入 `/practice/practice-001`
-2. 在 pitch-002 實體範圍內，觸發「收藏」按鈕（role=button, name 含「收藏」前綴）
+1. 進入 `/watch/watch-001`
+2. 在 sighting-002 實體範圍內，觸發「收藏」按鈕（role=button, name 含「收藏」前綴）
 3. 期待：狀態翻轉為「已收藏」（同一按鈕變「取消收藏」，或出現「已收藏」標記）
 
 ### Verification 策略
-- 範圍：先用 role 找 pitch-002 entity，再在 entity 範圍內找 button
+- 範圍：先用 role 找 sighting-002 entity，再在 entity 範圍內找 button
 - 狀態：驗證 entity 內出現「取消收藏」按鈕（state-based assertion，不依賴 data-favorited 屬性）
 
 ### 不再凍結
@@ -164,24 +170,24 @@
 
 ---
 
-## Flow: 成功刪除單球（happy-path）
+## Flow: 成功刪除單筆（happy-path）
 
-> 對應 Feature: 刪除單球 → Scenario: 成功刪除單球
+> 對應 Feature: 刪除單筆 → Scenario: 成功刪除單筆
 
 ### 業務脈絡
-- pitch-001 已記錄、未刪除
+- sighting-001 已記錄、未刪除
 
 ### E2E 驗證流程
-1. 進入 `/practice/practice-001`
-2. 在 pitch-001 實體範圍內，觸發「刪除」按鈕
+1. 進入 `/watch/watch-001`
+2. 在 sighting-001 實體範圍內，觸發「刪除」按鈕
 3. 若有 confirm dialog，完成確認（dialog 內動詞按鈕，如「刪除」/「確認」）
 4. 期待：
-   - `DELETE /api/v1/practices/{id}/pitches/{id}` 被呼叫（API spy）
-   - pitch-001 不再可見於清單
+   - `DELETE /api/v1/watches/{id}/sightings/{id}` 被呼叫（API spy）
+   - sighting-001 不再可見於清單
 
 ### Verification 策略（destructive 操作）
-- 主要靠 API spy：`page.waitForRequest(req => /\/pitches\/[^/]+$/.test(req.url()) && req.method() === 'DELETE')`
-- UI 補：執行後 pitch-001 entity 不可見
+- 主要靠 API spy：`page.waitForRequest(req => /\/sightings\/[^/]+$/.test(req.url()) && req.method() === 'DELETE')`
+- UI 補：執行後 sighting-001 entity 不可見
 
 ### 不再凍結
 - confirm 形式（modal / inline / 滑動皆可）
@@ -190,16 +196,16 @@
 
 ---
 
-## Flow: 缺少練習 ID（field-validation, API 邊界）
+## Flow: 缺少觀測時段 ID（field-validation, API 邊界）
 
-> 對應 Feature: 請求匯出 → Scenario: 缺少練習 ID
+> 對應 Feature: 請求匯出 → Scenario: 缺少觀測時段 ID
 
 ### 性質
 API-only。UI 不應該能進入此狀態，主要保護 API 合約。
 
 ### 驗證流程
-- 直接 `POST /api/v1/exports` 帶 `{ exportType: 'single-practice', practiceId: null }`
-- 期待：400，訊息含「匯出單次練習時必須提供 practiceId」
+- 直接 `POST /api/v1/exports` 帶 `{ exportType: 'single-watch', watchId: null }`
+- 期待：400，訊息含「匯出單次觀測時段時必須提供 watchId」
 ```
 
 ---
@@ -210,13 +216,13 @@ API-only。UI 不應該能進入此狀態，主要保護 API 合約。
 不變。
 
 ### 2. Steps 用「使用者意圖」描述，不寫 testid
-- ✅ 「觸發匯出此次練習」
-- ✅ 「在 pitch-001 範圍內觸發收藏」
-- ❌ 「點擊 `[data-testid="export-single-practice-button"]`」
+- ✅ 「觸發匯出此次觀測時段」
+- ✅ 「在 sighting-001 範圍內觸發收藏」
+- ❌ 「點擊 `[data-testid="export-single-watch-button"]`」
 
 ### 3. Expected 用「可觀察的業務結果」描述
 - ✅ 「`POST /api/exports` 被呼叫，payload {...}」
-- ✅ 「pitch-001 不再可見於清單」
+- ✅ 「sighting-001 不再可見於清單」
 - ✅ 「使用者能看到成功反饋（role=alert / role=status / 「已送出」文字）」
 - ❌ 「`[data-testid="toast-success"]` 顯示「匯出請求已送出」」（過度具體文字 + testid）
 
@@ -227,10 +233,10 @@ API-only。UI 不應該能進入此狀態，主要保護 API 合約。
 **新規則**（v2）：
 - 每個欄位**必須是 UI 可達**（accessible by user），但**不限定位置**：可在 row、card、drawer、tooltip、詳情頁
 - spec 不必對「每欄寫斷言」，但**必須涵蓋「主要識別欄」+「狀態欄」**：
-  - 主要識別欄：例如 pitch-type、player、practice item（讓使用者能識別這是哪筆資料）
+  - 主要識別欄：例如 shower-code、station、watch item（讓使用者能識別這是哪筆資料）
   - 狀態欄：收藏 / 進行中 / 已結束等業務狀態
-- 其他細節欄位（如 spin-axis 數值、verticalBreak cm 等）可選擇：
-  - (a) 在主 flow 寫「能找到代表性數值」概覽斷言（如「speed 130 出現於 pitch-001 範圍」）
+- 其他細節欄位（如 radiant-axis 數值、verticalDrift cm 等）可選擇：
+  - (a) 在主 flow 寫「能找到代表性數值」概覽斷言（如「speed 130 出現於 sighting-001 範圍」）
   - (b) 開「detail / drawer」sub-flow 獨立驗證該情境下能看到所有 metric label
 - **不可省的**：影片連結（驗證有可開啟的影片元素）
 
@@ -251,31 +257,31 @@ API-only。UI 不應該能進入此狀態，主要保護 API 合約。
 
 ```markdown
 ### Steps
-1. 點擊 `[data-testid="pitch-delete-button-pitch-001"]`
-2. 驗證 `[data-testid="pitch-delete-confirm-modal"]` 顯示
-3. 點擊 `[data-testid="pitch-delete-confirm-button"]`
+1. 點擊 `[data-testid="sighting-delete-button-sighting-001"]`
+2. 驗證 `[data-testid="sighting-delete-confirm-modal"]` 顯示
+3. 點擊 `[data-testid="sighting-delete-confirm-button"]`
 
 ### Expected
 - `[data-testid="toast-success"]` 顯示「刪除成功」
-- `[data-testid="pitch-row-pitch-001"]` 從列表消失
-- `[data-testid="practice-pitch-count"]` -1
+- `[data-testid="sighting-row-sighting-001"]` 從列表消失
+- `[data-testid="watch-sighting-count"]` -1
 ```
 
 ### ✅ 抽象化（v2 風格，吸收 vibe）
 
 ```markdown
 ### E2E 驗證流程
-1. 在 pitch-001 實體範圍內，觸發「刪除」
+1. 在 sighting-001 實體範圍內，觸發「刪除」
 2. 若有 confirm dialog，完成確認
 3. 期待：
-   - `DELETE /api/v1/practices/*/pitches/*` 被呼叫
-   - pitch-001 不再可見於清單
+   - `DELETE /api/v1/watches/*/sightings/*` 被呼叫
+   - sighting-001 不再可見於清單
 
 ### 不再凍結
 - confirm 形式（modal / inline / 滑動）
 - 觸發按鈕位置（cell action / kebab menu / hover）
 - 反饋形式（toast / banner / inline）
-- 投球計數的呈現位置與格式
+- 目擊事件計數的呈現位置與格式
 ```
 
 ---
@@ -287,7 +293,7 @@ API-only。UI 不應該能進入此狀態，主要保護 API 合約。
 | 模式 | 用途 |
 |---|---|
 | `findEntity(role, name regex)` | 找實體（row / article / listitem 多形式接受） |
-| `triggerActionByIntent(entity, action regex)` | 在 entity 範圍內觸發語意動作 |
+| `findEntity(...).getByRole('button', { name: regex })` | 在 entity 範圍內觸發語意動作（無獨立 helper，直接鏈式定位） |
 | `maybeConfirm(page)` | 可選二次確認（dialog scope，動詞 regex） |
 | `waitForApiCall(method, urlPattern)` | API spy |
 | `getFeedbackElement(page)` | 找成功反饋（role=alert / status / 文字 regex） |

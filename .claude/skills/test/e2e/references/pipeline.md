@@ -171,9 +171,9 @@ for each spec/e2e-flows/{NN}-{name}.flow.md:
 ### spec 摘要
 
 ```
-E2E Spec 完成：04-建立球隊
+E2E Spec 完成：04-建立觀測點
 
-  spec → test/e2e/specs/04-建立球隊.spec.ts ✅
+  spec → test/e2e/specs/04-建立觀測點.spec.ts ✅
   測試數：4（正常 3 + skip 1）
 ```
 
@@ -182,10 +182,10 @@ E2E Spec 完成：04-建立球隊
 ```
 E2E Batch 完成：03 → 06
 
-  03-查詢球隊列表  ✅
-  04-建立球隊      ✅
-  05-編輯球隊      ✅
-  06-刪除球隊      ✅
+  03-查詢觀測點列表  ✅
+  04-建立觀測點      ✅
+  05-編輯觀測點      ✅
+  06-刪除觀測點      ✅
 
   成功：4 / 4
 ```
@@ -193,29 +193,24 @@ E2E Batch 完成：03 → 06
 ### pipeline 摘要
 
 ```
-E2E Pipeline 完成：04-建立球隊
+E2E Pipeline 完成：04-建立觀測點
 
-  spec  → test/e2e/specs/04-建立球隊.spec.ts ✅（已存在，跳過）
+  spec  → test/e2e/specs/04-建立觀測點.spec.ts ✅（已存在，跳過）
   red   → 2 fail / 1 pass / 1 skip
   green → ✅ 全部通過（迭代 2 次）
 
   修復：
-  - app/pages/teams/index.vue（2 處 testid）
-  - server/mock/data/teams.ts（1 處數值）
+  - app/pages/sites/index.vue（2 處 testid）
+  - server/mock/data/sites.ts（1 處數值）
 ```
 
 ---
 
 ## Lint Gate（必須通過）
 
-Pipeline 中每個產出程式碼的階段結束前，**必須執行 lint 修復並確認零錯誤**：
-
-```bash
-npm run lint --fix
-npm run lint    # 確認 0 errors
-```
-
-> **阻塞條件**：lint 不通過則該階段視為失敗，pipeline 停止。不通過 lint 的程式碼會導致 pre-commit hook 失敗，無法 commit。
+- Pipeline 中每個產出程式碼的階段結束前，必跑 `npm run eslint` + `npm run typelint`，零錯誤才算完成（CLAUDE.md 紅線）
+- **阻塞條件**：lint 不通過則該階段視為失敗，pipeline 停止
+- 指令順序與 `--fix` 禁忌等規則見 [green.md](green.md) 的「Lint Gate（必須通過）」段
 
 ---
 
@@ -224,6 +219,6 @@ npm run lint    # 確認 0 errors
 - [ ] 前置條件已滿足（.flow.md 存在、helpers/actions.ts 存在）
 - [ ] fixtures.ts 已包含所需的路由和測試帳號
 - [ ] .spec.ts 已產出（從 helpers import 共用操作，不含本地定義）
-- [ ] `npm run lint` 零錯誤
+- [ ] `npm run eslint` + `npm run typelint` 零錯誤
 - [ ] 輸出摘要包含成功/失敗/跳過數量
 - [ ] pipeline 模式：紅燈報告 + 綠燈修復完成
