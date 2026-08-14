@@ -21,11 +21,13 @@ import {
   createTable,
   distributeCakeBox,
   getReceptionStatus,
+  getVenueLayout,
   listCakeBoxAssignments,
   listCakeBoxExclusions,
   listCakeBoxTypes,
   listGuests,
   listTables,
+  listVenueMarkers,
   listWeddingSeats,
   recordGiftMoney,
   seatGuest,
@@ -65,7 +67,10 @@ const statusAsync = getReceptionStatus(weddingId, { default: () => [] })
 // 現場桌次圖：桌次 + 全婚禮座位（一次抓，取代逐桌 N 請求）
 const tablesAsync = listTables(weddingId, { default: () => [] })
 const seatsAsync = listWeddingSeats(weddingId, { default: () => [] })
-await Promise.all([guestsAsync, cakeTypesAsync, cakeAssignAsync, cakeExclusionAsync, statusAsync, tablesAsync, seatsAsync])
+// 場地佈局與標記：桌次圖依後台實際擺位呈現，舞台與門口／送客區一併鏡射（issue #151）
+const venueAsync = getVenueLayout(weddingId, { default: () => null })
+const markersAsync = listVenueMarkers(weddingId, { default: () => [] })
+await Promise.all([guestsAsync, cakeTypesAsync, cakeAssignAsync, cakeExclusionAsync, statusAsync, tablesAsync, seatsAsync, venueAsync, markersAsync])
 const { data: guests, refresh: refreshGuests } = guestsAsync
 // 款式清單原本只取 data，後台改款／改組合後接待端會停在開頁當下的舊資料直到整頁重載（issue #138）
 const { data: cakeBoxTypes, refresh: refreshCakeTypes } = cakeTypesAsync
@@ -74,6 +79,8 @@ const { data: cakeExclusions, refresh: refreshCakeExclusions } = cakeExclusionAs
 const { data: receptionStatus, refresh: refreshStatus } = statusAsync
 const { data: tables, refresh: refreshTables } = tablesAsync
 const { data: allSeats, refresh: refreshSeats } = seatsAsync
+const { data: venueLayout, refresh: refreshVenue } = venueAsync
+const { data: venueMarkers, refresh: refreshMarkers } = markersAsync
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
@@ -467,8 +474,9 @@ const seatsByTable = computed<Record<string, SeatListItem[]>>(() => {
   return map
 })
 
+// 桌位座標、舞台與場地標記都可能在後台被調整，一併同步才不會與規劃頁脫節
 async function refreshSeating() {
-  await Promise.all([refreshTables(), refreshSeats()])
+  await Promise.all([refreshTables(), refreshSeats(), refreshVenue(), refreshMarkers()])
 }
 
 // 現場即時性：自助報到、其他接待機的操作、後台排座位的變動，
@@ -671,6 +679,36 @@ const floorViewTabs = [
   { label: '桌次圖', icon: 'i-heroicons-squares-2x2', slot: 'map', value: 'map' },
   { label: '桌次清單', icon: 'i-heroicons-list-bullet', slot: 'list', value: 'list' },
 ]
+
+// 桌卡只吃統計數字（members 由展開面板負責），扁平展開才好用 v-bind 傳進元件
+function tableChipStats(table: TableListItem) {
+  const info = tableInfo(table)
+  return {
+    normalHeads: info.normalHeads,
+    childChairs: info.childChairs,
+    heads: info.heads,
+    checkedHeads: info.checkedHeads,
+    rate: info.rate,
+  }
+}
+
+// 桌次圖依實際座標擺放後，賓客姓名無法平鋪在桌下（會互相重疊），
+// 改為點選桌子在畫布外展開該桌名單——畫布內的字會跟著縮放，放外面才讀得到（issue #151）
+const selectedTableId = ref<string | null>(null)
+const selectedTable = computed(() =>
+  (tables.value ?? []).find(t => t.tableId === selectedTableId.value) ?? null,
+)
+function toggleTableDetail(table: TableListItem) {
+  selectedTableId.value = selectedTableId.value === table.tableId ? null : table.tableId
+}
+// 桌次被刪除或改名時，收起殘留的展開面板
+watch(tables, (list) => {
+  if (selectedTableId.value && !(list ?? []).some(t => t.tableId === selectedTableId.value))
+    selectedTableId.value = null
+})
+
+// 放大檢視：右欄僅 520px，整場縮到 0.6 倍後字太小，現場改開全螢幕對位
+const isFloorPlanZoomOpen = ref(false)
 // 此組正常席人頭 = 本人 + 同行
 const newGuestNormalHeads = computed(() => 1 + (Number(newGuestForm.plusOneCount) || 0))
 // 桌次選項：首項為「先不排桌」，其餘標示正常席入座 / 座位數，現場一眼看出哪桌還有空位
@@ -1202,96 +1240,98 @@ async function submitCake() {
             class="flex min-h-0 flex-1 flex-col"
             :ui="{ content: 'min-h-0 flex-1 overflow-auto' }"
           >
-            <!-- 檢視一：桌次圖（現況，預設）——每桌圓圈 + 報到率環 -->
+            <!-- 檢視一：桌次圖（預設）——依後台桌次規劃的實際座標擺放，等比縮放塞進右欄 -->
             <template #map>
-              <div
-                data-testid="vibe-reception-floor-plan"
-                class="rounded-lg border border-line bg-paper p-5 shadow-sm"
-                :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
-              >
-                <div class="mb-5 flex justify-center">
-                  <span class="rounded border border-dashed border-line px-7 py-1.5 text-overline text-ink-300">
-                    舞台
-                  </span>
-                </div>
-                <!-- 圓桌平面：主桌單獨面對舞台、其餘雙數並列；只標示是哪一桌 + 入座數 -->
-                <div class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                  <div
-                    v-for="table in orderedTables"
-                    :key="table.tableId"
-                    :data-testid="`vibe-reception-table-${table.tableId}`"
-                    class="flex flex-col items-center"
-                    :class="isMainTable(table) && 'sm:col-span-2'"
+              <div class="space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-caption text-ink-500 dark:text-neutral-400">
+                    擺位同步後台桌次規劃，點桌可看名單
+                  </p>
+                  <UButton
+                    data-testid="vibe-reception-floor-zoom"
+                    icon="i-heroicons-magnifying-glass-plus"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    @click="isFloorPlanZoomOpen = true"
                   >
-                    <!-- 圓桌：桌名 + 指派人數 + 報到率環（主桌金色強調、較大、面對舞台） -->
-                    <div
-                      class="relative flex aspect-square w-full flex-col items-center justify-center rounded-full border-2 px-3 text-center transition-colors"
-                      :class="isMainTable(table)
-                        ? 'max-w-[200px] border-gold bg-gold-light/25 dark:border-gold dark:bg-gold-deep/20'
-                        : 'max-w-[150px] border-line bg-paper dark:border-neutral-700 dark:bg-neutral-800'"
-                    >
-                      <!-- 報到率環：柔和 success 弧線由正上方順時針，弧長 = 已報到 / 指派人頭；尚無人報到時不顯示 -->
-                      <svg
-                        v-if="tableInfo(table).checkedHeads > 0"
-                        class="pointer-events-none absolute inset-0 size-full -rotate-90 text-success-400"
-                        viewBox="0 0 100 100"
-                        aria-hidden="true"
-                      >
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="48"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.5"
-                          stroke-linecap="round"
-                          :stroke-dasharray="`${(tableInfo(table).rate * 301.6).toFixed(1)} 301.6`"
-                        />
-                      </svg>
-                      <span
-                        class="line-clamp-2 font-display font-medium leading-tight text-ink dark:text-paper"
-                        :class="isMainTable(table) ? 'text-xl' : 'text-base'"
-                      >{{ table.tableName }}</span>
-                      <span class="mt-1 text-caption text-ink-500 dark:text-neutral-400">
-                        {{ tableInfo(table).normalHeads }} / {{ table.capacity }} 位
-                      </span>
-                      <span v-if="tableInfo(table).childChairs > 0" class="text-caption text-gold-deep">
-                        +兒童椅 {{ tableInfo(table).childChairs }}
-                      </span>
-                      <span
-                        v-if="tableInfo(table).heads > 0"
-                        class="mt-0.5 text-caption font-medium text-success-600 dark:text-success-400"
-                      >
-                        報到 {{ tableInfo(table).checkedHeads }}/{{ tableInfo(table).heads }}
+                    放大
+                  </UButton>
+                </div>
+
+                <!-- 選定桌次的賓客名單：擺在畫布之前——畫布可能上千像素高，
+                     名單放後面等於點了看不到；也不放畫布內，字級才不受縮放影響 -->
+                <div
+                  v-if="selectedTable"
+                  :data-testid="`vibe-reception-seats-${selectedTable.tableId}`"
+                  class="rounded-lg border border-line bg-paper p-3 dark:border-neutral-800 dark:bg-neutral-900/40"
+                >
+                  <div class="flex items-center justify-between gap-2 border-b border-line pb-1.5 dark:border-neutral-800">
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-body font-medium text-ink dark:text-paper">{{ selectedTable.tableName }}</span>
+                      <span class="text-caption text-ink-500 dark:text-neutral-400">
+                        {{ tableInfo(selectedTable).normalHeads }}/{{ selectedTable.capacity }} 位
                       </span>
                     </div>
-                    <p v-if="isMainTable(table)" class="mt-1 text-caption text-gold-deep">
-                      面對舞台
-                    </p>
-                    <!-- 該桌賓客姓名（依桌次指派）：已報到淡綠、未報到虛線淡，方便現場核對 -->
-                    <div
-                      v-if="tableInfo(table).members.length > 0"
-                      :data-testid="`vibe-reception-seats-${table.tableId}`"
-                      class="mt-2 flex flex-wrap justify-center gap-1"
-                    >
-                      <span
-                        v-for="guest in tableInfo(table).members"
-                        :key="guest.guestId"
-                        class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-caption transition-colors"
-                        :class="isGuestCheckedIn(guest.guestId)
-                          ? 'border-success-300 bg-success-50 text-success-700 dark:border-success-700 dark:bg-success-900/30 dark:text-success-300'
-                          : 'border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'"
-                        :title="isGuestCheckedIn(guest.guestId) ? '已報到' : '未報到'"
-                      >
-                        <UIcon
-                          v-if="guest.childChairCount > 0"
-                          name="i-heroicons-sparkles"
-                          class="size-3 shrink-0 text-gold-deep"
-                        />
-                        {{ guest.name }}<template v-if="guest.partySize > 1">·{{ guest.partySize }}</template>
-                      </span>
-                    </div>
+                    <UButton
+                      icon="i-heroicons-x-mark"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      aria-label="收起名單"
+                      @click="selectedTableId = null"
+                    />
                   </div>
+                  <div
+                    v-if="tableInfo(selectedTable).members.length > 0"
+                    class="mt-2 flex flex-wrap gap-1"
+                  >
+                    <span
+                      v-for="guest in tableInfo(selectedTable).members"
+                      :key="guest.guestId"
+                      class="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-caption transition-colors"
+                      :class="isGuestCheckedIn(guest.guestId)
+                        ? 'border-success-300 bg-success-50 text-success-700 dark:border-success-700 dark:bg-success-900/30 dark:text-success-300'
+                        : 'border-dashed border-ink-200 bg-paper text-ink-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-500'"
+                      :title="isGuestCheckedIn(guest.guestId) ? '已報到' : '未報到'"
+                    >
+                      <UIcon
+                        v-if="guest.childChairCount > 0"
+                        name="i-heroicons-sparkles"
+                        class="size-3 shrink-0 text-gold-deep"
+                      />
+                      {{ guest.name }}<template v-if="guest.partySize > 1">·{{ guest.partySize }}</template>
+                    </span>
+                  </div>
+                  <p v-else class="mt-2 text-caption text-ink-400 dark:text-neutral-500">
+                    尚無賓客
+                  </p>
+                </div>
+
+                <div
+                  data-testid="vibe-reception-floor-plan"
+                  class="rounded-lg border border-line bg-paper p-3 shadow-sm"
+                  :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '24px 24px' }"
+                >
+                  <SeatingVenueCanvas
+                    :tables="tables ?? []"
+                    :markers="venueMarkers ?? []"
+                    :layout="venueLayout ?? null"
+                    :is-main-table="isMainTable"
+                    :max-height-ratio="0.6"
+                    :min-scale="0.6"
+                  >
+                    <template #table="{ table, isMain }">
+                      <ReceptionTableChip
+                        :table="table"
+                        :is-main="isMain"
+                        :selected="selectedTableId === table.tableId"
+                        :testid="`vibe-reception-table-${table.tableId}`"
+                        v-bind="tableChipStats(table)"
+                        @select="toggleTableDetail(table)"
+                      />
+                    </template>
+                  </SeatingVenueCanvas>
                 </div>
               </div>
             </template>
@@ -1359,6 +1399,46 @@ async function submitCake() {
         </div>
       </div>
     </div>
+
+    <!-- 桌次圖放大檢視：右欄縮圖看不清時全螢幕對位（超出可捲動，最多 1:1） -->
+    <UModal v-model:open="isFloorPlanZoomOpen" fullscreen>
+      <template #content>
+        <div data-testid="vibe-reception-floor-zoom-modal" class="flex h-full flex-col bg-paper dark:bg-neutral-900">
+          <div class="flex shrink-0 items-center justify-between gap-3 border-b border-line px-6 py-4 dark:border-neutral-800">
+            <!-- 標題刻意與右欄「現場桌次圖」不同字：兩者同時在 DOM 時不會撞 heading 斷言 -->
+            <h3 class="text-body-l font-semibold text-ink dark:text-paper">
+              桌次圖放大檢視
+            </h3>
+            <UButton
+              icon="i-heroicons-x-mark"
+              color="neutral"
+              variant="ghost"
+              aria-label="關閉桌次圖"
+              @click="isFloorPlanZoomOpen = false"
+            />
+          </div>
+          <div class="min-h-0 flex-1 overflow-auto p-6">
+            <SeatingVenueCanvas
+              :tables="tables ?? []"
+              :markers="venueMarkers ?? []"
+              :layout="venueLayout ?? null"
+              :is-main-table="isMainTable"
+            >
+              <template #table="{ table, isMain }">
+                <ReceptionTableChip
+                  :table="table"
+                  :is-main="isMain"
+                  :selected="selectedTableId === table.tableId"
+                  :testid="`vibe-reception-zoom-table-${table.tableId}`"
+                  v-bind="tableChipStats(table)"
+                  @select="toggleTableDetail(table)"
+                />
+              </template>
+            </SeatingVenueCanvas>
+          </div>
+        </div>
+      </template>
+    </UModal>
 
     <!-- 禮金登記 / 更正 Modal -->
     <UModal v-model:open="isGiftOpen">
