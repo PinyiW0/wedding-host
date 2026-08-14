@@ -53,6 +53,11 @@ export function useVenueRefImageDims(url: MaybeRefOrGetter<string | null | undef
       return
     const img = new Image()
     img.onload = () => {
+      // 載入期間 url 已換圖或被移除 → 這次結果作廢。
+      // 否則舊圖尺寸會蓋回 dims，讓移除底圖後仍算出一個不存在的框，
+      // 污染 canvasSize / contentBounds（畫面上是莫名多一塊留白）
+      if (toValue(url) !== next)
+        return
       const w = Math.min(img.naturalWidth, 1200)
       dims.value = { width: w, height: Math.round(img.naturalHeight * (w / img.naturalWidth)) }
     }
