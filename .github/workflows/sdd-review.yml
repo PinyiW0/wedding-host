@@ -21,12 +21,15 @@ jobs:
   sdd-review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # action 一律釘 commit SHA（非可變 tag）：tag 可被上游移動，惡意版本會在
+      # 持有 CLAUDE_CODE_OAUTH_TOKEN 的本 job 內執行、直接取走 token。
+      # 這是唯一不需本 repo 權限就能達成的憑證竊取路徑，故必釘。升版時連同註解的版本號一起更新。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # 取完整歷史，讓 action 能算出 PR diff
 
       - name: Run SDD Review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1.0.185
         with:
           # 用 Claude 訂閱（Max/Pro）的 OAuth token，不另外花 API 費用
           # token 由本機 `claude setup-token` 產生，存進 repo Secrets
