@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 視覺層級硬規則檢查（規範：spec/ui-config/visual-hierarchy.md ＋ creative-direction.md §3/§4）
+// 視覺層級硬規則檢查（規範：.claude/rules/visual-hierarchy.md ＋ spec/ui-config/creative-direction.md §3/§4）
 // 只檢查可機器判定的違規，語意層級（一頁一主標等）仍由規範文件約束。
 // 公開頁（PUBLIC_DIRS，對齊 auth.global.ts 賓客面向路徑）依 creative-direction.md §3
 // 放行 display 級規則，改用 publicPattern 檢查（text-8xl+、font-extralight 以下仍禁）。
