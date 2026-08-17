@@ -74,8 +74,9 @@ async function createEncoder(browser) {
 /**
  * 把一組 PNG frame 編成 GIF。
  * frames: [{ png: Buffer, delay: number }]，delay 為該幀停留毫秒
+ * colors: 調色盤色數，畫面文字密集的頁面調低可壓檔案（本專案配色低彩度，128 色看不出差別）
  */
-async function encodeGif(encoder, frames, { width, height }) {
+async function encodeGif(encoder, frames, { width, height, colors = 256 }) {
   await encoder.evaluate(({ w, h }) => {
     window.__enc = window.gifenc.GIFEncoder()
     window.__canvas = new OffscreenCanvas(w, h)
@@ -83,17 +84,17 @@ async function encodeGif(encoder, frames, { width, height }) {
   }, { w: width, h: height })
 
   for (const frame of frames) {
-    await encoder.evaluate(async ({ b64, w, h, delay }) => {
+    await encoder.evaluate(async ({ b64, w, h, delay, colors }) => {
       const res = await fetch(`data:image/png;base64,${b64}`)
       const bitmap = await createImageBitmap(await res.blob())
       window.__ctx.drawImage(bitmap, 0, 0, w, h)
       bitmap.close()
 
       const { data } = window.__ctx.getImageData(0, 0, w, h)
-      const palette = window.gifenc.quantize(data, 256)
+      const palette = window.gifenc.quantize(data, colors)
       const index = window.gifenc.applyPalette(data, palette)
       window.__enc.writeFrame(index, w, h, { palette, delay })
-    }, { b64: frame.png.toString('base64'), w: width, h: height, delay: frame.delay })
+    }, { b64: frame.png.toString('base64'), w: width, h: height, delay: frame.delay, colors })
   }
 
   const b64 = await encoder.evaluate(() => {
@@ -168,19 +169,32 @@ async function login(page) {
   await page.waitForURL(url => !url.pathname.startsWith('/login'))
 }
 
-/** 桌次排席：空桌 → 點「推薦排序」→ 依禮俗自動帶位 */
+/**
+ * 桌次排席：先手動安排一位賓客入座，再用「推薦排序」帶完其餘。
+ *
+ * 手動入座走「點選賓客 → 點桌上空位」這條路徑（頁面同時支援拖曳，但拖曳過程錄不出來：
+ * Playwright 截圖不含滑鼠游標，原生 HTML5 DnD 也不會渲染 drag image）。
+ * 點選路徑有「待放置：<賓客>」提示條，狀態變化在 GIF 上看得見。
+ */
 async function recordSeating(page, encoder) {
   await page.goto(`${BASE}/weddings/${WEDDING_ID}/seating`, { waitUntil: 'networkidle' })
   await page.waitForTimeout(1200)
 
   const stop = startRecording(page)
-  await page.waitForTimeout(700)
+  await page.waitForTimeout(500)
 
+  // 手動入座：點名單上的新郎 → 點主桌空位
+  await page.getByTestId('vibe-seating-guest-guest-101').click()
+  await page.waitForTimeout(900) // 停在「待放置」提示，讓這步看得清楚
+  await page.getByTestId('table-001-empty-1').click()
+  await page.waitForTimeout(1100)
+
+  // 其餘交給推薦排序
   await page.getByTestId('vibe-seating-recommend').click()
-  await page.waitForTimeout(2400) // 自動帶位 + 圓桌逐一填滿的重繪
-  await page.waitForTimeout(1300) // 結果停留
+  await page.waitForTimeout(2000) // 自動帶位 + 圓桌逐一填滿的重繪
+  await page.waitForTimeout(700) // 結果停留（連同上方色數，是控制檔案大小的兩個旋鈕）
 
-  return writeGif(encoder, await stop(), DESKTOP_GIF, 'seating.gif')
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'seating.gif')
 }
 
 /** 祝福審核 → 投影牆：後台通過一則，切到投影牆看跑馬燈 */
