@@ -26,6 +26,8 @@ const SHOT_DIR = resolve(ROOT, 'docs/screenshots')
 // 示範帳號（README「本機啟動」段落用的同一組）與示範婚禮
 const ACCOUNT = { username: 'couple', password: 'couple1122' }
 const WEDDING_ID = 'wedding-001'
+// 謝卡公開頁示範用賓客（seed 第一位一般賓客，非新人/雙親，適合當謝卡收件人）
+const THANKYOU_GUEST_ID = 'guest-001'
 
 // 錄製／截圖用的 viewport，與 docs/screenshots 既有素材同尺寸（後台 1600×1000、手機 390×844@2x）
 const DESKTOP = { width: 1600, height: 1000 }
@@ -228,6 +230,32 @@ async function recordProjection(page, encoder) {
   return writeGif(encoder, await stop(), DESKTOP_GIF, 'projection.gif')
 }
 
+/** 賓客名單：開表單新增一位賓客，送出後看到新賓客出現在名單上 */
+async function recordGuests(page, encoder) {
+  await page.goto(`${BASE}/weddings/${WEDDING_ID}/guests`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(800)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(500)
+
+  await page.getByTestId('guest-create').click()
+  await page.getByTestId('guest-form-modal').waitFor()
+  await page.waitForTimeout(500)
+
+  await page.getByTestId('guest-name').fill('陳曉婷')
+  await page.waitForTimeout(350)
+  await page.getByTestId('guest-category').fill('朋友')
+  await page.waitForTimeout(350)
+  await page.getByTestId('guest-contact').fill('0955666777')
+  await page.waitForTimeout(500)
+
+  await page.getByTestId('guest-submit').click()
+  await page.getByTestId('guest-form-modal').waitFor({ state: 'hidden' }).catch(() => {})
+  await page.waitForTimeout(1200) // toast + 名單刷新落定
+
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'guests.gif')
+}
+
 /** 賓客 RSVP：填出席資訊 → 手繪小花 → 送出 */
 async function recordRsvp(page, encoder) {
   await page.goto(`${BASE}/rsvp/public/${WEDDING_ID}`, { waitUntil: 'networkidle' })
@@ -286,6 +314,24 @@ async function drawFlower(page, canvas) {
   await stroke(cx, cy, spread * 0.34, 12) // 花心
 }
 
+/** 謝卡公開頁：賓客點信封開封，謝卡自信封口升起展開 */
+async function recordThankyou(page, encoder) {
+  await page.goto(`${BASE}/thankyou/${WEDDING_ID}/${THANKYOU_GUEST_ID}`, { waitUntil: 'networkidle' })
+  await page.waitForTimeout(1200)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(700)
+
+  // 點信封開啟：封蓋翻開 → 信封退場 → 謝卡升起展開 → 簾幕揭卡
+  await page.getByTestId('thankyou-envelope').click()
+  await page.getByTestId('thankyou-card').waitFor({ timeout: 5000 }).catch(() => {})
+  await page.waitForTimeout(2400) // 完整開卡過場
+
+  await page.waitForTimeout(700) // 結果停留
+
+  return writeGif(encoder, await stop(), MOBILE_GIF, 'thankyou.gif')
+}
+
 // ===== 主流程 =====
 
 async function main() {
@@ -310,6 +356,7 @@ async function main() {
 
   await recordSeating(admin, encoder)
   await recordProjection(admin, encoder)
+  await recordGuests(admin, encoder)
 
   await admin.goto(`${BASE}/weddings/${WEDDING_ID}`, { waitUntil: 'networkidle' })
   await shoot(admin, 'dashboard.png')
@@ -326,6 +373,7 @@ async function main() {
   const guest = await guestCtx.newPage()
 
   await recordRsvp(guest, encoder)
+  await recordThankyou(guest, encoder)
 
   await guest.goto(`${BASE}/rsvp/public/${WEDDING_ID}`, { waitUntil: 'networkidle' })
   await shoot(guest, 'rsvp-mobile.png', 1200)
