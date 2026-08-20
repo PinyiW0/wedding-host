@@ -30,9 +30,11 @@
 
 ![祝福審核與投影牆演示](docs/demo/projection.gif)
 
-**婚後電子謝卡**——賓客點開專屬信封，謝卡自信封口升起展開：
+**婚後電子謝卡**——賓客點開專屬信封，謝卡自信封口升起展開，行動版與桌面版皆支援：
 
-<img src="docs/demo/thankyou.gif" width="390" alt="謝卡公開頁演示：點信封開封、謝卡展開">
+<img src="docs/demo/thankyou.gif" width="390" alt="謝卡公開頁演示（行動版）：點信封開封、謝卡展開">
+
+![謝卡公開頁演示（桌面版）](docs/demo/thankyou-web.gif)
 
 ## 產品導覽
 

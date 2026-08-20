@@ -314,8 +314,8 @@ async function drawFlower(page, canvas) {
   await stroke(cx, cy, spread * 0.34, 12) // 花心
 }
 
-/** 謝卡公開頁：賓客點信封開封，謝卡自信封口升起展開 */
-async function recordThankyou(page, encoder) {
+/** 謝卡公開頁共用劇本：點信封開封，謝卡自信封口升起展開（行動版／桌面版共用，僅輸出尺寸不同） */
+async function recordThankyouReveal(page, encoder, size, name) {
   await page.goto(`${BASE}/thankyou/${WEDDING_ID}/${THANKYOU_GUEST_ID}`, { waitUntil: 'networkidle' })
   await page.waitForTimeout(1200)
 
@@ -329,7 +329,15 @@ async function recordThankyou(page, encoder) {
 
   await page.waitForTimeout(700) // 結果停留
 
-  return writeGif(encoder, await stop(), MOBILE_GIF, 'thankyou.gif')
+  return writeGif(encoder, await stop(), size, name)
+}
+
+async function recordThankyou(page, encoder) {
+  return recordThankyouReveal(page, encoder, MOBILE_GIF, 'thankyou.gif')
+}
+
+async function recordThankyouWeb(page, encoder) {
+  return recordThankyouReveal(page, encoder, DESKTOP_GIF, 'thankyou-web.gif')
 }
 
 // ===== 主流程 =====
@@ -357,6 +365,7 @@ async function main() {
   await recordSeating(admin, encoder)
   await recordProjection(admin, encoder)
   await recordGuests(admin, encoder)
+  await recordThankyouWeb(admin, encoder)
 
   await admin.goto(`${BASE}/weddings/${WEDDING_ID}`, { waitUntil: 'networkidle' })
   await shoot(admin, 'dashboard.png')
