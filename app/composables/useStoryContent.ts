@@ -49,5 +49,8 @@ export function useStoryContent(): StoryContent {
       transportInfo: '（交通方式待補）',
       dressCode: '香檳、奶油、米白、燕麥色',
     },
+    music: {
+      src: '/audio/wedding-bgm.mp3',
+    },
   }
 }

@@ -11,6 +11,7 @@ const content = useStoryContent()
 
 const entries = computed(() => [
   { key: 'rsvp', label: '告訴我們你會來', to: `/rsvp/public/${weddingId.value}` },
+  { key: 'gallery', label: '看我們的婚紗照', to: `/gallery/${weddingId.value}` },
   { key: 'blessing', label: '留下你的祝福', to: `/blessing/${weddingId.value}` },
   { key: 'schedule', label: '看看當天流程', to: `/schedule/${weddingId.value}` },
 ])
@@ -23,5 +24,6 @@ const entries = computed(() => [
     <GuestMessage :message="content.guestMessage" />
     <VenueInfo :venue="content.venue" />
     <StoryCta :entries="entries" />
+    <MusicToggle :src="content.music.src" />
   </div>
 </template>

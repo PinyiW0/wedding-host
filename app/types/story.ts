@@ -41,10 +41,15 @@ export interface StoryVenue {
   dressCode: string
 }
 
+export interface StoryMusic {
+  src: string
+}
+
 export interface StoryContent {
   hero: StoryHeroContent
   sections: StorySection[]
   notes: StoryNote[]
   guestMessage: StoryGuestMessage
   venue: StoryVenue
+  music: StoryMusic
 }
