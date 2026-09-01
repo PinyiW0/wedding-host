@@ -167,6 +167,8 @@
   /* ── 字體家族 ── */
   --font-display: "Cormorant", ui-serif, Georgia, serif;
   --font-sans: "Inter", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+  /* 中文襯線：公開頁的編輯性引言用（Cormorant 沒有中文字，CJK 會掉回 sans） */
+  --font-serif-tc: "Noto Serif TC", ui-serif, Georgia, serif;
 
   /* ── fontSize（含行高/字重/字距） ── */
   --text-display-xl: 96px;
