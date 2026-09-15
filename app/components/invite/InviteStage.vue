@@ -183,8 +183,9 @@ onBeforeUnmount(() => {
 
     <audio ref="audioRef" :src="music.src" loop preload="auto" />
 
-    <!-- 開場期間桌面整片凍在進場動畫第 0 幀（opacity 0），連鍵盤焦點一起收掉 -->
-    <div ref="stageRef" class="invite-stage" :inert="phase === 'intro' || undefined">
+    <!-- 開場期間（intro 與信封離場的 opening）桌面整片凍在進場動畫第 0 幀（opacity 0），連鍵盤焦點與點擊一起收掉；
+         原本只擋 intro，opening 那一秒看不見的連結仍 Tab 得到、點得到（PR #159 Copilot 審查） -->
+    <div ref="stageRef" class="invite-stage" :inert="phase !== 'scene' || undefined">
       <InviteObject
         v-for="item in items"
         :key="item.key"

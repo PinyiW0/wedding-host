@@ -14,6 +14,11 @@ const content = useGalleryContent()
 
 /** 開場是否還在演；true 時把選單收起來，不跟開場搶畫面 */
 const isOpening = ref(true)
+/** 開場疊層真的蓋在畫面上（client 掛載後、開場還沒結束）。這段期間底下的內容 inert：
+    否則按 Tab 會跑到被蓋住的系列連結上（PR #159 Copilot 審查）。
+    SSR 與沒有 JS 時是 false——開場疊層根本不渲染，內容要照常可用；reduced-motion 時開場一掛載就 emit done，鎖只維持到那一刻 */
+const openerShown = ref(false)
+const lockUnderOpener = computed(() => (openerShown.value && isOpening.value) || undefined)
 
 // 頁尾逐行入場：整頁每個區塊都是捲動觸發，只有頁尾原本是「捲到就在那裡」。
 // data-anim 在 onMounted 才掛上——沒有 JS 時屬性不存在，文字一律直接顯示。
@@ -35,6 +40,7 @@ function anchorId(slug: string): string {
 }
 
 onMounted(() => {
+  openerShown.value = isOpening.value
   animReady.value = true
   register(outroRef.value, {
     varName: '--gt',
@@ -67,9 +73,9 @@ useSeoMeta({
       />
     </ClientOnly>
 
-    <GalleryHero :hero="content.hero" />
+    <GalleryHero :hero="content.hero" :inert="lockUnderOpener" />
 
-    <GalleryInterlude :words="content.interludes" />
+    <GalleryInterlude :words="content.interludes" :inert="lockUnderOpener" />
 
     <PublicMenu v-show="!isOpening" :wedding-id="weddingId" series-anchors />
 
@@ -80,11 +86,13 @@ useSeoMeta({
       :anchor-id="anchorId(series.slug)"
       :to="withSig(`/gallery/${weddingId}/${series.slug}`)"
       :layout="i"
+      :inert="lockUnderOpener"
     />
 
     <footer
       ref="outroRef"
       class="gp-outro"
+      :inert="lockUnderOpener"
       :data-anim="animReady ? 'true' : 'false'"
       :data-in="outroIn ? 'true' : 'false'"
     >
@@ -120,8 +128,9 @@ useSeoMeta({
     <!-- 玫瑰花瓣：從城市那一段開始灑，一路掉到頁尾 -->
     <GalleryPetals anchor="series-city" />
 
-    <MusicToggle :src="content.music.src" />
-    <PublicBackToTop />
+    <!-- 開場疊層蓋在唱片與回頂鈕上面，這段期間一起 inert，Tab 只停在「跳過開場」 -->
+    <MusicToggle :src="content.music.src" :inert="lockUnderOpener" />
+    <PublicBackToTop :inert="lockUnderOpener" />
     <GalleryCursor />
   </div>
 </template>

@@ -407,9 +407,12 @@ onMounted(() => {
   overflow-x: clip;
 }
 
+/* 按住往右拉是自己處理的橫向手勢：觸控時 touch-action 預設 auto，瀏覽器可能先把橫向滑動接走、送出 pointercancel，
+   拉不到 90px 門檻（PR #159 Copilot 審查）。直向捲動與雙指縮放仍交給瀏覽器 */
 .ss-link {
   position: relative;
   display: block;
+  touch-action: pan-y pinch-zoom;
 }
 
 .ss-link:focus-visible {
