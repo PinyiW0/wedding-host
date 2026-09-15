@@ -557,8 +557,11 @@ export function useStoryContent(): StoryContent {
       url: 'https://drive.google.com/drive/folders/1N_svXqePPzIXKfYE4Jf_EnPrGhJcJQJd?usp=sharing',
       label: '把你今天拍的照片放進來',
     },
-    // 拖尾照片：先拿相簿 12 張縮成長邊 320px 的小圖（trail-01～12.webp，合計 108KB）給新人看效果，之後新人換圖
-    trail: Array.from({ length: 12 }, (_, i) => `/images/story/trail-${String(i + 1).padStart(2, '0')}.webp`),
+    // 拖尾照片：相簿兩批裡全部 36 張直式縮成長邊 320px（trail-01～36.webp，合計 441KB，前 12 張進頁面就抓、其餘快捲到才抓）。
+    // 池子越大滑鼠掃過越不會繞回同一張（新人 09-15：「用原本那 30 張就不會重複」）。
+    // 順序是同場景連著出（草原 17 → 海邊 11 → 都會 8）：三種場景輪流出過一版，連著冒的每張換色調，新人說「散散的」；
+    // 同場景連著出色調才連貫。13 張橫式不放——塞進 3:4 的拍立得會切掉人
+    trail: Array.from({ length: 36 }, (_, i) => `/images/story/trail-${String(i + 1).padStart(2, '0')}.webp`),
     music: {
       src: '/audio/wedding-bgm.mp3',
       title: 'Our Song',

@@ -5,8 +5,11 @@
         手機（大多數賓客）完全沒有、桌機也沒有任何提示，而且這一區在 1440 寬時插畫兩側各空 500px（2026-09-15 審視）。
         這幾張同時也是提示：「這裡會冒照片」。
      2. 桌機滑鼠掃過再冒（只認 pointerType mouse）：游標每移一段就在游標處貼一張小拍立得，0.45 秒放大、停一下、0.7 秒縮回。
-        間距至少是卡片寬的 1.25 倍——原本 80px 一張、卡片 136px 寬，任何速度每張都壓在前一張上（實測快掃 10 張全疊、慢掃 4 張全疊）。
+        間距慢移 100px、快掃 160px（卡片 136px 寬，前後會疊到一部分、連成一條）——曾改成 170～300 完全不疊，
+        新人說太寬、散散的，原本一張接一張比較滑順；但也不回到最早的 80px（那時任何速度都整疊壓在一起）。
         掃得快：間距拉開、卡片縮小；慢慢移：卡片維持原大、多停一會。位置往垂直方向隨機偏一點，一路掃過去不會排成一直線。
+        冒出來的圖只從「現在不在畫面上」的裡面挑：進場停著那幾張永遠不會再冒一次，還在縮回的也不會同時出現第二份；
+        全部都在畫面上時就先不冒（新人 2026-09-15：「原本在畫面上的就不要出現在滑滑鼠的時候」）。
      手機不用手指拖（手指一動瀏覽器就接管成捲動，事件會被取消），改成點一下冒一張當彩蛋。
      全部用 DOM 加 CSS transition、只動 transform；不用任何動畫庫。reduced-motion：進場那幾張直接放好（不動），滑鼠與點擊都不掛。
      照片一律裝飾（aria-hidden、pointer-events none），底下的內容照常可點。 -->
@@ -34,11 +37,13 @@ const REST_EVERY = 0.08
 /** 一口氣捲到底、好幾個門檻同時到時，仍然一張隔 140ms 冒 */
 const REST_GAP_MS = 140
 
-/** 游標移動：卡片寬 8.5rem（136px），間距至少 1.25 倍才不會疊到前一張；掃得快再拉開到 300 */
-const STEP_MIN_PX = 170
-const STEP_MAX_PX = 300
-/** 兩張之間至少隔這麼久（ms） */
-const GAP_MS = 120
+/** 游標移動：卡片寬 8.5rem（136px）。慢移每 100px 一張（前後疊到約三分之一，連成一條）、掃得快拉開到 160。
+ *  曾經設 170～300（完全不疊）——新人說「間隔太寬、散散的，原本比較滑順」，要的是像原站那樣一張接一張的密度 */
+const STEP_MIN_PX = 100
+const STEP_MAX_PX = 160
+/** 兩張之間至少隔這麼久（ms）——曾經 120，快掃時每 120ms 才一張、間距被拉到 300px，是「太寬」的另一個來源；
+ *  30ms 讓 5px/ms 的快掃也維持 160px 左右一張（pointermove 每 8～16ms 一次，再低也沒意義） */
+const GAP_MS = 30
 /** 速度的兩端（px/ms）：慢於 0.6 算慢、快於 2.5 算快，中間線性 */
 const SLOW = 0.6
 const FAST = 2.5
@@ -51,14 +56,15 @@ const JITTER_PX = 22
 const IN_MS = 450
 const HOLD_MS = 300
 const OUT_MS = 700
-/** 掃出來的同時最多幾張：超過就把最舊的先收掉（進場那幾張不算） */
-const MAX_SHOTS = 8
+/** 掃出來的同時最多幾張：超過就把最舊的先收掉（進場那幾張不算）。間距縮小後一次掃過畫面會有更多張，放寬到 10 */
+const MAX_SHOTS = 10
 /** 掃出來的卡片隨機傾角的幅度（度） */
 const TILT = 14
 
 interface Shot {
   el: HTMLElement
   timer: number
+  src: string
 }
 
 interface Placement {
@@ -76,9 +82,12 @@ const { register } = useScrollProgress()
 
 let host: HTMLElement | null = null
 let reduced = false
+let preloaded = false
 let next = 0
 const live: Shot[] = []
 const resting: HTMLElement[] = []
+/** 每張圖目前在畫面上幾份（含正在縮回、還沒移除的）；只有這裡是 0 的圖才會被挑出來冒 */
+const inUse = new Map<string, number>()
 
 // 進場那幾張：門檻到了先排隊，一張隔 REST_GAP_MS 出來
 let restCount = 0
@@ -96,20 +105,47 @@ function clamp01(value: number) {
   return value < 0 ? 0 : value > 1 ? 1 : value
 }
 
+/** 從上一張的下一個位置開始輪，挑第一張不在畫面上的；全部都在畫面上就回 null（這一下不冒） */
+function pickSrc(): string | null {
+  const total = props.images.length
+  for (let i = 0; i < total; i++) {
+    const src = props.images[(next + i) % total]!
+    if (!inUse.get(src)) {
+      next = (next + i + 1) % total
+      return src
+    }
+  }
+  return null
+}
+
+function release(src: string) {
+  const count = (inUse.get(src) ?? 1) - 1
+  if (count > 0)
+    inUse.set(src, count)
+  else
+    inUse.delete(src)
+}
+
 function retire(shot: Shot) {
   window.clearTimeout(shot.timer)
   const el = shot.el
   el.style.transition = `transform ${OUT_MS}ms cubic-bezier(0.64, 0, 0.78, 0)`
   el.style.transform = `${el.dataset.pose} scale(0)`
-  window.setTimeout(() => el.remove(), OUT_MS)
+  // 縮回的過程中圖還看得到，等真的移除才把這張圖還回可挑的池子
+  window.setTimeout(() => {
+    el.remove()
+    release(shot.src)
+  }, OUT_MS)
 }
 
 /** 貼一張卡片：從 0 放大到 1（reduced-motion 直接放好），回傳元素給呼叫端決定要不要收回 */
-function place(at: Placement): HTMLElement | null {
-  if (!root.value || !props.images.length)
+function place(at: Placement): { el: HTMLElement, src: string } | null {
+  if (!root.value)
     return null
-  const src = props.images[next % props.images.length]!
-  next++
+  const src = pickSrc()
+  if (!src)
+    return null
+  inUse.set(src, (inUse.get(src) ?? 0) + 1)
   const el = document.createElement('div')
   el.className = 'shot'
   const img = document.createElement('img')
@@ -126,7 +162,7 @@ function place(at: Placement): HTMLElement | null {
   root.value.appendChild(el)
   if (reduced) {
     el.style.transform = `${pose} scale(1)`
-    return el
+    return { el, src }
   }
   el.style.transform = `${pose} scale(0)`
   el.style.transition = `transform ${IN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
@@ -134,15 +170,15 @@ function place(at: Placement): HTMLElement | null {
   requestAnimationFrame(() => {
     el.style.transform = `${pose} scale(1)`
   })
-  return el
+  return { el, src }
 }
 
 /** 掃出來或點出來的一張：停一下就收回 */
 function spawn(at: Placement, holdMs: number) {
-  const el = place(at)
-  if (!el)
+  const placed = place(at)
+  if (!placed)
     return
-  const shot: Shot = { el, timer: 0 }
+  const shot: Shot = { el: placed.el, timer: 0, src: placed.src }
   shot.timer = window.setTimeout(() => {
     const i = live.indexOf(shot)
     if (i >= 0)
@@ -161,14 +197,29 @@ function placeRest() {
     return
   const slot = REST_SLOTS[restPlaced]!
   restPlaced++
-  const el = place({ x: slot.x, y: slot.y, unit: '%', tilt: slot.tilt, size: 1 })
-  if (el)
-    resting.push(el)
+  const placed = place({ x: slot.x, y: slot.y, unit: '%', tilt: slot.tilt, size: 1 })
+  if (placed)
+    resting.push(placed.el)
   if (restPlaced < restQueued)
     restTimer = window.setTimeout(placeRest, REST_GAP_MS)
 }
 
+/** 一進頁面先抓前面這幾張（進場停著的 6 張＋第一段掃出來的，約 150KB），第一張才不會冒出一個空框；
+ *  其餘（36 張合計約 440KB）等快捲到這一區再抓——沒捲到頁尾的人根本用不到 */
+const EAGER_PRELOAD = 12
+
+function preload(from: number, to: number) {
+  for (const src of props.images.slice(from, to)) {
+    const img = new Image()
+    img.src = src
+  }
+}
+
 function onProgress(progress: number) {
+  if (!preloaded && progress > 0) {
+    preloaded = true
+    preload(EAGER_PRELOAD, props.images.length)
+  }
   if (restQueued >= restCount)
     return
   // 走到第幾張的門檻了（只增不減：捲回去不收）
@@ -246,11 +297,7 @@ onMounted(() => {
     return
   reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   restCount = window.matchMedia('(min-width: 64rem)').matches ? 6 : 4
-  // 先把圖抓進快取，第一張才不會冒出一個空框
-  for (const src of props.images) {
-    const img = new Image()
-    img.src = src
-  }
+  preload(0, EAGER_PRELOAD)
   if (reduced) {
     // 不動：進場那幾張直接放好，滑鼠與點擊都不掛（捲動進度引擎在 reduced-motion 下也不會啟動）
     restQueued = restCount
