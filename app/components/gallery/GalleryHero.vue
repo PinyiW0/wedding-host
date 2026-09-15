@@ -1,15 +1,14 @@
 <!-- app/components/gallery/GalleryHero.vue — 婚紗相簿首屏
-     滿版照片內縮一圈紙色邊框（邊框寬度由頁面的 --gallery-frame 決定，開場動畫的落點以此對齊）。
-     標語拆成四個大字圍在照片四邊（上方那個會輪換），往下捲時各自朝外散開。
-     捲動進度 --hp 預設 0＝全部就位，所以沒有 JS 或關閉動效時就是一張完整的首屏。
+     照片滿版出血；外框寬度由頁面的 --gallery-frame 決定（目前 0），開場動畫的落點以此對齊。
+     標語拆成四個大字圍在照片四邊（上方那個會輪換）；往下捲時四個字先聚合到畫面正中央
+     疊成一行標語，再整組往上滑走。
+     捲動進度 --hp 預設 0＝散在四邊，所以沒有 JS 或關閉動效時就是一張完整的首屏。
      本檔不在 visual-hierarchy 的公開頁白名單內，display 級字級一律走 <style scoped>。 -->
 <script setup lang="ts">
 import type { GalleryHeroContent } from '~/types/gallery'
 
 const props = defineProps<{
   hero: GalleryHeroContent
-  /** CTA 指向的第一個系列錨點 id */
-  firstSeriesId: string
 }>()
 
 /** 上方大字輪換間隔 */
@@ -55,28 +54,28 @@ onBeforeUnmount(() => clearInterval(swapTimer))
         {{ hero.tagline }}
       </h1>
 
-      <div class="gh-top">
-        <!-- 開場描完的那個字樣，縮小落回頁首 -->
-        <img src="/images/gallery/Union.svg" alt="" class="gh-logo">
-        <span class="gh-word gh-word-top" aria-hidden="true">
-          <Transition name="gh-swap" mode="out-in">
-            <span :key="topWord" class="gh-word-swap">{{ topWord }}</span>
-          </Transition>
-        </span>
-      </div>
+      <!-- 開場描完的那個字樣，縮小落回頁首 -->
+      <img src="/images/gallery/Union.svg" alt="" class="gh-logo">
 
+      <span class="gh-word gh-word-top" aria-hidden="true">
+        <!-- 換字時整個元件重掛，掃光因此每次都從頭跑一次：字出現 → 掃一道光 → 停 → 換下一個字。
+             底色刻意壓到 86%，高光才有對比可掃；純白掃純白等於看不見 -->
+        <Transition name="gh-swap" mode="out-in">
+          <ShinyText
+            :key="topWord"
+            :text="topWord"
+            class="gh-word-swap"
+            color="rgb(250 247 241 / 86%)"
+            shine-color="#ffffff"
+            :speed="1.6"
+            :delay="1.1"
+            :spread="110"
+          />
+        </Transition>
+      </span>
       <span class="gh-word gh-word-left" aria-hidden="true">{{ hero.words.left }}</span>
       <span class="gh-word gh-word-right" aria-hidden="true">{{ hero.words.right }}</span>
-
-      <div class="gh-bottom">
-        <span class="gh-word gh-word-bottom" aria-hidden="true">{{ hero.words.bottom }}</span>
-        <p class="gh-subtitle">
-          {{ hero.subtitle }}
-        </p>
-        <a class="gh-cta" :href="`#${firstSeriesId}`">
-          {{ hero.ctaLabel }}
-        </a>
-      </div>
+      <span class="gh-word gh-word-bottom" aria-hidden="true">{{ hero.words.bottom }}</span>
 
       <p class="gh-sign">
         {{ hero.names }}<span class="gh-dot" aria-hidden="true">·</span>{{ hero.date }}
@@ -98,10 +97,25 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 }
 
 .gh-frame {
+  /* 四個字共用的尺規：聚合時的相對位置全部以它為單位，字級不同也不會歪掉 */
+  --word-size: clamp(2.25rem, 7vw, 6rem);
+
+  /* 字樣（Union.svg 564×200）的落點與畫布高度抽成變數：
+     上方那個大字要靠這兩個值算出自己不得越過的上界，見 .gh-word-top */
+  --logo-w: clamp(88px, 11vw, 138px);
+  --logo-top: clamp(14px, 3vh, 34px);
+  --logo-bottom: calc(var(--logo-top) + var(--logo-w) / 2.82);
+  --frame-h: calc(100dvh - var(--gallery-frame, 16px) * 2);
+
+  /* 捲動分兩段：先聚合（spread 1→0），再整組上滑（rise 0→1） */
+  --spread: clamp(0, calc(1 - var(--hp, 0) / 0.55), 1);
+  --rise: clamp(0, calc((var(--hp, 0) - 0.55) / 0.45), 1);
+
   position: relative;
-  min-height: calc(100dvh - var(--gallery-frame, 16px) * 2);
+  min-height: var(--frame-h);
   overflow: hidden;
-  border-radius: var(--radius);
+  /* 外框為 0 時圓角會在四角露出頁面底色，所以圓角跟著外框走 */
+  border-radius: var(--gallery-frame, 0px);
   background: var(--color-cream);
 }
 
@@ -111,59 +125,104 @@ onBeforeUnmount(() => clearInterval(swapTimer))
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* 裁切時多留上緣、少留下緣，人物因此落在畫面偏下的位置——
+     視窗越扁裁得越多，這正是上方大字會壓到臉的情境，靠這個把人推開 */
+  object-position: center 22%;
   /* 往下捲時照片微微推近，比整張定住有空氣感；放大不會露出邊 */
   transform: scale(calc(1 + var(--hp, 0) * 0.06));
 }
 
-/* 上下各一道墨色漸層：托住四邊的白字 */
+/* 上下各一道墨色漸層：托住四邊的白字；上緣稍重，大字萬一落在亮處也讀得到 */
 .gh-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(to bottom, rgb(17 17 17 / 34%), transparent 30%),
+    linear-gradient(to bottom, rgb(17 17 17 / 44%), transparent 34%),
     linear-gradient(to top, rgb(17 17 17 / 62%), transparent 58%);
 }
 
-/* ── 四邊大字 ── */
+/* 深色墨稿的字樣壓在照片上會看不見，轉成紙白 */
+.gh-logo {
+  position: absolute;
+  left: 50%;
+  top: var(--logo-top);
+  width: var(--logo-w);
+  height: auto;
+  transform: translateX(-50%) translateY(calc(var(--hp, 0) * -14vh));
+  filter: brightness(0) invert(1);
+  opacity: calc(0.9 - var(--hp, 0) * 2);
+}
+
+/* ── 四邊大字 ──
+   四個字都以畫面正中央為原點，再用 --fx/--fy 推到四邊。
+   spread 由 1 收到 0 時，它們從四邊回到 --cx/--cy 的聚合位置（疊成一行標語），
+   接著 rise 帶整組往上滑出。 */
 .gh-word {
   position: absolute;
+  left: 50%;
+  top: 50%;
   font-family: var(--font-display);
-  font-size: clamp(2.25rem, 7vw, 6rem);
+  font-size: var(--word-size);
   line-height: 1;
   font-weight: 400;
   color: var(--color-paper);
   text-shadow: 0 2px 24px rgb(17 17 17 / 32%);
-  pointer-events: none;
   white-space: nowrap;
+  pointer-events: none;
+  transform:
+    translate(-50%, -50%)
+    translate(
+      calc(var(--cx, 0px) + (var(--fx, 0px) - var(--cx, 0px)) * var(--spread)),
+      calc(var(--cy, 0px) + (var(--fy, 0px) - var(--cy, 0px)) * var(--spread))
+    )
+    translate(0, calc(var(--rise) * -54vh));
+  opacity: calc(1 - var(--rise));
 }
 
-.gh-top {
-  position: absolute;
-  left: 50%;
-  top: clamp(14px, 3vh, 32px);
-  display: grid;
-  justify-items: center;
-  gap: clamp(4px, 1vh, 12px);
-  /* 往下捲時整組往上退場 */
-  transform: translateX(-50%) translateY(calc(var(--hp, 0) * -16vh));
-  opacity: calc(1 - var(--hp, 0) * 1.4);
-}
-
-.gh-logo {
-  width: clamp(88px, 11vw, 138px);
-  height: auto;
-  /* 深色墨稿的字樣壓在照片上會看不見，轉成紙白 */
-  filter: brightness(0) invert(1);
-  opacity: 0.9;
-}
-
+/* 上方這個字最容易撞到人物，比其他三邊小一號 */
 .gh-word-top {
-  position: static;
-  display: block;
+  --fx: 0px;
+
+  /* -36vh 是設計稿的落點，但字樣的位置幾乎是固定 px：視窗越扁，這個字就越往字樣頭上爬。
+     用 max() 給它一條下界（值越大＝越靠下），字樣底部再讓 14px 出來。
+     0.41em＝字上緣到盒中心的距離（Shine 的 h 是四個字裡最高的一筆） */
+  --fy: max(-36vh, calc(var(--logo-bottom) + 14px + 0.41em - var(--frame-h) / 2));
+  --cx: 0px;
+  --cy: calc(var(--word-size) * -1.05);
+
+  font-size: calc(var(--word-size) * 0.88);
+}
+
+.gh-word-left {
+  --fx: -40vw;
+  --fy: 0px;
+  --cx: calc(var(--word-size) * -1.45);
+  --cy: 0px;
+}
+
+/* 右緣讓給倒數條，推得比左邊少一點 */
+.gh-word-right {
+  --fx: 35vw;
+  --fy: 0px;
+  --cx: calc(var(--word-size) * 0.95);
+  --cy: 0px;
+}
+
+.gh-word-bottom {
+  --fx: 0px;
+  --fy: 35vh;
+  --cx: 0px;
+  --cy: calc(var(--word-size) * 1.05);
 }
 
 .gh-word-swap {
   display: inline-block;
+
+  /* 掃光是 background-clip: text，而背景只畫在元素盒內。
+     line-height: 1 的盒子裝不下 Happy 的 p／y 下伸筆畫（要 1.201em），
+     descender 會落在盒外拿不到顏色＝看起來被切掉。1.5 是給備援字型的餘裕。
+     盒子撐高不會移動文字：baseline 到盒中心的距離只跟字型 metrics 有關 */
+  line-height: 1.5;
 }
 
 /* 輪換：上一個字往上淡出、下一個字自下方遞上 */
@@ -182,70 +241,6 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 .gh-swap-leave-to {
   opacity: 0;
   transform: translateY(-0.38em);
-}
-
-.gh-word-left {
-  left: clamp(16px, 4vw, 64px);
-  top: 50%;
-  transform: translateY(-50%) translateX(calc(var(--hp, 0) * -22vw));
-  opacity: calc(1 - var(--hp, 0) * 1.4);
-}
-
-/* 右緣讓給倒數條 */
-.gh-word-right {
-  right: clamp(52px, 7vw, 108px);
-  top: 50%;
-  transform: translateY(-50%) translateX(calc(var(--hp, 0) * 22vw));
-  opacity: calc(1 - var(--hp, 0) * 1.4);
-}
-
-.gh-bottom {
-  position: absolute;
-  left: 50%;
-  bottom: clamp(88px, 15vh, 150px);
-  display: grid;
-  justify-items: center;
-  gap: 14px;
-  width: max-content;
-  max-width: min(88vw, 34rem);
-  text-align: center;
-  transform: translateX(-50%) translateY(calc(var(--hp, 0) * 16vh));
-  opacity: calc(1 - var(--hp, 0) * 1.4);
-}
-
-.gh-word-bottom {
-  position: static;
-}
-
-.gh-subtitle {
-  font-size: var(--text-body-l);
-  color: var(--color-paper);
-  opacity: 0.88;
-}
-
-.gh-cta {
-  padding: 12px 28px;
-  border: 1px solid rgb(250 247 241 / 62%);
-  border-radius: var(--radius-full);
-  font-size: var(--text-body);
-  letter-spacing: 0.08em;
-  color: var(--color-paper);
-  transition:
-    background-color 250ms var(--ease-standard),
-    color 250ms var(--ease-standard),
-    border-color 250ms var(--ease-standard);
-}
-
-.gh-cta:hover,
-.gh-cta:focus-visible {
-  background: var(--color-paper);
-  color: var(--color-ink);
-  border-color: var(--color-paper);
-}
-
-.gh-cta:focus-visible {
-  outline: 2px solid var(--color-gold-light);
-  outline-offset: 3px;
 }
 
 /* 手機的底部導覽膠囊是滿版的，署名要讓到它上面 */

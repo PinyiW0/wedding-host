@@ -4,16 +4,18 @@
 // 全域單例：整站同時只有一個 rAF loop 與一個 IntersectionObserver，
 // landing 的三個 showcase 與系列頁的數十張照片共用，不會各自起 loop。
 //
-// reduced-motion 時完全不啟動：CSS var 維持宣告端的預設值（--sp: 0.5、--gp: 1），
+// reduced-motion 時完全不啟動：CSS var 維持宣告端的預設值（--sp: 0.5、--gt: 0.5），
 // 也就是「構圖最完整」的中性狀態，無 JS 或關閉動效時畫面依然正確。
 
 /**
  * block：區塊捲過視窗的進度
- * center：元素中心貼近視窗中心的程度
+ * travel：元素通過視窗的行程，**帶方向**——0＝還在視窗下方、0.5＝正對視窗中心、1＝已捲到上方。
+ *         視差要靠方向才知道往哪邊推；只需要「離中心多近」的話在 CSS 端用 max() 折回來就好
+ *         （見 GallerySeriesFlow 的 --near），不必為此多註冊一個變數。
  * leave：元素被捲出視窗的進度（0＝貼齊視窗頂、1＝已捲掉一個視窗高）。
  *        滿版 hero 的高度等於視窗高，block 模式沒有可捲行程，得用這個。
  */
-type ProgressMode = 'block' | 'center' | 'leave'
+type ProgressMode = 'block' | 'travel' | 'leave'
 
 export interface ScrollProgressOptions {
   /** 寫入的 CSS var 名稱，預設 --sp */
@@ -35,8 +37,8 @@ interface Entry {
   last: number
 }
 
-/** center 模式的作用範圍：距視窗中心超過 0.6 個視窗高就視為 0 */
-const CENTER_SPAN_RATIO = 0.6
+/** travel 模式的作用範圍：距視窗中心 0.6 個視窗高就到頭（0 或 1） */
+const TRAVEL_SPAN_RATIO = 0.6
 
 const entries = new Map<HTMLElement, Entry>()
 
@@ -59,9 +61,10 @@ function measure(entry: Entry) {
 
 function compute(entry: Entry): number {
   const viewport = window.innerHeight
-  if (entry.mode === 'center') {
-    const distance = Math.abs(entry.top + entry.height / 2 - (window.scrollY + viewport / 2))
-    return clamp01(1 - distance / (viewport * CENTER_SPAN_RATIO))
+  if (entry.mode === 'travel') {
+    // 正值＝元素已在視窗中心之上（往上跑掉了），負值＝還在下面等著進來
+    const offset = window.scrollY + viewport / 2 - (entry.top + entry.height / 2)
+    return clamp01(0.5 + offset / (viewport * TRAVEL_SPAN_RATIO * 2))
   }
   if (entry.mode === 'leave')
     return clamp01((window.scrollY - entry.top) / viewport)
@@ -138,6 +141,17 @@ function updateMotion() {
 export function useScrollProgress() {
   const owned: HTMLElement[] = []
 
+  /**
+   * 重新量一次所有元素的位置。
+   * 位置是快取的（捲動中讀 getBoundingClientRect 會逐幀觸發 layout），
+   * 所以換排版這種「捲動之外改變版面」的情況必須手動叫一次，否則進度會全部算錯。
+   */
+  function remeasure() {
+    if (!enabled)
+      return
+    onResize()
+  }
+
   function register(el: HTMLElement | null | undefined, options: ScrollProgressOptions = {}) {
     if (!el || entries.has(el))
       return
@@ -209,5 +223,5 @@ export function useScrollProgress() {
     }
   })
 
-  return { register }
+  return { register, remeasure }
 }

@@ -1,6 +1,8 @@
 <!-- app/components/gallery/GalleryPreloader.vue — 相簿開場（client-only 疊層）
      三段：① 字樣隨真實預載進度上墨 + 數字滾輪 ② 照片自中央一張張疊出、整疊放大
      ③ 最後一張放大成 hero 後疊層淡出。疊層底下的頁面 SSR 完整輸出，這裡只是蓋在上面演。
+     ②③ 各自都是「由小到大、中間頓一下」的同一條速度曲線，接成兩拍：
+     整疊先推到大、頓住喘一下，hero 接手再推一次、慢慢貼上。
      hero 卡片的版面盒＝最終 hero 的位置（inset: --gallery-frame），開場只用 transform 縮回中央，
      放大結束時與底下的 hero 幾何重合，淡出即無縫定格。
      reduced-motion 直接不渲染、立刻 emit done。 -->
@@ -10,6 +12,8 @@ import type { GalleryHeroContent } from '~/types/gallery'
 const props = defineProps<{
   montage: string[]
   hero: GalleryHeroContent
+  /** 在一起的起算日（ISO 8601 含時區） */
+  togetherSince: string
 }>()
 
 const emit = defineEmits<{ done: [] }>()
@@ -18,18 +22,31 @@ const emit = defineEmits<{ done: [] }>()
 const MIN_LOAD_MS = 1600
 /** 圖片載不完的硬上限，逾時就放行 */
 const LOAD_TIMEOUT_MS = 5000
-/** 蒙太奇＋放大的總長，與 <style> 內的 keyframe 編排對應 */
-const SHOW_MS = 2600
+/** 蒙太奇＋放大的總長，與 <style> 內的 keyframe 編排對應（hero 1900ms 起跑＋1300ms 放大＋收尾餘裕） */
+const SHOW_MS = 3400
 
 const phase = ref<'loading' | 'show'>('loading')
 const active = ref(false)
 const progress = ref(0)
 
-const percent = computed(() => Math.round(progress.value * 100))
-/** 百位在未滿 100 前留著位置但不顯示，數字不會左右跳動 */
+/** 在一起的總天數；計數器數到這個數字為止（元件只在 client 掛載，不會有 SSR 落差） */
+const totalDays = computed(() =>
+  Math.max(0, Math.floor((Date.now() - new Date(props.togetherSince).getTime()) / 86_400_000)),
+)
+
+/** 位數固定成總天數的位數，數字不會左右跳動 */
 const digits = computed(() => {
-  const value = Math.min(percent.value, 100)
-  return [Math.floor(value / 100), Math.floor(value / 10) % 10, value % 10]
+  const shown = String(Math.round(progress.value * totalDays.value))
+    .padStart(String(totalDays.value).length, '0')
+  let stillLeading = true
+  return Array.from(shown, (char, i) => {
+    const value = Number(char)
+    // 前導的 0 留著位置但不顯示，開場不會出現「0000」
+    const hidden = stillLeading && value === 0 && i < shown.length - 1
+    if (value !== 0)
+      stillLeading = false
+    return { value, hidden }
+  })
 })
 
 const sources = computed(() => [...props.montage, props.hero.src])
@@ -142,15 +159,15 @@ onBeforeUnmount(() => {
             v-for="(digit, i) in digits"
             :key="i"
             class="pl-digit"
-            :class="{ 'pl-digit-lead': i === 0 && percent < 100 }"
+            :class="{ 'pl-digit-lead': digit.hidden }"
           >
-            <span class="pl-reel" :style="{ '--d': String(digit) }">
+            <span class="pl-reel" :style="{ '--d': String(digit.value) }">
               <span v-for="n in 10" :key="n">{{ n - 1 }}</span>
             </span>
           </span>
         </p>
-        <p class="pl-percent" aria-hidden="true">
-          %
+        <p class="pl-unit" aria-hidden="true">
+          Days
         </p>
       </div>
 
@@ -240,7 +257,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* 未滿 100 時百位留位不顯示，數字不左右跳 */
+/* 前導的 0 留位不顯示，數字不左右跳 */
 .pl-digit-lead {
   opacity: 0;
 }
@@ -259,13 +276,14 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-.pl-percent {
+.pl-unit {
   position: absolute;
   right: clamp(16px, 4vw, 56px);
   top: 50%;
   transform: translateY(-50%);
   font-family: var(--font-display);
   font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-style: italic;
   color: var(--color-ink-700);
 }
 
@@ -275,7 +293,7 @@ onBeforeUnmount(() => {
   inset: 0;
   display: grid;
   place-items: center;
-  animation: pl-zoom 1900ms var(--ease-standard) both;
+  animation: pl-zoom 2100ms var(--ease-emphasized) both;
 }
 
 .pl-card {
@@ -313,13 +331,26 @@ onBeforeUnmount(() => {
   }
 }
 
+/* 第一拍：整疊（最上面那張＝hero 的前一張）由小推到大，52~66% 之間幾乎停住喘一口氣。
+   速度曲線與底下的 pl-hero-grow 同一套，兩拍才像同一個動作接下去 */
 @keyframes pl-zoom {
-  from {
+  0% {
     transform: scale(0.78);
+    animation-timing-function: var(--ease-emphasized);
   }
 
-  to {
-    transform: scale(1.12);
+  52% {
+    transform: scale(1.22);
+    animation-timing-function: linear;
+  }
+
+  66% {
+    transform: scale(1.26);
+    animation-timing-function: var(--ease-emphasized);
+  }
+
+  100% {
+    transform: scale(1.45);
   }
 }
 
@@ -336,21 +367,38 @@ onBeforeUnmount(() => {
   width: auto;
   height: auto;
   object-fit: cover;
-  border-radius: var(--radius);
-  animation: pl-hero-grow 900ms var(--ease-emphasized) both;
-  animation-delay: 1500ms;
+  /* 放大結束要跟底下的 hero 完全重合，圓角也得一樣 */
+  border-radius: var(--gallery-frame, 0px);
+  animation: pl-hero-grow 1300ms var(--ease-emphasized) both;
+  animation-delay: 1900ms;
 }
 
-/* 每一幀都寫完整的 transform：只寫變化量會讓瀏覽器退回矩陣插值而跳動 */
+/* 第二拍：hero 接手。每一幀都寫完整的 transform——只寫變化量會讓瀏覽器退回矩陣插值而跳動。
+   一樣不是衝到底：先長到接近滿版，在 50~62% 幾乎停住（0.8→0.83），再慢慢貼上最後那一段。
+   每段各自指定 timing function，頓點才停得住；只給 shorthand 一個 easing 是做不出頓點的。 */
 @keyframes pl-hero-grow {
   0% {
     opacity: 0;
     transform: scale(0.26);
+    animation-timing-function: var(--ease-standard);
   }
 
-  12% {
+  8% {
     opacity: 1;
     transform: scale(0.26);
+    animation-timing-function: var(--ease-emphasized);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(0.8);
+    animation-timing-function: linear;
+  }
+
+  62% {
+    opacity: 1;
+    transform: scale(0.83);
+    animation-timing-function: var(--ease-emphasized);
   }
 
   100% {

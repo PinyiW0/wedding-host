@@ -8,5 +8,6 @@
         <slot />
       </div>
     </main>
+    <ClickSpark />
   </div>
 </template>
