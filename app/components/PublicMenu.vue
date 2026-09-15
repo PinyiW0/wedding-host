@@ -32,12 +32,8 @@ interface MenuRow {
 const content = useGalleryContent()
 const route = useRoute()
 
-/** 公開頁網址上的婚禮簽章（?sig=）：選單裡每個連結都帶下去，換頁不會掉——
- *  正式站（enforced）公開 RSVP 的 API 憑它放行，從故事頁點「出席回覆」才進得去。錨點連結不用帶 */
-const sig = computed(() => (typeof route.query.sig === 'string' && route.query.sig ? route.query.sig : ''))
-function withSig(to: string) {
-  return sig.value && !to.startsWith('#') ? `${to}?sig=${encodeURIComponent(sig.value)}` : to
-}
+/** 選單裡每個連結都帶著網址上的婚禮簽章（?sig=），換頁不會掉；錨點連結不帶（見 useSignedLink） */
+const { withSig } = useSignedLink()
 
 const rows = computed<MenuRow[]>(() => {
   const list: MenuRow[] = content.series.map(series => ({

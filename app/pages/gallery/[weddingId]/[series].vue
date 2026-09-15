@@ -26,8 +26,11 @@ const coverAlt = computed(
   () => series?.photos.find(photo => photo.src === series?.cover)?.alt ?? series?.description ?? '',
 )
 
+/** 上一／下一系列與頁尾連結都帶著網址上的婚禮簽章（見 useSignedLink） */
+const { withSig } = useSignedLink()
+
 function seriesPath(target: string): string {
-  return `/gallery/${weddingId.value}/${target}`
+  return withSig(`/gallery/${weddingId.value}/${target}`)
 }
 
 // 首圖沿用 landing hero 的捲動語彙：往下捲時照片推近、標題退場、暗角壓上來
@@ -113,11 +116,11 @@ useSeoMeta({
 
       <!-- 選單靠 JS，這行純文字連結是 JS 沒跑起來時唯一的出口，不能拿掉 -->
       <nav class="gs-links" aria-label="其他頁面">
-        <NuxtLink :to="`/gallery/${weddingId}`" class="gs-link">
+        <NuxtLink :to="withSig(`/gallery/${weddingId}`)" class="gs-link">
           回相簿入口
         </NuxtLink>
         <span class="gs-sep" aria-hidden="true">·</span>
-        <NuxtLink :to="`/story/${weddingId}`" class="gs-link">
+        <NuxtLink :to="withSig(`/story/${weddingId}`)" class="gs-link">
           我們的故事
         </NuxtLink>
       </nav>

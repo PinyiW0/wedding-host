@@ -7,6 +7,8 @@ definePageMeta({ layout: 'story' })
 
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
+/** 系列卡與頁尾連結都帶著網址上的婚禮簽章，從故事頁一路點回出席回覆才不會掉（見 useSignedLink） */
+const { withSig } = useSignedLink()
 
 const content = useGalleryContent()
 
@@ -23,7 +25,7 @@ const outroIn = ref(false)
 const FULL_STOP = /。$/
 
 /** 頁尾收尾句拆成子句：手機一句一行、不帶標點；桌機仍是完整一句。
-    同一份 DOM 兩種排法，標點只是在手機上被藏起來，螢幕閱讀器聽到的還是完整句子 */
+    拆句那份標 aria-hidden，螢幕閱讀器聽的是旁邊 sr-only 的完整句子（display:none 的標點不在無障礙樹裡） */
 const outroClauses = computed(() => content.outro.replace(FULL_STOP, '').split('，'))
 
 const { register } = useScrollProgress()
@@ -76,7 +78,7 @@ useSeoMeta({
       :key="series.slug"
       :series="series"
       :anchor-id="anchorId(series.slug)"
-      :to="`/gallery/${weddingId}/${series.slug}`"
+      :to="withSig(`/gallery/${weddingId}/${series.slug}`)"
       :layout="i"
     />
 
@@ -99,15 +101,17 @@ useSeoMeta({
         {{ content.eyebrow }}
       </p>
       <p class="gp-line mx-auto mt-4 max-w-xl text-body-l text-ink-500" :style="{ '--i': '2' }">
-        <span v-for="(clause, i) in outroClauses" :key="i" class="gp-clause">{{ clause }}<span class="gp-punct">{{ i < outroClauses.length - 1 ? '，' : '。' }}</span></span>
+        <!-- 手機把標點 display:none 會一起從無障礙樹拿掉，子句會被連著唸；讀屏只聽 sr-only 那份完整句子，拆句的那份純視覺 -->
+        <span class="sr-only">{{ content.outro }}</span>
+        <span aria-hidden="true"><span v-for="(clause, i) in outroClauses" :key="i" class="gp-clause">{{ clause }}<span class="gp-punct">{{ i < outroClauses.length - 1 ? '，' : '。' }}</span></span></span>
       </p>
       <!-- 選單靠 JS，這行純文字連結是 JS 沒跑起來時唯一的出口，不能拿掉 -->
       <nav class="gp-line gp-links" :style="{ '--i': '3' }" aria-label="其他頁面">
-        <NuxtLink :to="`/invite/${weddingId}`" class="gp-link">
+        <NuxtLink :to="withSig(`/invite/${weddingId}`)" class="gp-link">
           前往喜帖
         </NuxtLink>
         <span class="gp-sep" aria-hidden="true">·</span>
-        <NuxtLink :to="`/story/${weddingId}`" class="gp-link">
+        <NuxtLink :to="withSig(`/story/${weddingId}`)" class="gp-link">
           我們的故事
         </NuxtLink>
       </nav>

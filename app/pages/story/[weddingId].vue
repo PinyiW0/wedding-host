@@ -13,13 +13,9 @@ const weddingId = computed(() => String(route.params.weddingId))
 
 const content = useStoryContent()
 
-/** 分享連結上的婚禮簽章（後台「故事頁連結」附的 ?sig=）。
- *  正式站是 enforced 模式，公開 RSVP 的 API 要憑這個簽章放行；這一頁自己不打 API，
- *  但往 RSVP 與其他公開頁的連結都要把它帶下去，賓客點「告訴我們你會來」才進得去。本機 open 模式沒有也照常 */
-const sig = computed(() => (typeof route.query.sig === 'string' && route.query.sig ? route.query.sig : ''))
-function withSig(path: string) {
-  return sig.value ? `${path}?sig=${encodeURIComponent(sig.value)}` : path
-}
+/** 分享連結上的婚禮簽章（後台「故事頁連結」附的 ?sig=）：往 RSVP 與其他公開頁的連結都要帶下去，
+ *  賓客點「告訴我們你會來」才過得了正式站的 enforced 模式（見 useSignedLink） */
+const { withSig } = useSignedLink()
 
 // 出口只剩婚紗照：「留下你的祝福」與「看完整流程表」新人 09-15 拿掉（祝福有花田那區的 RSVP，流程表對賓客是多餘的）
 const entries = computed(() => [

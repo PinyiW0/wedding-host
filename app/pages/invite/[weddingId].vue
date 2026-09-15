@@ -8,7 +8,9 @@ definePageMeta({ layout: 'story' })
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
 
-const scene = computed(() => useInviteScene(weddingId.value))
+// 出口（愛心卡、拍立得）帶著網址上的婚禮簽章，從喜帖點到故事再回出席回覆才不會掉
+const { withSig } = useSignedLink()
+const scene = computed(() => useInviteScene(weddingId.value, withSig))
 
 useSeoMeta({
   title: 'Alex & Lele 婚禮邀請',

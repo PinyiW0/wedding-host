@@ -20,9 +20,13 @@ function art(name: string): string {
   return `${ASSET_BASE}${name}`
 }
 
-export function useInviteScene(weddingId: string): InviteScene {
-  const storyPath = `/story/${weddingId}`
-  const galleryPath = `/gallery/${weddingId}`
+/**
+ * @param linkFor 出口連結的加工：頁面傳 useSignedLink 的 withSig，把網址上的婚禮簽章帶到故事與相簿，
+ *                賓客從喜帖點過去再回出席回覆時簽章才不會掉；不傳就是裸路徑
+ */
+export function useInviteScene(weddingId: string, linkFor: (path: string) => string = path => path): InviteScene {
+  const storyPath = linkFor(`/story/${weddingId}`)
+  const galleryPath = linkFor(`/gallery/${weddingId}`)
 
   const items: SceneItem[] = [
     // ── 遠景：貓掌印。三個腳印各對應一隻貓，點下去跳出招呼卡（見下方 cats）──
