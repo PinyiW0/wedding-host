@@ -91,7 +91,22 @@ export function useInviteScene(weddingId: string): InviteScene {
     { key: 'flowers-right', src: art('flowers-right.webp'), alt: '', desktop: { x: 72.2, y: 18.3, w: 15.2 }, mobile: { x: 74.5, y: 20.4, w: 38.7 }, depth: 0.35, order: 13, phaseDelay: SCENE_DELAY, z: 12 },
     // 手機稿裡這株本身就帶一片銀杏葉，所以 ginkgo-01 在手機版不另外出現
     { key: 'flower-single', src: art('flower-single.webp'), alt: '', desktop: { x: 50.6, y: 67.8, w: 7.6 }, mobile: { x: 23.6, y: 69.6, w: 26.1 }, depth: 0.6, order: 12, phaseDelay: SCENE_DELAY, z: 26 },
-    { key: 'ink-bottle', src: art('ink-bottle.webp'), alt: '', desktop: { x: 38.8, y: 78.6, w: 9 }, mobile: null, depth: 0.5, order: 3, phaseDelay: SCENE_DELAY, z: 16 },
+    {
+      key: 'ink-bottle',
+      src: art('ink-bottle.webp'),
+      alt: '閱讀阿帕契夕陽墨水的故事',
+      desktop: { x: 38.8, y: 78.6, w: 9 },
+      mobile: { x: 20, y: 88.5, w: 18 },
+      depth: 0.5,
+      order: 3,
+      phaseDelay: SCENE_DELAY,
+      z: 34,
+      note: {
+        title: '☼ 阿帕契夕陽｜APACHE SUNSET',
+        paragraphs: ['Alex 最常寫給樂樂的墨水，\n有著夕陽的名字，\n也是字跡裡最熟悉的顏色。', '一封、一句、一筆一畫，才發現——'],
+        quote: '「原來想念，也有自己的顏色。」',
+      },
+    },
 
     // ── 近景：拍立得（與蠟封同 depth）、日期貼紙 ──
     {
@@ -143,7 +158,22 @@ export function useInviteScene(weddingId: string): InviteScene {
     { key: 'ribbon-top', src: art('ribbon-top.webp'), alt: '', desktop: { x: 31, y: 12.8, w: 24.9, rotate: 11, flip: 'x' }, mobile: { x: 22.2, y: 40.4, w: 63.7 }, depth: 0.3, order: 10, phaseDelay: SCENE_DELAY, z: 23, float: 'ribbon' },
     // 右側到底部其實是同一條連續緞帶（素材兩端都有燕尾），貫穿右上到左下，不再拆兩份重複貼
     { key: 'ribbon-diag', src: art('ribbon.webp'), alt: '', desktop: { x: 65.6, y: 75.9, w: 54.1 }, mobile: { x: 53.5, y: 79.8, w: 120.8 }, depth: 0.9, order: 11, phaseDelay: SCENE_DELAY, z: 13, float: 'ribbon' },
-    { key: 'pen', src: art('pen.webp'), alt: '', desktop: { x: 65.5, y: 86.2, w: 22 }, mobile: { x: 63.3, y: 85.9, w: 56.3 }, depth: 1, order: 3, phaseDelay: SCENE_DELAY, z: 34 },
+    {
+      key: 'pen',
+      src: art('pen.webp'),
+      alt: '閱讀星塵定情筆的故事',
+      desktop: { x: 65.5, y: 86.2, w: 22 },
+      mobile: { x: 63.3, y: 85.9, w: 56.3 },
+      depth: 1,
+      order: 3,
+      phaseDelay: SCENE_DELAY,
+      z: 34,
+      note: {
+        title: '✦ 星塵｜STARDUST',
+        paragraphs: ['有人送花，有人送戒指，\nAlex 選擇送給樂樂一支筆。', '從那天起，它寫下的不只是字，\n也成了我們故事的一部分。'],
+        quote: '「如果故事需要一個開始，\n那就從這一筆開始。」',
+      },
+    },
     // 稿子裡另外兩片銀杏分別長在 flowers-left 與 flower-single 上，獨立的葉子只有這一片
     { key: 'ginkgo-02', src: art('ginkgo-02.webp'), alt: '', desktop: { x: 70.3, y: 96.7, w: 7.6 }, mobile: { x: 74.9, y: 94.8, w: 21.5 }, depth: 1, order: 1, phaseDelay: SCENE_DELAY, z: 36, float: 'leaf' },
     { key: 'petals', src: art('petals.webp'), alt: '', desktop: { x: 54.5, y: 91.9, w: 6.3 }, mobile: { x: 39.9, y: 95.4, w: 20 }, depth: 1, order: 2, phaseDelay: SCENE_DELAY, z: 36, float: 'petal' },

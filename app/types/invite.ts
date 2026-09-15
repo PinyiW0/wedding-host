@@ -62,6 +62,8 @@ export interface SceneItem {
   /** hover／focus 的額外回饋（預設只有浮起＋放大） */
   hover?: SceneHover
   caption?: SceneCaption
+  /** 物件旁的故事紙條：滑鼠移入、鍵盤聚焦或觸控開啟 */
+  note?: { title: string, paragraphs: string[], quote: string }
   /** 'slide-up'：進場時從自身高度下方滑出（愛心卡從信封裡抽出的效果），取代預設的單拍上浮 */
   entrance?: 'slide-up'
   /** 進場延遲的額外基準值（毫秒），疊加在 order*70ms 之上——用來把整個場景切成先後幾幕（信封／滑出／其餘物件） */

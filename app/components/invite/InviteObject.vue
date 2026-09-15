@@ -20,8 +20,39 @@ const emit = defineEmits<{
   openCat: [key: string]
 }>()
 
+const objectRef = ref<HTMLElement | null>(null)
+const noteOpen = ref(false)
+const noteId = useId()
+
+function onNoteEnter(event: PointerEvent) {
+  if (props.item.note && event.pointerType === 'mouse')
+    noteOpen.value = true
+}
+
+function dismissNote(event: PointerEvent) {
+  if (!objectRef.value?.contains(event.target as Node))
+    noteOpen.value = false
+}
+
+function onNoteKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape')
+    noteOpen.value = false
+}
+
+onMounted(() => {
+  if (!props.item.note)
+    return
+  window.addEventListener('pointerdown', dismissNote)
+  window.addEventListener('keydown', onNoteKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', dismissNote)
+  window.removeEventListener('keydown', onNoteKeydown)
+})
+
 const tag = computed(() => {
-  if (props.item.musicToggle || props.item.cat)
+  if (props.item.musicToggle || props.item.cat || props.item.note)
     return 'button'
   return props.item.to ? NuxtLink : 'div'
 })
@@ -29,6 +60,13 @@ const tag = computed(() => {
 // 貓掌印不給 aria-label：可及名稱由裡面那張圖的 alt（「認識貓咪 Healthy」）提供，
 // 兩邊都寫會讓螢幕閱讀器唸兩次
 const tagProps = computed(() => {
+  if (props.item.note) {
+    return {
+      'type': 'button',
+      'aria-expanded': noteOpen.value,
+      'aria-controls': noteId,
+    }
+  }
   if (props.item.musicToggle) {
     return {
       'type': 'button',
@@ -41,11 +79,17 @@ const tagProps = computed(() => {
     : { to: props.item.to }
 })
 
-function onActivate() {
-  if (props.item.musicToggle)
+function onActivate(event: MouseEvent) {
+  if (props.item.note) {
+    // 觸控的 focus 先於 click；只讓鍵盤 focus 自動開啟，避免首次點擊立刻關閉。
+    noteOpen.value = event.detail === 0 ? true : !noteOpen.value
+  }
+  else if (props.item.musicToggle) {
     emit('toggleMusic')
-  else if (props.item.cat)
+  }
+  else if (props.item.cat) {
     emit('openCat', props.item.cat)
+  }
 }
 
 const posStyle = computed(() => {
@@ -59,6 +103,7 @@ const posStyle = computed(() => {
     '--m-y': m ? `${m.y}%` : '0%',
     '--m-w': m ? `${m.w}%` : '0%',
     '--m-rot': `${m?.rotate ?? 0}deg`,
+    '--note-shift': m ? `calc(${(50 - m.x) / 100} * min(100vw, 100dvh * 390 / 844))` : '0px',
     '--m-display': m ? 'block' : 'none',
     '--z': String(z),
     '--i': String(props.item.order),
@@ -94,7 +139,8 @@ const enterClass = computed(() =>
 )
 
 const linkClass = computed(() => [
-  props.item.to || props.item.musicToggle || props.item.cat ? 'si-link' : 'si-plain',
+  props.item.to || props.item.musicToggle || props.item.cat || props.item.note ? 'si-link' : 'si-plain',
+  props.item.note ? 'si-note-trigger' : null,
   props.item.hover === 'wobble' ? 'si-wobble' : null,
   props.item.cat ? 'si-cat' : null,
   props.item.caption ? 'si-cap-host' : null,
@@ -103,10 +149,14 @@ const linkClass = computed(() => [
 
 <template>
   <div
+    ref="objectRef"
     class="si"
-    :class="item.group ? `si-group-${item.group}` : null"
+    :class="[item.group ? `si-group-${item.group}` : null, { 'si-note-open': noteOpen }]"
     :style="posStyle"
     :aria-hidden="item.alt || item.musicToggle ? undefined : 'true'"
+    @pointerenter="onNoteEnter"
+    @pointerleave="noteOpen = false"
+    @focusout="noteOpen = false"
   >
     <div class="si-enter" :class="enterClass">
       <component
@@ -114,6 +164,7 @@ const linkClass = computed(() => [
         v-bind="tagProps"
         :class="linkClass"
         @click="onActivate"
+        @focus="item.note && ($event.target as HTMLElement).matches(':focus-visible') && (noteOpen = true)"
       >
         <img
           v-if="item.src"
@@ -139,6 +190,17 @@ const linkClass = computed(() => [
         </span>
       </component>
     </div>
+    <Transition name="story-note">
+      <aside v-if="item.note" v-show="noteOpen" :id="noteId" class="si-story-note" :aria-labelledby="`${noteId}-title`">
+        <h2 :id="`${noteId}-title`">
+          {{ item.note.title }}
+        </h2>
+        <p v-for="paragraph in item.note.paragraphs" :key="paragraph">
+          {{ paragraph }}
+        </p>
+        <blockquote>{{ item.note.quote }}</blockquote>
+      </aside>
+    </Transition>
   </div>
 </template>
 
@@ -154,7 +216,76 @@ const linkClass = computed(() => [
   transform: translate(-50%, -50%);
 }
 
+.si-note-open {
+  z-index: 43;
+}
+
+.si-note-trigger {
+  width: 100%;
+  min-height: 44px;
+}
+
+.si-story-note {
+  position: absolute;
+  bottom: 100%;
+  left: calc(50% + var(--note-shift));
+  width: min(330px, calc(100vw - 32px));
+  padding: 27px 22px 25px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(184 150 90 / 18%);
+  border-radius: 2px;
+  background: #faf7f1 url('/images/invite/note-paper.webp') center / cover;
+  box-shadow: 0 3px 5px rgb(55 40 25 / 6%), 0 14px 32px rgb(55 40 25 / 15%);
+  color: var(--color-ink-700);
+  font-family: var(--font-serif-tc);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.9;
+  text-align: center;
+}
+
+.si-story-note h2 {
+  margin-bottom: 18px;
+  color: var(--color-gold-deep);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.si-story-note p {
+  margin-top: 12px;
+  white-space: pre-line;
+}
+
+.si-story-note blockquote {
+  margin-top: 22px;
+  color: var(--color-ink);
+  white-space: pre-line;
+}
+
+.story-note-enter-active,
+.story-note-leave-active {
+  transition: opacity 220ms ease, translate 220ms ease;
+}
+
+.story-note-enter-from,
+.story-note-leave-to {
+  opacity: 0;
+  translate: 0 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-note-enter-active,
+  .story-note-leave-active {
+    transition: none;
+  }
+}
+
 @media (min-width: 1024px) {
+  .si-story-note {
+    left: 50%;
+  }
+
   .si {
     left: var(--d-x);
     top: var(--d-y);
