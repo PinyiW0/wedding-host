@@ -21,6 +21,7 @@ function art(name: string): string {
 }
 
 /**
+ * @param weddingId 網址上的婚禮 id，用來組故事頁與相簿的出口路徑
  * @param linkFor 出口連結的加工：頁面傳 useSignedLink 的 withSig，把網址上的婚禮簽章帶到故事與相簿，
  *                賓客從喜帖點過去再回出席回覆時簽章才不會掉；不傳就是裸路徑
  */

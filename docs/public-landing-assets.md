@@ -1006,3 +1006,8 @@ deck 之後的區塊與首屏（分身處理）：
 - **相簿頁尾讀屏**（修）：手機把標點 `display:none` 會連帶從無障礙樹拿掉，改成 sr-only 完整句＋拆句那份 `aria-hidden`。
 - **issue #158 驗收標準**（改 issue）：AC 還是 09-02 前的拖曳照片牆版，改寫成現在的距離敘事＋喜帖＋相簿，並附變更紀錄。
 - **誤判**：①②③ `StoryBookFace`／`StoryDoodles` 的 `.is-live .x` 會不會因 scoped 而不匹配父元件的 class——Vue 只把 `[data-v]` 加在最右邊那一段（實測編譯結果 `.is-live .spread:not(.is-drawn) .reveal[data-v-…]`），未到的跨頁 opacity 0、第 3 頁愛心線停穩後 dashoffset 0px。④ `usePublicChrome` 的 rootMargin `-93%` 是否吃寬度——IntersectionObserver 的上下 margin 百分比對 root 高度算，實測 rootBounds 1440×900 是 y 36–63、390×844 是 y 36–60。
+
+**§58 PR #159 Copilot 審查第三輪（2026-09-16）**：3 條「前幾輪漏看」的意見，修 2 條、1 條更正 issue 文字。
+- **選單第二次打開焦點進不去**（修）：`PublicMenu` 的連結與跑馬燈 ref 只 push 不清，面板 `v-if` 卸載後陣列前段還是舊節點；實測第一次開啟焦點在第一個連結，第二次起焦點留在開關、跑馬燈也不跟游標方向。改成依列索引存、卸載時 Vue 用 null 呼叫就清掉。實測連開三次、關了立刻再開，焦點都進第一個連結，Tab 循環照常回到開關。
+- **首屏照片圓：看不見的照片也能 Tab 到**（修）：桌機下半圈被 mask 淡掉或落到視窗外，照片仍是 button；實測 1440×900 Tab 走過 16 張有 7 張看不見，對焦還會讓圓停在那個位置。`StoryHeroRing` 在按下 Tab 的當下讀 `.ring` 的 computed `rotate`，離正上方超過 75° 的照片暫時 `tabindex=-1`（keydown 處理器跑完後 Vue 的更新在 microtask，先於瀏覽器移動焦點）。實測圓轉到 5° 與 80° 時 Tab 各停 7／6 張、全部整張看得見；手機整圈露出，8 張都可停。
+- **喜帖頁沒有右上選單**（不改程式、更正 issue）：`docs/gallery-landing-assets.md` §20 早就定案喜帖頁不掛——整頁本身就是導覽，加漢堡會破壞桌面情境；出口的簽章在第一輪已補。是我改寫 #158 時誤寫成「三頁共用右上選單」，已更正。

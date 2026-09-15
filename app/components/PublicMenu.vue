@@ -64,18 +64,23 @@ const isOpen = ref(false)
 const hoverIndex = ref<number | null>(null)
 const toggleRef = ref<HTMLElement | null>(null)
 
-const marquees: HTMLElement[] = []
-const links: HTMLElement[] = []
+// 依列的索引存，面板卸載時 Vue 會用 null 呼叫一次、這裡跟著清掉。
+// 原本只 push 不清：關掉再打開時陣列前面還是上一次已經拆掉的節點，
+// 第二次開啟焦點進不了第一個連結、跑馬燈也改到舊的那條（PR #159 Copilot 審查，實測第二次開啟即重現）
+const marquees: (HTMLElement | null)[] = []
+const links: (HTMLElement | null)[] = []
 
-function setMarqueeRef(el: Element | ComponentPublicInstance | null) {
-  if (el instanceof HTMLElement && !marquees.includes(el))
-    marquees.push(el)
+function toElement(el: Element | ComponentPublicInstance | null): HTMLElement | null {
+  const node = el instanceof HTMLElement ? el : (el as ComponentPublicInstance | null)?.$el
+  return node instanceof HTMLElement ? node : null
 }
 
-function setLinkRef(el: Element | ComponentPublicInstance | null) {
-  const node = el instanceof HTMLElement ? el : (el as ComponentPublicInstance | null)?.$el
-  if (node instanceof HTMLElement && !links.includes(node))
-    links.push(node)
+function setMarqueeRef(el: Element | ComponentPublicInstance | null, index: number) {
+  marquees[index] = toElement(el)
+}
+
+function setLinkRef(el: Element | ComponentPublicInstance | null, index: number) {
+  links[index] = toElement(el)
 }
 
 /** 游標從這一列的上緣還是下緣進來：-1 上、1 下 */
@@ -193,12 +198,12 @@ onBeforeUnmount(() => {
             @pointerenter="onRowEnter($event, i)"
             @pointerleave="onRowLeave($event, i)"
           >
-            <NuxtLink :ref="setLinkRef" :to="row.to" class="pm-link" @click="close">
+            <NuxtLink :ref="el => setLinkRef(el, i)" :to="row.to" class="pm-link" @click="close">
               <span class="pm-label">{{ row.label }}</span>
               <span class="pm-word">{{ row.word }}</span>
             </NuxtLink>
 
-            <span :ref="setMarqueeRef" class="pm-marquee" aria-hidden="true">
+            <span :ref="el => setMarqueeRef(el, i)" class="pm-marquee" aria-hidden="true">
               <span class="pm-track">
                 <template v-for="n in 8" :key="n">
                   <span class="pm-run">{{ row.label }}</span>

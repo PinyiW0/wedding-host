@@ -77,6 +77,33 @@ function onLeave(index: number) {
     hovered.value = null
 }
 
+/* 鍵盤停靠點：桌機只露上半圈，下半圈被 mask 淡掉或落到視窗外，但照片仍是 button——
+   不處理的話 Tab 會停在看不見的照片上，對焦還讓圓停在那個看不見的位置、外框也被 mask 蓋掉
+   （PR #159 Copilot 審查；實測 1440×900 Tab 走過 16 張有 7 張看不見）。
+   圓一直在轉，哪幾張看得見會變，所以在按下 Tab 的當下讀整圈轉到幾度，離正上方超過 75° 的暫時退出 Tab 順序。
+   75° 時照片下緣仍在淡出起點（圓心上方 4rem）之上，整張看得清楚。手機整圈都露出來，全部可停 */
+const VISIBLE_ARC_DEG = 75
+const ringEl = ref<HTMLElement | null>(null)
+const spin = ref(0)
+
+function readSpin() {
+  const value = ringEl.value ? getComputedStyle(ringEl.value).rotate : 'none'
+  spin.value = value === 'none' ? 0 : Number.parseFloat(value) || 0
+}
+
+function outOfView(angle: number) {
+  if (!wide.value)
+    return false
+  const at = (((angle + spin.value) % 360) + 360) % 360
+  return Math.min(at, 360 - at) > VISIBLE_ARC_DEG
+}
+
+/** keydown 的處理器跑完、瀏覽器移動焦點之前，Vue 就把 tabindex 更新好了（更新排在 microtask，先於預設動作） */
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Tab')
+    readSpin()
+}
+
 let wideQuery: MediaQueryList | null = null
 function syncWide() {
   wide.value = wideQuery?.matches ?? false
@@ -85,8 +112,12 @@ onMounted(() => {
   wideQuery = window.matchMedia(WIDE_QUERY)
   syncWide()
   wideQuery.addEventListener('change', syncWide)
+  window.addEventListener('keydown', onKeydown, true)
 })
-onBeforeUnmount(() => wideQuery?.removeEventListener('change', syncWide))
+onBeforeUnmount(() => {
+  wideQuery?.removeEventListener('change', syncWide)
+  window.removeEventListener('keydown', onKeydown, true)
+})
 </script>
 
 <template>
@@ -94,7 +125,7 @@ onBeforeUnmount(() => wideQuery?.removeEventListener('change', syncWide))
     <!-- is-held：有對焦（游標指著或點開）就停轉，目標不會從游標下面溜走。
          key 跟著 wide：跨過斷點時張數會變，新掛上的照片若沿用舊的一圈，反向動畫的起點會對不上整圈已經轉掉的角度，
          整組重掛讓自轉與反轉從同一個時間點起跑 -->
-    <ul :key="wide ? 'wide' : 'narrow'" class="ring absolute" :class="{ 'is-held': focus !== null }">
+    <ul :key="wide ? 'wide' : 'narrow'" ref="ringEl" class="ring absolute" :class="{ 'is-held': focus !== null }">
       <li
         v-for="tile in placed"
         :key="tile.src"
@@ -108,6 +139,7 @@ onBeforeUnmount(() => wideQuery?.removeEventListener('change', syncWide))
           data-ring-tile
           :aria-label="`第 ${tile.index + 1} 張照片，翻出一句祝福`"
           :aria-pressed="active === tile.index"
+          :tabindex="outOfView(tile.angle) ? -1 : undefined"
           @pointerenter="onEnter(tile.index, $event)"
           @pointerleave="onLeave(tile.index)"
           @focus="hovered = tile.index"
