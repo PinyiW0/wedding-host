@@ -32,7 +32,7 @@ export interface GallerySeries {
   /**
    * PublicMenu 目錄列右側的縮圖。
    * 該處是 3:2 置中裁切（object-fit: cover），直式照片會被切掉頭或半身，
-   * 所以只能填橫式照片（01~09），且不跟 preview 共用——preview 是為滿版預告卡挑的，兩者用途不同。
+   * 所以只能填橫式照片（01~09、37、43、45、48），且不跟 preview 共用——preview 是為滿版預告卡挑的，兩者用途不同。
    */
   menuThumb: string
   /** landing 大字上方的水彩插圖（去背 webp）；留空字串代表這個系列沒有插圖 */
