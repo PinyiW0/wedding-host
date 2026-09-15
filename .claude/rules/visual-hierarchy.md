@@ -9,6 +9,7 @@
 | 層級 | 用途 | Class | 每頁數量 |
 |------|------|-------|---------|
 | 主標題 | 頁面唯一大標 | 管理頁用 `PageHeader`（`font-display text-h2` + eyebrow）；公開賓客頁用 `font-display text-display-l` | **一頁一個** |
+| 次標題 / 資料標籤 | 32 與 18 之間的中繼級：公開敘事頁的頁內標題、時間軸地名與單位（`text-h3` 24px，`@theme` 具名 token） | 標題配 `font-semibold`，標籤配 `font-medium` 或 `font-normal` | 不限 |
 | 區塊標題 | 頁內分區 | `text-overline uppercase text-gold-deep`（可配 `h-px bg-line` 分隔線） | 不限 |
 | Modal / Slideover 標題 | 覆蓋層標題 | `text-body-l font-semibold text-ink dark:text-paper`（**不用 font-display，不用 text-h2**） | — |
 | 卡片 / 項目標題 | 列表項、卡片 | `text-body font-medium` 或 `text-body-l font-semibold` | 不限 |
