@@ -70,13 +70,41 @@ function photoSrc(num: number): string {
   return `${ASSET_BASE}gallery-${String(num).padStart(2, '0')}.webp`
 }
 
+/** 橫式照片的編號（其餘都是直式） */
+const LANDSCAPE = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 37, 43, 45, 48])
+/** 第二批裡新人裁過、不是標準 1044×1566 的三張（實際量的 webp 尺寸） */
+const SIZE_OVERRIDE: Record<number, [number, number]> = {
+  34: [1041, 1573],
+  44: [1041, 1571],
+  50: [1042, 1570],
+}
+
+/**
+ * 照片的原始寬高：給 <img> 的 width／height，瀏覽器在圖載入前就先依比例佔好位置。
+ * 沒給的話 lazy 圖在載入前高度是 0、載完才撐開，長長的照片流會一路跳，
+ * useScrollProgress 快取的位置也跟著失準（PR #159 Copilot 審查）。
+ * 第一批長邊 1600（1600×1111／1111×1600），第二批長邊 1566（1566×1044／1044×1566）
+ */
+function photoSize(num: number): [number, number] {
+  const override = SIZE_OVERRIDE[num]
+  if (override)
+    return override
+  const [long, short] = num <= 33 ? [1600, 1111] : [1566, 1044]
+  return LANDSCAPE.has(num) ? [long, short] : [short, long]
+}
+
 function buildPhotos(nums: number[], eagerCount = EAGER_COUNT): GalleryPhoto[] {
-  return nums.map((num, i) => ({
-    src: photoSrc(num),
-    alt: PHOTO_ALT[num] ?? `婚紗照 ${num}`,
-    caption: '',
-    eager: i < eagerCount,
-  }))
+  return nums.map((num, i) => {
+    const [width, height] = photoSize(num)
+    return {
+      src: photoSrc(num),
+      alt: PHOTO_ALT[num] ?? `婚紗照 ${num}`,
+      caption: '',
+      width,
+      height,
+      eager: i < eagerCount,
+    }
+  })
 }
 
 interface SeriesSeed {

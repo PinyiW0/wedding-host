@@ -590,3 +590,9 @@ series-city     XXXXXX........XXXXXXXXXXXXXX........XXXXXXXXXXXX...
 
 `cover`／`preview`／`menuThumb` 都沒動：第二批四張橫式沒有比現在那幾張更適合滿版裁切的。
 
+
+### 37. 照片流的圖先佔位（PR #159 Copilot 審查第二輪）
+
+`GallerySeriesFlow` 的 `<img>` 原本只有 `width: 100%; height: auto`，沒有原始寬高——lazy 圖載入前高度是 0，載完才撐開。實測 1440×900 的 meadow 系列頁：圖都還沒到時照片流只有 3456px 高，全部載完是 21694px，25 張一路從 0 撐開，捲動中會跳，`useScrollProgress` 快取的位置也會失準。`GalleryPhoto` 加 `width`／`height`，由 `useGalleryContent` 的 `photoSize()` 算（第一批 1600×1111、第二批 1566×1044，依 `LANDSCAPE` 決定直橫，34／44／50 三張新人裁過的用實際尺寸），`<img>` 帶上這兩個屬性後瀏覽器載入前就依比例佔位。實測載入前後每張高度與整條照片流高度完全相同，最終版面與改前一致。
+
+同一輪 Copilot 另一條「系列頁切上一組／下一組時內容殘留」實測是誤判：Nuxt 的 `NuxtPage` 預設用帶入參數後的路徑當 key，`/gallery/w/meadow` 換到 `/seaside` 會重新掛載；站內導覽點下一組，標題、首圖、照片流、上下組連結與分頁標題都跟著換。

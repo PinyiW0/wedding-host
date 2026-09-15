@@ -75,9 +75,12 @@ onMounted(() => {
       >
         <button type="button" class="sf-btn" data-cursor="View" @click="activeIndex = slot.index">
           <span class="sf-media">
+            <!-- width／height 讓圖載入前就依原始比例佔位（CSS 仍是 width 100%、height auto），lazy 圖載完不會把下面整條推開 -->
             <img
               :src="slot.photo.src"
               :alt="slot.photo.alt"
+              :width="slot.photo.width"
+              :height="slot.photo.height"
               :loading="slot.photo.eager ? 'eager' : 'lazy'"
               decoding="async"
               class="sf-img"

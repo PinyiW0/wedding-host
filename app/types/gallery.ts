@@ -8,6 +8,9 @@ export interface GalleryPhoto {
   alt: string
   /** 圖說，可留空 */
   caption: string
+  /** 原始寬高（px）：給 <img> 的 width／height，圖載入前先依比例佔位，避免版面跳動 */
+  width: number
+  height: number
   eager: boolean
 }
 
