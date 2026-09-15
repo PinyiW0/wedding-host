@@ -1,0 +1,223 @@
+<!-- app/components/story/StoryHeroRing.vue — 首屏的祝福圓：婚紗照繞成一整圈，慢慢自轉，圈住中央的標題。
+     游標指到一張（或點開一張），那張清楚、放大，其餘照離它多遠依序變糊、變淡——像相機對焦在那一張上的景深。
+     點一張，圓心的標題換成那張照片帶的一句祝福，圓停下來等你讀完；再點同一張收回、繼續轉。
+     照片掛 data-ring-tile：首屏靠這個屬性分辨「點在照片上」（照片自己管開關）與「點在別處」（關掉祝福）。
+     幾何全部走 CSS：每個位置先 rotate(--a) 轉到自己的角度，再往外推一個半徑。
+     照片本身永遠直立（2026-09-15 改）：跟著圓弧側躺時整圈像一堆菱形在翻滾，搶走中央標題的注意力。
+     整圈的自轉是外層 .ring 一個 rotate 動畫；每張照片再掛一個同長度、反方向的 rotate 動畫，同時抵銷自己的 --a 與整圈的自轉。
+     半徑、照片邊長、圓心高度由外層（StoryHero）用 --ring-r／--tile／--ring-cy 決定：
+     手機整圈繞著標題；桌機照 coveomusic.com 實測的比例——半徑 0.6 個視窗高、圓心壓在時間軸的高度，只露出上半圈，
+     下半圈用 mask 淡掉，不跟時間軸與翻頁按鈕打架。
+     沒有 JS（live=false）時整組不渲染：它是純互動裝飾，SSR 的終態就是原本那個乾淨的首屏。 -->
+<script setup lang="ts">
+import type { StoryHeroTile } from '~/types/story'
+
+const props = defineProps<{
+  tiles: StoryHeroTile[]
+  /** 目前打開的那一張的索引（對 tiles）；null＝圓心顯示標題、圓繼續轉 */
+  active: number | null
+  /** JS 已接管；false（SSR／無 JS）時不渲染 */
+  live: boolean
+}>()
+
+defineEmits<{ select: [index: number] }>()
+
+/** 與 StoryDeck 同一條分界：這寬度以上是桌機（圓心壓低、露上半圈），以下是手機（整圈） */
+const WIDE_QUERY = '(min-width: 64rem)'
+
+/* 景深（照 coveomusic 實測）：對焦那張 scale 1.15、不糊；每往外一張 blur 多 1px、opacity 少 0.12、
+   放大量以 0.72 的比例遞減（1.11 → 1.08 → 1.06 → 1.04 …）。糊與淡各設一個底，遠處的照片還看得出是照片 */
+const FOCUS_SCALE = 0.15
+const FOCUS_DECAY = 0.72
+const BLUR_PER_STEP_PX = 1
+const BLUR_MAX_PX = 8
+const DIM_PER_STEP = 0.12
+const DIM_MIN = 0.22
+
+// 桌機 16 張、手機 8 張；保留原始 index，點擊後仍對應原來的祝福。
+const wide = ref(false)
+const shown = computed(() => props.tiles
+  .map((tile, index) => ({ ...tile, index }))
+  .filter((_, index) => index % 3 !== 2)
+  .slice(0, wide.value ? 16 : 8))
+
+// 游標指著的那張（滑鼠／觸控筆才算；手指一點就放，讓 active 接手）
+const hovered = ref<number | null>(null)
+/** 對焦的那張：游標優先，沒游標就是點開的那張；null＝沒對焦，整圈一樣清楚 */
+const focus = computed(() => hovered.value ?? props.active)
+
+// 從正上方開始順時針平分一圈。進場的延遲依「離正上方多遠」算，照片從圓頂往兩側依序點亮。
+// 景深的「距離」是沿圓周數幾格（兩個方向取近的），不受自轉影響
+const placed = computed(() => {
+  const n = shown.value.length
+  return shown.value.map((tile, i) => {
+    const angle = (360 / n) * i
+    const fromTop = angle > 180 ? 360 - angle : angle
+    let blur = 0
+    let dim = 1
+    let pop = 1
+    const focusedPosition = shown.value.findIndex(item => item.index === focus.value)
+    if (focus.value !== null && focusedPosition >= 0) {
+      const raw = Math.abs(i - focusedPosition)
+      const depth = Math.min(raw, n - raw)
+      blur = Math.min(depth * BLUR_PER_STEP_PX, BLUR_MAX_PX)
+      dim = Math.max(DIM_MIN, 1 - depth * DIM_PER_STEP)
+      pop = 1 + FOCUS_SCALE * FOCUS_DECAY ** depth
+    }
+    return { ...tile, angle, delay: fromTop / 180, blur, dim, pop, size: i % 4 === 0 ? 1.18 : i % 2 === 0 ? 1 : 0.88 }
+  })
+})
+
+function onEnter(index: number, event: PointerEvent) {
+  if (event.pointerType !== 'touch')
+    hovered.value = index
+}
+function onLeave(index: number) {
+  if (hovered.value === index)
+    hovered.value = null
+}
+
+let wideQuery: MediaQueryList | null = null
+function syncWide() {
+  wide.value = wideQuery?.matches ?? false
+}
+onMounted(() => {
+  wideQuery = window.matchMedia(WIDE_QUERY)
+  syncWide()
+  wideQuery.addEventListener('change', syncWide)
+})
+onBeforeUnmount(() => wideQuery?.removeEventListener('change', syncWide))
+</script>
+
+<template>
+  <div v-if="live && tiles.length" class="ring-layer pointer-events-none absolute inset-0" aria-hidden="false">
+    <!-- is-held：有對焦（游標指著或點開）就停轉，目標不會從游標下面溜走。
+         key 跟著 wide：跨過斷點時張數會變，新掛上的照片若沿用舊的一圈，反向動畫的起點會對不上整圈已經轉掉的角度，
+         整組重掛讓自轉與反轉從同一個時間點起跑 -->
+    <ul :key="wide ? 'wide' : 'narrow'" class="ring absolute" :class="{ 'is-held': focus !== null }">
+      <li
+        v-for="tile in placed"
+        :key="tile.src"
+        class="slot absolute"
+        :style="{ '--a': `${tile.angle}deg`, '--d': tile.delay, '--blur': `${tile.blur}px`, '--dim': tile.dim, '--pop': tile.pop, '--size': tile.size }"
+      >
+        <button
+          type="button"
+          class="tile absolute overflow-hidden bg-paper focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
+          :class="{ 'is-active': active === tile.index }"
+          data-ring-tile
+          :aria-label="`第 ${tile.index + 1} 張照片，翻出一句祝福`"
+          :aria-pressed="active === tile.index"
+          @pointerenter="onEnter(tile.index, $event)"
+          @pointerleave="onLeave(tile.index)"
+          @focus="hovered = tile.index"
+          @blur="onLeave(tile.index)"
+          @click="$emit('select', tile.index)"
+        >
+          <img :src="tile.src" alt="" loading="lazy" draggable="false" class="size-full select-none object-cover">
+        </button>
+      </li>
+    </ul>
+  </div>
+</template>
+
+<style scoped>
+/* 圓心：水平置中、高度由外層的 --ring-cy 決定（手機＝標題中心、桌機＝時間軸的高度） */
+.ring {
+  left: 50%;
+  top: var(--ring-cy, 50%);
+  width: 0;
+  height: 0;
+  list-style: none;
+  /* 一圈三分鐘：看得出在動，又不會讓人想追著看。長度改動時 .tile 的 tile-upright 要一起改 */
+  animation: ring-spin 180s linear infinite;
+}
+.ring.is-held {
+  animation-play-state: paused;
+}
+/* 照片的反轉跟著整圈一起停；進場動畫（第一個）照跑 */
+.ring.is-held .tile {
+  animation-play-state: running, paused;
+}
+@keyframes ring-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* 桌機只露上半圈：下半圈從圓心的高度往下淡掉，不壓到橫線、翻頁按鈕與音樂碟。
+   淡出的位置跟著圓心（--ring-cy）而不是時間軸——時間軸比圓心低 40px，跟著它會多露出一截下半圈 */
+@media (min-width: 64rem) {
+  .ring-layer {
+    --fade-from: calc(var(--ring-cy, 78%) - 4rem);
+    --fade-to: calc(var(--ring-cy, 78%) + 1.5rem);
+    -webkit-mask-image: linear-gradient(to bottom, #000 var(--fade-from), transparent var(--fade-to));
+    mask-image: linear-gradient(to bottom, #000 var(--fade-from), transparent var(--fade-to));
+  }
+}
+
+.slot {
+  left: 0;
+  top: 0;
+  /* 先轉到這張的角度，再往外推一個半徑 */
+  transform: rotate(var(--a)) translateY(calc(var(--ring-r, 12rem) * -1));
+}
+
+/* 景深的三個量（--blur／--dim／--pop）由 placed 算好寫在 slot 上，這裡只負責過場。
+   進場動畫只動 transform（見下），opacity 與 scale 留給景深用——同一個屬性被 fill: both 的動畫占著，過場會被蓋掉 */
+.tile {
+  width: calc(var(--tile, 3rem) * var(--size, 1));
+  height: calc(var(--tile, 3rem) * var(--size, 1));
+  /* 讓照片以自己的中心對準圓周上的那個點 */
+  translate: -50% -50%;
+  scale: var(--pop, 1);
+  opacity: var(--dim, 1);
+  filter: blur(var(--blur, 0px));
+  border-radius: calc(var(--tile, 3rem) * 0.12);
+  box-shadow: 0 0.375rem 1.25rem rgb(60 48 32 / 0.14);
+  pointer-events: auto;
+  cursor: pointer;
+  /* 直立：抵銷 slot 的 --a。rotate 是獨立屬性，繞照片自己的中心轉，不會把照片推離圓周上的那個點；
+     reduced-motion 時反轉動畫被全域 guard 收掉，停在這個靜止值（整圈也不轉，兩邊一致） */
+  rotate: calc(var(--a, 0deg) * -1);
+  transition:
+    scale 400ms var(--ease-emphasized),
+    opacity 400ms var(--ease-standard),
+    filter 400ms var(--ease-standard);
+  /* 進場：從圓頂開始、往兩側依序放大進來（淡入在 img 上，見下）。
+     第二個動畫是反轉：與 .ring 的 ring-spin 同長度、同時起跑、不延遲，整圈轉多少照片就倒轉多少 */
+  animation:
+    tile-in 600ms var(--ease-emphasized) both,
+    tile-upright 180s linear infinite;
+  animation-delay: calc(var(--d, 0) * 800ms + 300ms), 0s;
+}
+.tile img {
+  animation: tile-fade 600ms var(--ease-standard) both;
+  animation-delay: calc(var(--d, 0) * 800ms + 300ms);
+}
+
+@keyframes tile-in {
+  from {
+    transform: scale(0.55);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@keyframes tile-upright {
+  from {
+    rotate: calc(var(--a, 0deg) * -1);
+  }
+  to {
+    rotate: calc(var(--a, 0deg) * -1 - 360deg);
+  }
+}
+@keyframes tile-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+</style>

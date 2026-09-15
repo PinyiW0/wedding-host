@@ -1,18 +1,37 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* 手寫體：辰宇落雁體 2.0 Thin（SIL OFL 開源；賓客謝卡信箋用） */
+/* 手寫體：辰宇落雁體 2.0 Thin（SIL OFL 開源；賓客謝卡信箋用）——整包 9.5MB，謝卡要打任意字才需要它。
+   故事頁只用它寫貓的名字、紙條上那一句話與花田的「你找到○○了」，另切一份只含這些字＋ASCII 的子集（42KB，131 個字）：
+   `pyftsubset public/fonts/ChenYuluoyan-Thin.ttf --text="<故事頁所有手寫文案>" --unicodes=U+0020-007E --flavor=woff2 --layout-features='*' --output-file=public/fonts/ChenYuluoyan-story.woff2`
+   （fonttools；unicode-range 由子集的 cmap 算出來）。文案改了要重切，不重切也不會壞：新的字會回退到整包，只是多下載 9.5MB。
+   兩個 @font-face 同名：子集宣告在後、帶 unicode-range。同一個字兩者都涵蓋時，後宣告的優先，
+   所以故事頁只下載子集；謝卡打到子集外的字才會回退到第一個宣告、下載整包。 */
 @font-face {
   font-family: "ChenYuluoyan";
   src: url("/fonts/ChenYuluoyan-Thin.ttf") format("truetype");
   font-weight: 400;
   font-display: swap;
 }
+@font-face {
+  font-family: "ChenYuluoyan";
+  src: url("/fonts/ChenYuluoyan-story.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+4E00, U+4E5F, U+4E86, U+4EE5, U+4F60, U+4F86, U+5011, U+5206, U+5230, U+52A0, U+53C3, U+5A5A, U+5ABD, U+5B50, U+5FC3, U+6211, U+6240, U+627E, U+628A, U+65E5, U+7238, U+7684, U+79AE, U+7D50, U+7D66, U+80A5, U+8981, U+898B, U+8B1D, U+8B49, U+8D77, U+8D85, U+91CD, U+9322, U+958B, U+FF01;
+}
 
 /* Tailwind v4 preflight 將 button cursor 設為 default，覆蓋回 pointer */
 @layer base {
   button, [role="button"] {
     cursor: pointer;
+  }
+
+  /* 公開敘事頁不留孤字：最後一行只剩一個字或一個標點時，瀏覽器改在前一行提早斷。
+     中文每個字都是斷行點，孤字比英文更容易發生，所以整頁一起開；
+     不支援 text-wrap: pretty 的瀏覽器退回 auto，只是少了這層修飾，不會排壞 */
+  .story-page :is(p, h2, h3, li, figcaption) {
+    text-wrap: pretty;
   }
 }
 
@@ -155,6 +174,12 @@
   --color-gold-deep: #9A7B43;
   --color-gold-light: #D8C39B;
 
+  /* 鼠尾草綠：入口頁（/invite）實物素材的取樣色——緞帶／日期貼紙／信封內襯。
+     公開頁的第二飾色，讓 /story 等頁面與入口頁桌面同一套色調；後台不用。 */
+  --color-sage: #87896D;
+  --color-sage-deep: #555C35;
+  --color-sage-light: #ADAC96;
+
   /* 暗玫瑰（低飽和）：謝卡手寫文字用，避免鮮艷 rose 刺眼 */
   --color-rose-ink: #A9737F;
 
@@ -181,6 +206,8 @@
   --text-h1--line-height: 1.1;
   --text-h2: 32px;
   --text-h2--line-height: 1.2;
+  --text-h3: 24px; /* 32 與 18 之間的中繼級：公開頁次標與時間軸標籤 */
+  --text-h3--line-height: 1.3;
   --text-body-l: 18px;
   --text-body-l--line-height: 1.7;
   --text-body: 15px;
