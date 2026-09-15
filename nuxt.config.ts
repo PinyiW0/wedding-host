@@ -3,7 +3,7 @@ import process from 'node:process'
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  devtools: { enabled: false },
   runtimeConfig: {
     // 認證模式（NUXT_AUTH_MODE 覆蓋）：
     //   enforced＝無 token 401、賓客連結需 HMAC 簽名（production build 預設）
@@ -114,7 +114,8 @@ export default defineNuxtConfig({
       { name: 'Cormorant', provider: 'google', weights: [500, 600, 700] },
       { name: 'Inter', provider: 'google', weights: [400, 500, 600, 700] },
       { name: 'Noto Sans TC', provider: 'google', weights: [400, 500, 700] },
-      { name: 'Noto Serif TC', provider: 'google', weights: [300] },
+      // 600 給首屏翻開的祝福（便簽上的字要有筆畫份量），其餘襯線中文維持 300
+      { name: 'Noto Serif TC', provider: 'google', weights: [300, 600] },
     ],
   },
 })
