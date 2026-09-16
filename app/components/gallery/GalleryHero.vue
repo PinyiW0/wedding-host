@@ -243,13 +243,16 @@ onBeforeUnmount(() => clearInterval(swapTimer))
   transform: translateY(-0.38em);
 }
 
-/* 手機的底部導覽膠囊是滿版的，署名要讓到它上面 */
+/* 署名置中、落在「Love」正下方，跟四邊的大字同一條中軸（新人 09-16：靠左角落看起來怪）。
+   手機的底部導覽膠囊是滿版的，署名要讓到它上面 */
 .gh-sign {
   position: absolute;
-  left: clamp(16px, 3vw, 32px);
+  left: 50%;
   bottom: 78px;
   display: flex;
   align-items: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
   font-family: var(--font-display);
   font-size: var(--text-body-l);
   letter-spacing: 0.06em;

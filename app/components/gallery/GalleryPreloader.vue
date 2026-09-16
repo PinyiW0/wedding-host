@@ -363,10 +363,16 @@ onBeforeUnmount(() => {
 /* ── ③ hero 放大 ── */
 .pl-hero {
   position: absolute;
-  inset: var(--gallery-frame, 16px);
-  width: auto;
-  height: auto;
+  top: var(--gallery-frame, 16px);
+  left: var(--gallery-frame, 16px);
+  /* <img> 是 replaced element：只給 inset 不會被撐滿，寬高 auto 會照圖片原始比例算——
+     橫幅照片在直式手機上就只填到上半、下面留一大塊空白。
+     寬高明寫成整個框，object-fit 裁切才會跟底下 .gh-img 一樣滿版（裁切點也要同一個） */
+  width: calc(100% - var(--gallery-frame, 16px) * 2);
+  height: calc(100% - var(--gallery-frame, 16px) * 2);
+  max-width: none;
   object-fit: cover;
+  object-position: center 22%;
   /* 放大結束要跟底下的 hero 完全重合，圓角也得一樣 */
   border-radius: var(--gallery-frame, 0px);
   animation: pl-hero-grow 1300ms var(--ease-emphasized) both;
