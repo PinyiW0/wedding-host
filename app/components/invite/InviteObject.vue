@@ -51,6 +51,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onNoteKeydown)
 })
 
+/** 有沒有互動：連結、金唱片、貓掌印、紙條以外的物件都只是裝飾 */
+const interactive = computed(() =>
+  Boolean(props.item.to || props.item.musicToggle || props.item.cat || props.item.note),
+)
+
 const tag = computed(() => {
   if (props.item.musicToggle || props.item.cat || props.item.note)
     return 'button'
@@ -151,7 +156,7 @@ const linkClass = computed(() => [
   <div
     ref="objectRef"
     class="si"
-    :class="[item.group ? `si-group-${item.group}` : null, { 'si-note-open': noteOpen }]"
+    :class="[item.group ? `si-group-${item.group}` : null, { 'si-note-open': noteOpen, 'si-decor': !interactive }]"
     :style="posStyle"
     :aria-hidden="item.alt || item.musicToggle ? undefined : 'true'"
     @pointerenter="onNoteEnter"
@@ -218,6 +223,14 @@ const linkClass = computed(() => [
 
 .si-note-open {
   z-index: 43;
+}
+
+/* 純裝飾的物件不接任何指標事件，點擊直接穿過去給底下的連結——
+   圖片的命中範圍是整個矩形不是看得見的部分：手機版緞帶（ribbon-top）橫過信封，
+   它透明的邊角正好蓋住愛心卡「我們結婚了」的正中央，手指點下去點到的是緞帶，卡片永遠點不到
+   （新人 09-16 在 iPhone 實測）。裝飾物件本來就沒有 hover／點擊，關掉不會少任何互動。 */
+.si-decor {
+  pointer-events: none;
 }
 
 .si-note-trigger {

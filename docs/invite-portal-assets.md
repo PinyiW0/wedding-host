@@ -411,6 +411,14 @@ reduced-motion 下離場動畫被全域 guard 壓成 0.01ms，所以那顆 `setT
 
 `ClickSpark` 掛在 `app/layouts/story.vue`，所以入口頁的每一下點擊（含開場那封信封）都會冒火花與小愛心。元件本身與移植決策記在 `docs/gallery-landing-assets.md` §13。
 
+### 26. iPhone Safari 兩個實測缺陷（2026-09-16，上線當天）
+
+新人用 iPhone 開正式站回報兩件事，桌機與 Playwright 的 Chromium 都重現不出來，用 WebKit 引擎才抓到第二件。
+
+**開場信封掉到盤子右下角、也沒有傾角**（`InviteIntro`）：信封原本是一張 `position: absolute; left/top: 50%` 的 `<img>`，置中的 `translate(-50%, -50%)` 與傾角寫在同一個 `transform`，呼吸動畫的 keyframes 又把它跟 px 混算成 `calc(-50% - 4px)`。iOS Safari 遇到這種寫法會把整段 transform 丟掉——截圖上信封的左上角正好落在盤子中心、完全水平，就是「置中與傾角一起消失」的樣子。改法是把**置中與動畫拆成兩層**：外層 `.intro-envelope-box` 只做定位（靜態 `translate(-50%, -50%)`，不掛動畫），內層 `<img>` 只有傾角與呼吸（`translateY(±4px) rotate(-3deg)`，純 px／deg），離場動畫同樣只剩 rotate 與 scale。動畫壞了位置也不會跑。順手在 `<button>` 裡多包一層 `span.intro-plate` 當定位基準——舊版 iOS Safari 不把 button 當絕對定位的基準。實測 WebKit 與 Chromium 的 iPhone 13 模擬：信封中心 (195, 309)、盤子中心 (195, 306)。
+
+**愛心卡「我們結婚了」點不到**（`InviteObject`）：手機版的緞帶 `ribbon-top`（z 23）橫過信封，它的**矩形命中範圍**（63.7% 寬，透明部分也算）正好蓋住愛心卡（z 20／21）的正中央，`elementFromPoint` 回的是緞帶那張 `<img>`，卡片的連結永遠接不到那一下。這不是 Safari 專屬，Chromium 手機模擬同樣點不到，只是桌機的緞帶擺在別處所以沒人發現。改法：沒有互動的物件（不是連結、金唱片、貓掌印、紙條）在根元素加 `si-decor`，`pointer-events: none` 讓點擊穿過去。裝飾物件本來就沒有 hover 與點擊，關掉不少任何互動。實測兩個引擎點卡片中央都導到 `/story/`。
+
 ---
 
 ## D. 新增公開頁的三處同步點（已完成）
