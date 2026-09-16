@@ -1,15 +1,18 @@
 <!-- app/components/story/StoryFlowers.vue — 祝福花田＋出席回覆入口：RSVP 時畫的小花長在這裡，回覆喜帖就是種下你的那一朵。
-     畫面是一張定格：花田橫幅上方可以排新人畫的小花（高低、大小、傾角錯落），
-     指到（桌機游標／鍵盤）或點開（手機）一朵，那朵晃一下，背後探出一張手寫小紙條。
-     三朵花 2026-09-15 曾拿掉（蠟筆筆觸與水彩花田不合）、09-16 新人要求放回；內容層 flowers 清空時那一排只剩 live region。
+     由上而下：賓客畫的花（FlowerField，2026-09-16 起長在花田上方、多了往上再長一排）→ 花田橫幅 → 新人自己畫的三朵小花 → 彩蛋提示。
+     三朵花指到（桌機游標／鍵盤）或點開（手機）會晃一下，背後探出一張手寫小紙條；
+     09-15 曾拿掉（蠟筆筆觸與水彩花田不合）、09-16 新人要求放回，同日從花田上方移到下方——
+     上方擺著會被找到的肥肥頂到，上方也要讓給賓客的花。內容層 flowers 清空時那一排整個不渲染。
      花田裡另外藏了三隻貓（彩蛋）：預設只露耳朵，點耳朵才把那隻找出來，三隻都找到才出現結語。
-     賓客的花目前不在這一段排開（新人指定「先放三朵」），2026-09-06 起連「看整片花田」也拿掉了，
-     所以這一區已經不碰花田 API、不指向賓客畫的花；整片花田仍由 PublicMenu 的「祝福花田」進得去。 -->
+     賓客的花由故事頁用 listFlowers 抓來（client-only、沒簽章就是空陣列），這裡只負責排；整片花田頁仍由 PublicMenu 的「祝福花田」進得去。 -->
 <script setup lang="ts">
+import type { FlowerWallItem } from '~/types/api/flowers'
 import type { StoryFlowerCat, StoryFlowerField } from '~/types/story'
 
 const props = defineProps<{
   field: StoryFlowerField
+  /** 賓客回覆時畫的花；空陣列＝還沒有人回覆或沒帶簽章，上方就不佔空間 */
+  guestFlowers: FlowerWallItem[]
   rsvpTo: string
   rsvpLabel: string
 }>()
@@ -28,6 +31,43 @@ const BUBBLE_MS = 2800
 
 /** 判斷名字的頭尾是不是英數字（Happy 要補空白、錢錢不用） */
 const LATIN = /[a-z0-9]/i
+
+/* ── 賓客的花怎麼分：上方一片、花田左右兩側各一叢 ──
+   新人 2026-09-16：「花田四周左右兩側也可以，隨機、大大小小、有動態感；一個人一朵花、不要重複」。
+   兩側那兩叢掛在花田外面（.side），只有 1280px 以上的桌機兩旁才有空間放；
+   窄一點的螢幕（含手機）全部排在上方，不藏也不重複——每朵花只會在其中一區出現一次 */
+const SIDE_MAX = 8
+const wide = ref(false)
+let sideQuery: MediaQueryList | undefined
+function syncWide() {
+  wide.value = sideQuery?.matches ?? false
+}
+
+/** 一個人一朵：同一位賓客只留第一朵（API 本來就一人一筆，這裡是保險） */
+const uniqueFlowers = computed(() => {
+  const seen = new Set<string>()
+  const list: FlowerWallItem[] = []
+  for (const flower of props.guestFlowers) {
+    if (seen.has(flower.guestId))
+      continue
+    seen.add(flower.guestId)
+    list.push(flower)
+  }
+  return list
+})
+
+/** 桌機兩側各分到最多 8 朵、且不超過總數的四分之一（花少的時候上方不能空掉）；其餘在上方 */
+const groups = computed(() => {
+  const all = uniqueFlowers.value
+  if (!wide.value)
+    return { top: all, left: [] as FlowerWallItem[], right: [] as FlowerWallItem[] }
+  const perSide = Math.min(SIDE_MAX, Math.floor(all.length / 4))
+  return {
+    left: all.slice(0, perSide),
+    right: all.slice(perSide, perSide * 2),
+    top: all.slice(perSide * 2),
+  }
+})
 
 /** 三朵花的錯落：寬度、抬高多少（底邊對齊後加 margin-bottom）、傾角、紙條的傾角，由左到右。第四朵以後沿用最後一組。
     抬高用 margin 不用 translate：搖曳動畫寫在 translate 上，同一個屬性會互相覆蓋 */
@@ -146,9 +186,16 @@ function onCatLeave(key: string) {
     nudgedKey.value = null
 }
 
+onMounted(() => {
+  sideQuery = window.matchMedia('(min-width: 1280px)')
+  syncWide()
+  sideQuery.addEventListener('change', syncWide)
+})
+
 onBeforeUnmount(() => {
   if (bubbleTimer)
     clearTimeout(bubbleTimer)
+  sideQuery?.removeEventListener('change', syncWide)
 })
 </script>
 
@@ -173,17 +220,109 @@ onBeforeUnmount(() => {
         <span class="block">放在一起，就成了我們最喜歡的一片花田。</span>
       </p>
 
-      <div class="mt-12">
-        <!-- 三朵花：底邊對齊再各自上下位移，花在花田前面一層、稍微壓到花田頂端。
+      <div class="relative mt-12">
+        <!-- 這一區唯一的 live region：花的紙條、找到貓、結語都從這裡播。
+             三張紙條各自朗讀會把同一句話唸三次，所以只留這一份（外層 relative：sr-only 是絕對定位，沒有定位祖先會撐高文件） -->
+        <p class="sr-only" aria-live="polite">
+          {{ liveMessage }}
+        </p>
+
+        <!-- 賓客畫的花，上方那一片：越多往上長越高（沿用花田頁的 FlowerField 散佈排法，緊湊版 32～80px 大大小小，hover 綻花瓣）。
+             跟花田之間留 3rem：找到肥肥時牠會從花田頂端探出來，這段空讓牠有地方站；真的疊到也是貓在前（.cat-field 疊上層） -->
+        <FlowerField
+          v-if="groups.top.length > 0"
+          :flowers="groups.top"
+          interactive
+          compact
+          class="mx-auto max-w-2xl pb-12"
+        />
+
+        <!-- 花田＋左右兩側的兩叢賓客花：兩叢掛在花田框外（1280px 以上才有），落點隨 hash 散在框裡 -->
+        <div class="relative">
+          <FlowerField
+            v-if="groups.left.length > 0"
+            :flowers="groups.left"
+            layout="meadow"
+            interactive
+            class="side side-l"
+          />
+          <FlowerField
+            v-if="groups.right.length > 0"
+            :flowers="groups.right"
+            layout="meadow"
+            interactive
+            class="side side-r"
+          />
+
+          <!-- 花田橫幅＋藏在裡面的三隻貓。
+               overflow-hidden 是給手機用的：手機把整條花田放大到 165%，超出畫面的兩端裁掉、不產生橫向捲動。
+               手機再用 -mx-6 頂掉 section 的左右內距：花田切在螢幕邊而不是內距邊，才讀得出「花田還延伸出去」。
+               stage 的 padding-top 留給對話框，裁切才不會把冒出來的紙條切掉 -->
+          <div class="cat-field -mx-6 sm:mx-0">
+            <div class="cat-stage">
+              <div class="relative">
+                <img
+                  :src="field.banner"
+                  :alt="field.bannerAlt"
+                  loading="lazy"
+                  class="block w-full"
+                  width="1280"
+                  height="485"
+                >
+                <div
+                  v-for="(cat, i) in field.cats"
+                  :key="cat.key"
+                  class="cat"
+                  :class="{ 'is-found': isFound(cat.key), 'is-talking': talkingKey === cat.key, 'is-nudged': nudgedKey === cat.key }"
+                  :style="{
+                    '--l': CAT_ARRANGE[i]?.left ?? '20%',
+                    '--w': CAT_ARRANGE[i]?.width ?? '24%',
+                    '--b': CAT_ARRANGE[i]?.bottom ?? '6%',
+                    '--l-sm': CAT_ARRANGE[i]?.leftSm ?? '20%',
+                    '--w-sm': CAT_ARRANGE[i]?.widthSm ?? '28%',
+                    '--b-sm': CAT_ARRANGE[i]?.bottomSm ?? '6%',
+                    '--ear-x': `${cat.ear.x}%`,
+                    '--ear-y': `${cat.ear.y}%`,
+                    '--ear-w': `${cat.ear.w}%`,
+                    '--ear-h': `${cat.ear.h}%`,
+                    '--note-rot': CAT_ARRANGE[i]?.noteRot ?? '-3deg',
+                  }"
+                >
+                  <!-- appear 在流內：它比較高，由它決定整叢花的框，hide 再貼著框底疊上去。
+                     兩張的花叢已在轉檔時裁成等寬、內容下緣貼齊下緣，所以這裡只要同寬同底就對得上 -->
+                  <img :src="cat.appear" alt="" loading="lazy" class="cat-appear block w-full">
+                  <span class="cat-hide">
+                    <img :src="cat.hide" alt="" loading="lazy" class="block w-full">
+                  </span>
+                  <!-- 點的是耳朵不是整叢花，整叢可點就沒有「找到」的感覺。
+                     視覺上就耳朵那麼大，命中框用 max() 撐到至少 44px（WCAG 2.5.8 下限 24px，靠發現的目標放寬到 44） -->
+                  <button
+                    type="button"
+                    class="cat-ear rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-deep"
+                    :aria-label="isFound(cat.key) ? `已找到${cat.name}` : '花叢裡藏著一隻貓，點開看看是誰'"
+                    @pointerenter="onCatEnter(cat.key, $event)"
+                    @pointerleave="onCatLeave(cat.key)"
+                    @focus="onCatFocus(cat.key, $event)"
+                    @blur="onCatLeave(cat.key)"
+                    @click="onFindCat(cat)"
+                  />
+                  <span
+                    class="cat-bubble whitespace-nowrap rounded-sm px-3 py-2 font-hand text-body-l leading-none text-ink-700"
+                    aria-hidden="true"
+                  >
+                    {{ foundText(cat.name) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 新人畫的三朵花：花田下方、底邊對齊再各自上下位移。
              加了互動就不再是純裝飾，所以每朵包成真的 button、拿掉整排的 aria-hidden -->
         <!-- 間距沒有跟著縮到四分之一：花只剩 20px，命中框要撐到 24px 寬才過得了 WCAG 2.5.8，
              間距太小相鄰的命中框會疊在一起、點到隔壁那朵 -->
-        <div class="relative z-10 mx-auto flex max-w-md items-end justify-center gap-2 sm:gap-3">
-          <!-- 這一區唯一的 live region：花的紙條、找到貓、結語都從這裡播。
-               三張紙條各自朗讀會把同一句話唸三次，所以只留這一份 -->
-          <p class="sr-only" aria-live="polite">
-            {{ liveMessage }}
-          </p>
+        <div v-if="field.flowers.length > 0" class="relative z-10 mx-auto mt-2 flex max-w-md items-end justify-center gap-2 sm:gap-3">
           <button
             v-for="(src, i) in field.flowers"
             :key="src"
@@ -211,69 +350,6 @@ onBeforeUnmount(() => {
               {{ NOTE_TEXT }}
             </span>
           </button>
-        </div>
-
-        <!-- 花田橫幅＋藏在裡面的三隻貓。
-             overflow-hidden 是給手機用的：手機把整條花田放大到 165%，超出畫面的兩端裁掉、不產生橫向捲動。
-             手機再用 -mx-6 頂掉 section 的左右內距：花田切在螢幕邊而不是內距邊，才讀得出「花田還延伸出去」。
-             stage 的 padding-top 留給對話框，裁切才不會把冒出來的紙條切掉 -->
-        <div class="cat-field -mx-6 sm:mx-0" :class="{ 'has-flowers': field.flowers.length > 0 }">
-          <div class="cat-stage">
-            <div class="relative">
-              <img
-                :src="field.banner"
-                :alt="field.bannerAlt"
-                loading="lazy"
-                class="block w-full"
-                width="1280"
-                height="485"
-              >
-              <div
-                v-for="(cat, i) in field.cats"
-                :key="cat.key"
-                class="cat"
-                :class="{ 'is-found': isFound(cat.key), 'is-talking': talkingKey === cat.key, 'is-nudged': nudgedKey === cat.key }"
-                :style="{
-                  '--l': CAT_ARRANGE[i]?.left ?? '20%',
-                  '--w': CAT_ARRANGE[i]?.width ?? '24%',
-                  '--b': CAT_ARRANGE[i]?.bottom ?? '6%',
-                  '--l-sm': CAT_ARRANGE[i]?.leftSm ?? '20%',
-                  '--w-sm': CAT_ARRANGE[i]?.widthSm ?? '28%',
-                  '--b-sm': CAT_ARRANGE[i]?.bottomSm ?? '6%',
-                  '--ear-x': `${cat.ear.x}%`,
-                  '--ear-y': `${cat.ear.y}%`,
-                  '--ear-w': `${cat.ear.w}%`,
-                  '--ear-h': `${cat.ear.h}%`,
-                  '--note-rot': CAT_ARRANGE[i]?.noteRot ?? '-3deg',
-                }"
-              >
-                <!-- appear 在流內：它比較高，由它決定整叢花的框，hide 再貼著框底疊上去。
-                     兩張的花叢已在轉檔時裁成等寬、內容下緣貼齊下緣，所以這裡只要同寬同底就對得上 -->
-                <img :src="cat.appear" alt="" loading="lazy" class="cat-appear block w-full">
-                <span class="cat-hide">
-                  <img :src="cat.hide" alt="" loading="lazy" class="block w-full">
-                </span>
-                <!-- 點的是耳朵不是整叢花，整叢可點就沒有「找到」的感覺。
-                     視覺上就耳朵那麼大，命中框用 max() 撐到至少 44px（WCAG 2.5.8 下限 24px，靠發現的目標放寬到 44） -->
-                <button
-                  type="button"
-                  class="cat-ear rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-deep"
-                  :aria-label="isFound(cat.key) ? `已找到${cat.name}` : '花叢裡藏著一隻貓，點開看看是誰'"
-                  @pointerenter="onCatEnter(cat.key, $event)"
-                  @pointerleave="onCatLeave(cat.key)"
-                  @focus="onCatFocus(cat.key, $event)"
-                  @blur="onCatLeave(cat.key)"
-                  @click="onFindCat(cat)"
-                />
-                <span
-                  class="cat-bubble whitespace-nowrap rounded-sm px-3 py-2 font-hand text-body-l leading-none text-ink-700"
-                  aria-hidden="true"
-                >
-                  {{ foundText(cat.name) }}
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- 彩蛋的一句提示（2026-09-16 新人：「擔心賓客不知道怎麼用」）：沒有這句，只露耳朵的三隻貓沒人會去點。
@@ -399,6 +475,26 @@ onBeforeUnmount(() => {
     translate 400ms var(--ease-emphasized);
 }
 
+/* ── 花田左右兩側的兩叢賓客花 ── */
+
+/* 掛在花田框的左右兩緣：框寬 8rem、往花田裡收 1rem（花田兩端是收尖的，角落本來就空），
+   從花田頂端上方一點一直到接近底部，花在框裡隨 hash 落點。
+   1280px 的視窗兩旁各有 232px 空間，框露在外面 112px、花最多再突出 40px，不會撐出橫向捲動。
+   z-index 0 壓在 .cat-field（1）之下：靠近花田的那幾朵像長在花叢後面 */
+.side {
+  position: absolute;
+  top: -10%;
+  bottom: 6%;
+  z-index: 0;
+  width: 8rem;
+}
+.side-l {
+  right: calc(100% - 1rem);
+}
+.side-r {
+  left: calc(100% - 1rem);
+}
+
 /* ── 花田橫幅與藏在裡面的三隻貓 ── */
 
 /* 手機把花田放大到 165%：不放大的話整條 2.6:1 的橫幅縮到 342px 寬，貓的耳朵會小到按不到。
@@ -409,13 +505,11 @@ onBeforeUnmount(() => {
   /* 給對話框的上方空間；margin-top 再扣掉同一個值，所以調 headroom 不會改變花田的位置 */
   --headroom: 4rem;
 
+  /* 疊在賓客的花上層：找到肥肥時牠從花田頂端探出來，碰到上方的花也是貓在前面 */
+  position: relative;
+  z-index: 1;
   margin-top: calc(var(--headroom) * -1);
   overflow: hidden;
-}
-/* 有花時再多拉 1rem，花田壓住三朵花的莖底。
-   沒有花（2026-09-15 起內容層清空）就不拉：上面那排只剩 sr-only 的 live region，多拉會讓花田貼上內文 */
-.cat-field.has-flowers {
-  margin-top: calc(-1rem - var(--headroom));
 }
 .cat-stage {
   width: var(--stage-w);

@@ -19,6 +19,9 @@ interface UnauthorizedOption {
 export type HttpGetOptions<T> = Omit<UseFetchOptions<T>, 'baseURL' | 'method' | 'default'> & UnauthorizedOption & {
   pathParams?: PathParams
   default?: () => T
+  // 讀取失敗不跳「資料載入失敗」：只給「沒資料也沒關係」的裝飾性讀取（如故事頁的賓客花），
+  // 這種頁面沒帶簽章就會 403，跳錯誤只會嚇到賓客；主要資料的讀取維持預設提示
+  silent?: boolean
 }
 
 // imperative 讀取 / 寫入（$fetch）選項：同上
@@ -115,7 +118,7 @@ export function useHttp() {
 
   // reactive 讀取：useFetch；url 傳 getter 時 ref 變動會自動重抓
   function get<T>(url: MaybeRefOrGetter<string>, options?: HttpGetOptions<T>) {
-    const { pathParams, headers, handleUnauthorized: autoLogout = true, ...rest } = options ?? {}
+    const { pathParams, headers, handleUnauthorized: autoLogout = true, silent = false, ...rest } = options ?? {}
     // useFetch 泛型包裝的已知型別限制：不帶 <T>、改以斷言收斂 options 與回傳（沿用參考專案做法）
     const result = useFetch(() => withPathParams(toValue(url), pathParams), {
       baseURL,
@@ -124,8 +127,8 @@ export function useHttp() {
       ...rest,
     } as unknown as UseFetchOptions<unknown>) as AsyncData<T | undefined, FetchError | undefined>
     // client 監看 error 冒出 toast（immediate 涵蓋 SSR 失敗序列化回 client 的情況）；
-    // 401 交由 handleUnauthorized 清 auth 導回登入，不重複提示
-    if (import.meta.client) {
+    // 401 交由 handleUnauthorized 清 auth 導回登入，不重複提示；silent 的讀取整段跳過
+    if (import.meta.client && !silent) {
       const toast = useToast()
       watch(result.error, (e) => {
         if (e && e.statusCode !== 401)

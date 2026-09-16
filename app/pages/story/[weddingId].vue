@@ -4,8 +4,10 @@
      其後排成一條漏斗：認識我們（三隻貓）→ 當天流程 → 婚宴資訊 → 祝福花田與出席回覆 → 其餘出口。
      流程與婚宴資訊都是「當天的事」所以相鄰；花田含 RSVP，移到後面收尾。
      相鄰區塊底色一律交錯（paper／cream 輪流），不讓兩塊黏成一大塊，見 docs/public-landing-assets.md §27。
-     內容為單一婚禮的靜態資料（useStoryContent）；「看整片花田」拿掉後這一頁不再打任何 API。 -->
+     內容為單一婚禮的靜態資料（useStoryContent）；唯一打的 API 是賓客畫的花（listFlowers，長在祝福花田上方）。 -->
 <script setup lang="ts">
+import { listFlowers } from '~/api'
+
 definePageMeta({ layout: 'story' })
 
 const route = useRoute()
@@ -14,6 +16,11 @@ const weddingId = computed(() => String(route.params.weddingId))
 usePublicWeddingGuard(weddingId.value)
 
 const content = useStoryContent()
+
+/** 賓客回覆出席時畫的花，長在祝福花田上方（新人 2026-09-16 決定）。
+ *  只在 client 抓：每朵花是一段 dataURL、幾十朵就上 MB，不塞進 SSR payload；那一區在很下面，晚一點長出來看不出來。
+ *  正式站要帶簽章才讀得到（useHttp 自動帶上 ?sig=）；沒簽章就靜靜留白，不跳「資料載入失敗」 */
+const { data: guestFlowers } = await listFlowers(weddingId, { server: false, default: () => [], silent: true })
 
 /** 分享連結上的婚禮簽章（後台「故事頁連結」附的 ?sig=）：往 RSVP 與其他公開頁的連結都要帶下去，
  *  賓客點「告訴我們你會來」才過得了正式站的 enforced 模式（見 useSignedLink） */
@@ -33,6 +40,7 @@ const entries = computed(() => [
     <VenueInfo :venue="content.venue" />
     <StoryFlowers
       :field="content.flowerField"
+      :guest-flowers="guestFlowers ?? []"
       :rsvp-to="withSig(`/rsvp/public/${weddingId}`)"
       rsvp-label="告訴我們你會來"
     />

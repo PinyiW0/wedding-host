@@ -9,11 +9,33 @@ const props = withDefaults(
     interactive?: boolean
     // 數量上限（裝飾用途取樣少量）；省略則全顯示
     max?: number
-    // wreath：環形花圈（大小交錯、層次重疊，中央開 #center slot）；scatter：自由散佈
-    layout?: 'scatter' | 'wreath'
+    // wreath：環形花圈（大小交錯、層次重疊，中央開 #center slot）；scatter：自由散佈；
+    // meadow：在給定的框裡隨機落點（故事頁花田左右兩側的那幾叢），大小、位置、傾角都由 guestId 的 hash 決定
+    layout?: 'scatter' | 'wreath' | 'meadow'
+    // 緊湊版（故事頁的祝福花田用）：花 32～80px 大大小小、行距收緊——那裡的花長在水彩花田上方，
+    // 原尺寸 72～120px 手機一排只放得下三朵，幾十位賓客就撐出好幾屏；縮小後像一片草地不像貼紙
+    compact?: boolean
   }>(),
-  { interactive: false, max: 0, layout: 'scatter' },
+  { interactive: false, max: 0, layout: 'scatter', compact: false },
 )
+
+/** 把 hash 再攪一次（murmur3 的收尾步驟）：種子資料的 guestId 是連號，hashStr 算出來只差 1，
+    直接取餘數會讓大小、落點排成一列；攪過之後相鄰 id 也天差地遠。salt 讓同一朵花的大小與落點各自獨立 */
+function mix(h: number, salt: number): number {
+  let x = (h ^ salt) >>> 0
+  x = Math.imul(x ^ (x >>> 16), 0x85EBCA6B) >>> 0
+  x = Math.imul(x ^ (x >>> 13), 0xC2B2AE35) >>> 0
+  return (x ^ (x >>> 16)) >>> 0
+}
+
+/** 每朵花的尺寸（px）：花圈版大小交錯；緊湊版與 meadow 版 32～80 隨 hash 大大小小；預設 72～120 */
+function sizeOf(layout: string, compact: boolean, i: number, h: number): number {
+  if (layout === 'wreath')
+    return (i % 2 === 0 ? 96 : 64) + (h % 4) * 9
+  if (layout === 'meadow' || compact)
+    return 32 + (mix(h, 3) % 7) * 8
+  return 72 + (h % 4) * 16
+}
 
 // 由 guestId 推導穩定的偽隨機數（避免每次 render 位置跳動）
 function hashStr(s: string): number {
@@ -29,10 +51,13 @@ interface PlacedFlower extends FlowerWallItem {
   drift: number // px：scatter 模式的垂直錯落
   swayDur: number // s：搖曳週期（各花不同步）
   swayDelay: number // s
-  left: string // wreath 模式：% 定位
+  left: string // wreath／meadow 模式：% 定位
   top: string
-  z: number // wreath 層次：大花在前
+  z: number // wreath／meadow 層次：大花在前
 }
+
+/** 絕對定位的兩種排法（wreath、meadow）共用 left／top；scatter 不用這兩個值 */
+const absolute = computed(() => props.layout !== 'scatter')
 
 const placed = computed<PlacedFlower[]>(() => {
   let list = props.flowers
@@ -41,12 +66,14 @@ const placed = computed<PlacedFlower[]>(() => {
   const n = list.length
   return list.map((f, i) => {
     const h = hashStr(f.guestId)
-    // 大小交錯（相鄰一大一小）＋hash 變異 → 花圈的層次節奏
-    const base = i % 2 === 0 ? 96 : 64
-    const size = props.layout === 'wreath' ? base + (h % 4) * 9 : 72 + (h % 4) * 16
+    const size = sizeOf(props.layout, props.compact, i, h)
     // 環形：均分角度＋jitter、半徑 36~46% 抖動，彼此輕微交疊
     const angle = ((360 / Math.max(n, 1)) * i + ((h % 16) - 8) - 90) * (Math.PI / 180)
     const radius = 36 + (h % 11)
+    // meadow：框裡隨機落點。橫向 20～80%、縱向 8～92%（花以中心定位，留邊才不會被框切到）；
+    // 橫向、縱向各攪一次不同的 salt，跟大小三者互相脫鉤，不然大花永遠落在同一區
+    const meadowLeft = 20 + (mix(h, 1) % 61)
+    const meadowTop = 8 + (mix(h, 2) % 85)
     return {
       ...f,
       rotate: (h % 25) - 12,
@@ -54,8 +81,8 @@ const placed = computed<PlacedFlower[]>(() => {
       drift: (h % 33) - 16,
       swayDur: 4.5 + (h % 30) / 10,
       swayDelay: (h % 24) / 10,
-      left: `${50 + radius * Math.cos(angle)}%`,
-      top: `${50 + radius * Math.sin(angle)}%`,
+      left: props.layout === 'meadow' ? `${meadowLeft}%` : `${50 + radius * Math.cos(angle)}%`,
+      top: props.layout === 'meadow' ? `${meadowTop}%` : `${50 + radius * Math.sin(angle)}%`,
       z: size,
     }
   })
@@ -67,20 +94,22 @@ const placed = computed<PlacedFlower[]>(() => {
     data-testid="flower-field"
     :class="layout === 'wreath'
       ? 'relative mx-auto aspect-square w-full max-w-xl'
-      : 'flex flex-wrap items-end justify-center gap-x-3 gap-y-6'"
+      : layout === 'meadow'
+        ? 'relative size-full'
+        : ['flex flex-wrap items-end justify-center', compact ? 'gap-x-2 gap-y-3' : 'gap-x-3 gap-y-6']"
   >
     <figure
       v-for="(flower, idx) in placed"
       :key="flower.guestId"
       :data-testid="`flower-${flower.guestId}`"
       class="group flex flex-col items-center"
-      :class="layout === 'wreath' ? 'absolute -translate-x-1/2 -translate-y-1/2' : ''"
+      :class="absolute ? 'absolute -translate-x-1/2 -translate-y-1/2' : ''"
       :style="{
         'width': `${flower.size}px`,
         '--i': idx,
-        ...(layout === 'wreath'
+        ...(absolute
           ? { left: flower.left, top: flower.top, zIndex: flower.z }
-          : { marginTop: `${flower.drift + 16}px` }),
+          : { marginTop: `${flower.drift + (compact ? 8 : 16)}px` }),
       }"
     >
       <span class="bloom-wrap relative block transition-transform duration-250 ease-emphasized group-hover:scale-110">
