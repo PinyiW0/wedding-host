@@ -3,7 +3,7 @@ import process from 'node:process'
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  devtools: { enabled: false },
   runtimeConfig: {
     // 認證模式（NUXT_AUTH_MODE 覆蓋）：
     //   enforced＝無 token 401、賓客連結需 HMAC 簽名（production build 預設）
@@ -38,6 +38,10 @@ export default defineNuxtConfig({
       sentry: {
         dsn: '',
       },
+      // 公開三頁（/story、/invite、/gallery）目前只有一份寫死的內容，只讓這一場婚禮的 ID 開得起來
+      // （NUXT_PUBLIC_LANDING_WEDDING_ID 覆蓋；留空＝全部放行）。正式 build 預設綁新人自己那場；
+      // dev／gate 留空，種子婚禮的故事頁連結才開得起來。做成給其他新人用的模板時改為依 ID 查表（#158 範圍外）
+      landingWeddingId: process.env.NODE_ENV === 'production' ? 'wedding-2cf97d94' : '',
     },
   },
   // Sentry 模組條件載入（issue #26）：DSN 環境變數存在（正式 build）才掛——
@@ -114,6 +118,8 @@ export default defineNuxtConfig({
       { name: 'Cormorant', provider: 'google', weights: [500, 600, 700] },
       { name: 'Inter', provider: 'google', weights: [400, 500, 600, 700] },
       { name: 'Noto Sans TC', provider: 'google', weights: [400, 500, 700] },
+      // 600 給首屏翻開的祝福（便簽上的字要有筆畫份量），其餘襯線中文維持 300
+      { name: 'Noto Serif TC', provider: 'google', weights: [300, 600] },
     ],
   },
 })

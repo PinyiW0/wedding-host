@@ -270,19 +270,29 @@ function openLinkCenter(guest: GuestListItem) {
   linkCenterOpen.value = true
 }
 
-// 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
-async function copyPublicLink() {
-  const base = `${window.location.origin}/rsvp/public/${weddingId.value}`
+// 複製帶婚禮簽名的公開連結：enforced 模式下公開頁的 API 憑這個簽名放行
+async function copySignedLink(path: string, title: string) {
+  const base = `${window.location.origin}${path}`
   try {
-    // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
     const { sig } = await getSignedLink(weddingId.value)
     const url = `${base}?sig=${sig}`
     await navigator.clipboard.writeText(url)
-    toast.add({ title: '已複製公開回覆連結', description: url, color: 'success' })
+    toast.add({ title, description: url, color: 'success' })
   }
   catch {
     toast.add({ title: '複製失敗', description: base, color: 'error' })
   }
+}
+
+// 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
+function copyPublicLink() {
+  return copySignedLink(`/rsvp/public/${weddingId.value}`, '已複製公開回覆連結')
+}
+
+// 複製故事頁連結（賓客看故事、從裡面按「告訴我們你會來」進公開回覆）：
+// 故事頁會把網址上的簽名帶給 RSVP 連結，所以分享故事頁要用這一顆，裸網址在正式站點回覆會被擋
+function copyStoryLink() {
+  return copySignedLink(`/story/${weddingId.value}`, '已複製故事頁連結')
 }
 
 // 顯示文字對照
@@ -685,6 +695,16 @@ async function confirmImport() {
             @click="copyPublicLink"
           >
             公開回覆連結
+          </UButton>
+          <!-- 故事頁（/story）是給賓客的邀請入口，網址要帶同一個簽名，裡面的「告訴我們你會來」才進得了公開回覆 -->
+          <UButton
+            data-testid="vibe-guest-story-link"
+            icon="i-heroicons-book-open"
+            color="neutral"
+            variant="ghost"
+            @click="copyStoryLink"
+          >
+            故事頁連結
           </UButton>
           <!-- 命名避開凍結 strict regex（不可含「新增」「匯入」） -->
           <UButton

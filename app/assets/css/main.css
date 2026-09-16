@@ -1,18 +1,42 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* 手寫體：辰宇落雁體 2.0 Thin（SIL OFL 開源；賓客謝卡信箋用） */
+/* 手寫體：辰宇落雁體 2.0 Thin（SIL OFL 開源；賓客謝卡信箋用）——整包 9.5MB，謝卡要打任意字才需要它。
+   公開頁（故事＋喜帖）只用它寫貓的名字、紙條、花田的「你找到○○了」、喜帖拍立得的小字與貓咪招呼卡，
+   另切一份只含這些字＋ASCII 的子集（72KB，194 個字）：
+   `pyftsubset public/fonts/ChenYuluoyan-Thin.ttf --text="<故事頁與喜帖所有手寫文案>" --unicodes=U+0020-007E --flavor=woff2 --layout-features='*' --output-file=public/fonts/ChenYuluoyan-public.woff2`
+   （fonttools；unicode-range 由子集的 cmap 算出來）。文案改了要重切，不重切也不會壞：新的字會回退到整包，只是多下載 9.5MB。
+   兩個 @font-face 同名：子集宣告在後、帶 unicode-range。同一個字兩者都涵蓋時，後宣告的優先，
+   所以公開頁只下載子集；謝卡打到子集外的字才會回退到第一個宣告、下載整包。
+   整包那一份也帶 unicode-range，把字型裡根本沒有的符號區段（♡ 所在的雜項符號、✦ 所在的裝飾符號、emoji）挖掉：
+   沒挖時文案裡一個 ♡ 或 😎，瀏覽器就得把 9.5MB 抓下來才知道裡面沒有（PR #159 Copilot 審查抓到喜帖頁因此下載整包）。
+   保留的 U+2605-2606、U+2640、U+2642、U+273D 是這個區段裡字型真的有的字（★☆♀♂✽） */
 @font-face {
   font-family: "ChenYuluoyan";
   src: url("/fonts/ChenYuluoyan-Thin.ttf") format("truetype");
   font-weight: 400;
   font-display: swap;
+  unicode-range: U+0000-2606, U+2640, U+2642, U+273D, U+2800-1EFFF, U+20000-10FFFF;
+}
+@font-face {
+  font-family: "ChenYuluoyan";
+  src: url("/fonts/ChenYuluoyan-public.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+3002, U+4E00, U+4E0B, U+4E5F, U+4E86, U+4EE5, U+4EFB, U+4F60, U+4F86, U+5011, U+501F, U+5065, U+51FA, U+5206, U+5230, U+52A0, U+52D9, U+5305, U+539A, U+53BB, U+53C3, U+53EF, U+548C, U+55B5, U+56DE, U+58A8, U+5927, U+5929, U+597D, U+5A5A, U+5ABD, U+5B50, U+5BB6, U+5BF6, U+5C08, U+5C0F, U+5C31, U+5E36, U+5E78, U+5EB7, U+5EF6, U+5FC3, U+5FEB, U+611B, U+6211, U+6240, U+627E, U+628A, U+62DB, U+64D4, U+653E, U+65E5, U+662F, U+67D4, U+6A02, U+6A5F, U+6BCF, U+6EAB, U+7238, U+7528, U+7576, U+7642, U+7652, U+7684, U+76F4, U+76F8, U+798F, U+79AE, U+7B11, U+7C3F, U+7D05, U+7D17, U+7D50, U+7D66, U+7E8C, U+80A5, U+88E1, U+88FD, U+8981, U+898B, U+8B1D, U+8B49, U+8B93, U+8C9D, U+8CA0, U+8CA1, U+8CAC, U+8D77, U+8D85, U+9020, U+904B, U+91CD, U+9322, U+93E1, U+9580, U+9583, U+958B, U+FF01, U+FF0C;
 }
 
 /* Tailwind v4 preflight 將 button cursor 設為 default，覆蓋回 pointer */
 @layer base {
   button, [role="button"] {
     cursor: pointer;
+  }
+
+  /* 公開敘事頁不留孤字：最後一行只剩一個字或一個標點時，瀏覽器改在前一行提早斷。
+     中文每個字都是斷行點，孤字比英文更容易發生，所以整頁一起開；
+     不支援 text-wrap: pretty 的瀏覽器退回 auto，只是少了這層修飾，不會排壞 */
+  .story-page :is(p, h2, h3, li, figcaption) {
+    text-wrap: pretty;
   }
 }
 
@@ -155,6 +179,12 @@
   --color-gold-deep: #9A7B43;
   --color-gold-light: #D8C39B;
 
+  /* 鼠尾草綠：入口頁（/invite）實物素材的取樣色——緞帶／日期貼紙／信封內襯。
+     公開頁的第二飾色，讓 /story 等頁面與入口頁桌面同一套色調；後台不用。 */
+  --color-sage: #87896D;
+  --color-sage-deep: #555C35;
+  --color-sage-light: #ADAC96;
+
   /* 暗玫瑰（低飽和）：謝卡手寫文字用，避免鮮艷 rose 刺眼 */
   --color-rose-ink: #A9737F;
 
@@ -167,6 +197,8 @@
   /* ── 字體家族 ── */
   --font-display: "Cormorant", ui-serif, Georgia, serif;
   --font-sans: "Inter", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+  /* 中文襯線：公開頁的編輯性引言用（Cormorant 沒有中文字，CJK 會掉回 sans） */
+  --font-serif-tc: "Noto Serif TC", ui-serif, Georgia, serif;
 
   /* ── fontSize（含行高/字重/字距） ── */
   --text-display-xl: 96px;
@@ -179,6 +211,8 @@
   --text-h1--line-height: 1.1;
   --text-h2: 32px;
   --text-h2--line-height: 1.2;
+  --text-h3: 24px; /* 32 與 18 之間的中繼級：公開頁次標與時間軸標籤 */
+  --text-h3--line-height: 1.3;
   --text-body-l: 18px;
   --text-body-l--line-height: 1.7;
   --text-body: 15px;
