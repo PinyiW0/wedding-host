@@ -1,7 +1,7 @@
 <!-- app/components/story/StoryFlowers.vue — 祝福花田＋出席回覆入口：RSVP 時畫的小花長在這裡，回覆喜帖就是種下你的那一朵。
      畫面是一張定格：花田橫幅上方可以排新人畫的小花（高低、大小、傾角錯落），
      指到（桌機游標／鍵盤）或點開（手機）一朵，那朵晃一下，背後探出一張手寫小紙條。
-     2026-09-15 起內容層的 flowers 是空陣列（蠟筆筆觸與水彩花田不合），那一排只剩 live region；程式留著，放回路徑就會長回來。
+     三朵花 2026-09-15 曾拿掉（蠟筆筆觸與水彩花田不合）、09-16 新人要求放回；內容層 flowers 清空時那一排只剩 live region。
      花田裡另外藏了三隻貓（彩蛋）：預設只露耳朵，點耳朵才把那隻找出來，三隻都找到才出現結語。
      賓客的花目前不在這一段排開（新人指定「先放三朵」），2026-09-06 起連「看整片花田」也拿掉了，
      所以這一區已經不碰花田 API、不指向賓客畫的花；整片花田仍由 PublicMenu 的「祝福花田」進得去。 -->
@@ -276,18 +276,31 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <!-- 彩蛋的一句提示（2026-09-16 新人：「擔心賓客不知道怎麼用」）：沒有這句，只露耳朵的三隻貓沒人會去點。
+             壓成最低層級的附註字（caption、ink-300），提示在、但不跟花田搶 -->
+        <p class="mt-4 font-serif-tc text-caption text-ink-300">
+          花叢裡藏著三隻貓，找找牠們的耳朵。
+        </p>
+
         <!-- 結語：三隻都找到才出現。放在花田下方、對話框都在花田裡，兩者不會互相蓋到 -->
         <p v-if="allFound" class="epilogue mx-auto mt-8 w-fit max-w-sm rounded-sm px-6 py-5 font-hand text-body-l leading-relaxed text-ink-700">
           <span v-for="line in EPILOGUE" :key="line" class="block">{{ line }}</span>
         </p>
       </div>
 
+      <!-- 出席回覆前先講清楚按下去會發生什麼：回覆表單裡有「畫一朵小花給新人們」那一題（RsvpForm），
+           上面四行講的「每一朵花都來自一份祝福」就是指這個。少了這句，賓客看到花田只會以為是裝飾 -->
+      <p class="mt-12 font-serif-tc text-body text-ink-500">
+        <span class="block">回覆出席時，也畫一朵屬於你的花，</span>
+        <span class="block">種進這片花田。</span>
+      </p>
+
       <!-- 出席回覆：說故事頁自己的話。原本是全頁唯一一顆實心膠囊，讀起來像從別的網站貼過來的元件（新人：「太突兀不搭」）。
            改成故事頁那組車票按鈕的語彙——一條金線往右走，末端一顆金圓章配箭頭，標籤是襯線寬字距；
            但這顆是轉換用的主行動，不是翻頁控制，所以標籤從 text-caption 放大到 text-h3、圓章也大一階。
            金線末端接按鈕正是這一頁的骨架（首屏的訊號線、各頁的時間軸都是這樣收尾），不必再造第二種按鈕形狀。
            標籤用 ink 不用金色：gold-deep 對紙白也只有 3.71:1，撐不起一般字級的 4.5:1。 -->
-      <div class="mt-12 flex justify-center">
+      <div class="mt-5 flex justify-center">
         <NuxtLink
           :to="rsvpTo"
           class="group flex w-full max-w-sm items-center gap-4 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"

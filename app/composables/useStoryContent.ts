@@ -403,9 +403,9 @@ export function useStoryContent(): StoryContent {
       centerArt: '/images/story/cat-flower.webp',
       centerAlt: '三隻小貓坐在花叢裡的手繪插畫',
       // 三朵花排在花田上方（新人指定，先不放賓客的花圈）
-      // 三朵蠟筆花 2026-09-15 拿掉：筆觸（蠟筆）與水彩花田不合，縮到四分之一後又像 emoji（§25 的未決項就此定案）。
-      // 素材檔留著，放回三個路徑就能救回
-      flowers: [],
+      // 2026-09-15 曾因「蠟筆筆觸與水彩花田不合」拿掉，09-16 新人看過預覽站後要求放回：
+      // 這三朵是新人自己畫的、也是「回覆喜帖就是種下你的那一朵」的示範，沒有它們花田上方是空的（§61）
+      flowers: ['/images/story/liflower.webp', '/images/story/sflower.webp', '/images/story/yflower.webp'],
       banner: '/images/story/flower-field.webp',
       bannerAlt: '一整條盛開的花田，粉白玫瑰、雛菊與藍色小花',
       cats: flowerCats,
