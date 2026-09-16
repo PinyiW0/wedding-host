@@ -38,6 +38,10 @@ export default defineNuxtConfig({
       sentry: {
         dsn: '',
       },
+      // 公開三頁（/story、/invite、/gallery）目前只有一份寫死的內容，只讓這一場婚禮的 ID 開得起來
+      // （NUXT_PUBLIC_LANDING_WEDDING_ID 覆蓋；留空＝全部放行）。正式 build 預設綁新人自己那場；
+      // dev／gate 留空，種子婚禮的故事頁連結才開得起來。做成給其他新人用的模板時改為依 ID 查表（#158 範圍外）
+      landingWeddingId: process.env.NODE_ENV === 'production' ? 'wedding-2cf97d94' : '',
     },
   },
   // Sentry 模組條件載入（issue #26）：DSN 環境變數存在（正式 build）才掛——

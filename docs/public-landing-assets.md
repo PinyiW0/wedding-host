@@ -1016,3 +1016,9 @@ deck 之後的區塊與首屏（分身處理）：
 - **相簿開場蓋著時底下還能 Tab**：開場疊層在畫面上時，hero、名字、三個系列、頁尾、唱片、回頂鈕都 `inert`；實測開場期間 Tab 只停在「跳過開場」，跳過後全部解除。鎖的條件是「client 掛載時開場還在演」，SSR／沒有 JS 時沒有 inert（開場疊層本來就不渲染），reduced-motion 時開場一掛載就結束。
 - **喜帖信封離場那一秒場景可點可 Tab**：`InviteStage` 原本只在 intro 掛 `inert`，opening 期間桌面仍 opacity 0 但可操作；改成 scene 以外都 inert。
 - **相簿照片流「按住往右拉」在觸控上可能被瀏覽器接走**：`.ss-link` 加 `touch-action: pan-y pinch-zoom`，直向捲動與雙指縮放仍交給瀏覽器（只寫 `pan-y` 會連縮放一起擋掉）。
+
+**§60 公開三頁綁定新人自己那一場婚禮（2026-09-16）**：新人決定這一版先只放自己的婚禮，「做成給其他新人用的模板」留到婚禮後再評估。
+- **問題**：`/story`、`/invite`、`/gallery` 三頁完全不打 API，內容寫死在 `useStoryContent`／`useGalleryContent`／`useInviteScene`，網址上的 weddingId 只拿來拼出席回覆的連結。任何 ID 都會打開同一份故事：別場婚禮的賓客改網址就看得到，回覆鈕還指到他們那場。
+- **做法**：`runtimeConfig.public.landingWeddingId` 記綁哪一場（正式 build 預設 `wedding-2cf97d94`，即正式站 `/weddings/wedding-2cf97d94`；`NUXT_PUBLIC_LANDING_WEDDING_ID` 可覆蓋）。四個頁面開頭呼叫 `usePublicWeddingGuard`，ID 對不上就丟 404。dev／gate 留空＝全部放行，種子婚禮的「故事頁連結」在本機才開得起來；gate 沒有 spec 碰這三頁。
+- **沒選的**：靠 Vercel 環境變數決定綁哪一場。忘了設就等於沒擋、還不會報錯（auto-migrate 因 env 未設靜默跳過已經發生過三次），所以預設值寫在 `nuxt.config.ts`，跟 `authMode` 同一個模式。
+- **之後要做模板時**：把 `usePublicWeddingGuard` 改成依 weddingId 查表拿內容（一場一個內容檔），查不到才 404；再往後才是後台可編輯（新資料表存文案、照片走 R2）。

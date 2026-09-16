@@ -7,6 +7,8 @@ definePageMeta({ layout: 'story' })
 
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
+// 內容只屬於新人自己那一場，別的婚禮 ID 一律 404（見 usePublicWeddingGuard）
+usePublicWeddingGuard(weddingId.value)
 /** 系列卡與頁尾連結都帶著網址上的婚禮簽章，從故事頁一路點回出席回覆才不會掉（見 useSignedLink） */
 const { withSig } = useSignedLink()
 

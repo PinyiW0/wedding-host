@@ -10,6 +10,8 @@ definePageMeta({ layout: 'story' })
 
 const route = useRoute()
 const weddingId = computed(() => String(route.params.weddingId))
+// 內容只屬於新人自己那一場，別的婚禮 ID 一律 404（見 usePublicWeddingGuard）
+usePublicWeddingGuard(weddingId.value)
 
 const content = useStoryContent()
 
