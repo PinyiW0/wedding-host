@@ -20,8 +20,13 @@ const emit = defineEmits<{
     <img :src="intro.backdrop" alt="" class="intro-backdrop" loading="eager" decoding="async">
     <div class="intro-inner">
       <button type="button" class="intro-hit" aria-label="打開喜帖" @click="emit('open')">
-        <img :src="intro.tray" alt="" class="intro-tray" loading="eager" decoding="async">
-        <img :src="intro.envelope" alt="" class="intro-envelope" loading="eager" decoding="async">
+        <!-- 多包一層 span 當定位基準：舊版 iOS Safari 不把 <button> 當絕對定位的基準，信封會對到外層去 -->
+        <span class="intro-plate">
+          <img :src="intro.tray" alt="" class="intro-tray" loading="eager" decoding="async">
+          <span class="intro-envelope-box">
+            <img :src="intro.envelope" alt="" class="intro-envelope" loading="eager" decoding="async">
+          </span>
+        </span>
       </button>
       <p class="intro-hint text-body tracking-wide text-ink-500">
         {{ intro.hint }}
@@ -107,6 +112,11 @@ const emit = defineEmits<{
   outline-offset: 12px;
 }
 
+.intro-plate {
+  position: relative;
+  display: block;
+}
+
 /* 銀盤以高度定尺寸：開場只有這一個焦點，視窗多高它就佔多少，不受寬度影響 */
 .intro-tray {
   display: block;
@@ -115,32 +125,40 @@ const emit = defineEmits<{
   filter: drop-shadow(0 26px 44px rgba(17, 17, 17, 0.14));
 }
 
-.intro-envelope {
+/* 信封的定位盒：只負責把信封放到盤子正中央，不掛任何動畫。
+   置中與動畫刻意拆成兩層——原本把 translate(-50%) 寫進 keyframes 並與 px 混算 calc()，
+   iOS Safari 遇到這種寫法會把整段 transform 丟掉（置中、傾角一起消失），
+   信封就從盤子中央掉到右下角（新人 09-16 手機截圖）。拆開後動畫就算不跑，位置也不會跑。 */
+.intro-envelope-box {
   position: absolute;
   left: 50%;
   top: 50%;
   /* 略寬於盤子：喜帖是這一幕唯一的主角，收在盤內會被銀盤的花邊搶走視線。
      溢出的部分靠 .intro-hit::after 補回可點範圍（button 的框只到盤子邊）。 */
   width: 114%;
-  /* Tailwind preflight 的 img { max-width: 100% } 會把它夾在盤子寬度上，
-     不解開的話 width 寫多少都只到 100% */
+  transform: translate(-50%, -50%);
+}
+
+.intro-envelope {
+  display: block;
+  width: 100%;
+  /* Tailwind preflight 的 img { max-width: 100% } 對這裡無害（盒子已是 114%），保險起見仍解開 */
   max-width: none;
-  transform: translate(-50%, -50%) rotate(-3deg);
+  transform: rotate(-3deg);
   filter: drop-shadow(0 12px 20px rgba(17, 17, 17, 0.16));
   animation: intro-breathe 3.6s var(--ease-standard) infinite;
 }
 
 /* 極低振幅的呼吸，只是要讓人看出「這東西可以按」——
-   位移寫在 translate 的 y 分量裡，基準的 -50% 與 rotate 每一幀都要帶上，
-   否則動畫會把定位一起蓋掉。 */
+   只用 px 與 deg，不碰百分比；傾角每一幀都要帶上，否則動畫會把它蓋掉。 */
 @keyframes intro-breathe {
   0%,
   100% {
-    transform: translate(-50%, calc(-50% - 4px)) rotate(-3deg);
+    transform: translateY(-4px) rotate(-3deg);
   }
 
   50% {
-    transform: translate(-50%, calc(-50% + 4px)) rotate(-3deg);
+    transform: translateY(4px) rotate(-3deg);
   }
 }
 
@@ -170,22 +188,22 @@ const emit = defineEmits<{
 @keyframes intro-envelope-out {
   0% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(-3deg) scale(1);
+    transform: rotate(-3deg) scale(1);
   }
 
   22% {
     opacity: 1;
-    transform: translate(-50%, -50%) rotate(-3deg) scale(0.94);
+    transform: rotate(-3deg) scale(0.94);
   }
 
   88% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(-2deg) scale(2.2);
+    transform: rotate(-2deg) scale(2.2);
   }
 
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) rotate(-1deg) scale(2.4);
+    transform: rotate(-1deg) scale(2.4);
   }
 }
 
