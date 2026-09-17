@@ -58,8 +58,14 @@ const rows = computed<MenuRow[]>(() => {
     // 出席回覆頁：只列三個公開頁（故事、相簿、喜帖），相簿的系列頁不列——那是相簿裡面的分頁，從回覆表單直接跳過去太跳
     : route.path === `/rsvp/public/${props.weddingId}`
       ? list.filter(row => ['Our Story', 'Gallery', 'Invitation'].includes(row.word))
+      // 喜帖頁：就是桌上那三個出口（故事、相簿、出席回覆），相簿的系列頁同樣不列
+      : route.path === `/invite/${props.weddingId}`
+        ? [
+            ...list.filter(row => ['Our Story', 'Gallery'].includes(row.word)),
+            { label: '出席回覆', word: 'RSVP', to: `/rsvp/public/${props.weddingId}`, image: content.inviteThumb },
+          ]
       // 不連到自己所在的那一頁
-      : list.filter(row => row.to !== route.path)
+        : list.filter(row => row.to !== route.path)
   return rowsForPage.map(row => ({ ...row, to: withSig(row.to) }))
 })
 

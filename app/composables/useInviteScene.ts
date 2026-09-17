@@ -130,8 +130,9 @@ export function useInviteScene(weddingId: string, linkFor: (path: string) => str
       eager: true,
     },
     { key: 'wax-seal', src: art('wax-seal.webp'), alt: '', desktop: { x: 53.1, y: 41.6, w: 4.1 }, mobile: { x: 31.1, y: 48.9, w: 10.4 }, depth: 0.75, order: 16, phaseDelay: SCENE_DELAY, z: 25, eager: true },
-    // 「22 November 婚禮見！」的日期卡是第三個出口：點了進公開出席回覆（新人 09-17）
-    { key: 'date-badge', src: art('date-badge.webp'), alt: '11 月 22 日婚禮見！填寫出席回覆', desktop: { x: 68.4, y: 53, w: 16.3 }, mobile: { x: 69.8, y: 58.3, w: 42 }, depth: 0.65, order: 14, phaseDelay: SCENE_DELAY, z: 26, to: rsvpPath, hover: 'wobble' },
+    // 日期卡是第三個出口：點了進公開出席回覆（新人 09-17）。卡上第三行原本是「婚禮見！」，新人怕賓客不知道可以點，
+    // 同一天改成「我要參加！」——字是畫在圖裡的，做法見 docs/invite-portal-assets.md（去字、補紋理、用 Noto Serif TC 重畫）
+    { key: 'date-badge', src: art('date-badge.webp'), alt: '11 月 22 日，我要參加！填寫出席回覆', desktop: { x: 68.4, y: 53, w: 16.3 }, mobile: { x: 69.8, y: 58.3, w: 42 }, depth: 0.65, order: 14, phaseDelay: SCENE_DELAY, z: 26, to: rsvpPath, hover: 'wobble' },
     {
       key: 'polaroid-forest',
       src: art('polaroid-forest.webp'),
@@ -198,6 +199,8 @@ export function useInviteScene(weddingId: string, linkFor: (path: string) => str
     // 三隻貓的紙條文案：Happy 由新人提供、逐字照放；Healthy 與 Money 依同一結構
     // （名字／角色兩行／悄悄話兩行／結尾一句）自既有招呼詞改寫，待新人確認。
     catTrail: [art('paw-02.webp'), art('paw-03.webp'), art('paw-01.webp')],
+    // 桌上的腳印不定時輪流晃一下、旁邊冒這一句（新人 09-17：怕沒有人知道腳印可以按）；點過任何一個就不再提示
+    catHint: '點我看看',
     cats: [
       {
         key: 'healthy',
