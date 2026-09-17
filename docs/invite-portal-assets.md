@@ -441,6 +441,18 @@ reduced-motion 下離場動畫被全域 guard 壓成 0.01ms，所以那顆 `setT
 
 **實測**（`.claude/tmp/verify-invite-162.mjs`，webkit iPhone 13＋chromium 1440×900）：信封階段沒有選單開關、進桌面後出現且淡入完成；日期卡 alt 與連結正確；約 5 秒後第一個腳印被點名、提示「點我看看」、2.6 秒後收掉；點腳印貓會出來，之後 12 秒內不再提示；選單三列、沒有相簿系列；沒有頁面錯誤。
 
+### 28. 選單打開被桌面物件蓋住（issue #166，2026-09-17，§27 上線當晚）
+
+§27 的選單上正式站後，新人打開發現面板在信封、照片、日期卡、緞帶的**底下**，三列只露出左右兩端的字、點不到。
+
+**成因不在定位，在疊層。** 面板量到的是 `position: fixed`、top 0、鋪滿視窗，位置沒錯。問題是 `.invite-menu` 這層為了淡入掛著 `animation: menu-in … both`（只動 opacity）：有作用中（含 fill）的 opacity 動畫的元素會自成一個疊層，而它沒給 z-index，等於 `auto`。`PublicMenu` 開關的 70、面板的 65 只在這層裡面有效，整層在頁面上排在 `InviteStage` 的 `.si` 物件（z 12～45）之下。故事頁與相簿頁的 `PublicMenu` 外面沒有這一層，所以只有喜帖壞。
+
+**修法**：`.invite-menu` 自己帶 `position: relative; z-index: 70`（對齊 `PublicMenu` 開關的層級）。這層沒有面積（裡面都是 fixed），選單關著時擋不到桌面物件。淡入動畫留著。
+
+**為什麼 §27 的實測沒抓到**：那份腳本驗的是「選單三列存在、沒有相簿系列」，DOM 裡有不代表看得到、點得到。補 `test/e2e/vibe/interaction-invite-menu-1.spec.ts` 進 gate：打開選單後對每一列的 1/4、1/2、3/4 處做 Playwright 的 trial 點擊（只檢查那一點會不會真的點到該列，被蓋住就逾時失敗），再點「出席回覆」確認過得去；關掉後日期卡照舊點得到。拿掉修正重跑，它會紅在「信封那張圖攔截了點擊」。
+
+**實測**（`.claude/tmp/local-invite-menu.mjs`，webkit＋chromium × 390×664／390×844／1440×900）：開場信封沒有選單開關；三列三個點都命中自己；關掉後日期卡、愛心卡、腳印照舊點得到；點「出席回覆」到 `/rsvp/public/<id>`。愛心卡要量正中央——它 55% 高度以下本來就被海邊拍立得疊住，那是桌面的排法，不是缺陷。
+
 ## D. 新增公開頁的三處同步點（已完成）
 
 1. `app/middleware/auth.global.ts` 的 `PUBLIC_PATTERNS` — 已加 `/invite`、`/gallery`
