@@ -307,17 +307,20 @@ const linkClass = computed(() => [
   }
 }
 
-/* 進場：單拍上浮，step 70ms（遞延用 calc()，不用任意值 delay class）；
-   phase-delay 疊加在後面——場景分先後幾幕時，同一幕內物件仍保有彼此的 stagger。 */
+/* 進場：單拍上浮，step 120ms（遞延用 calc()，不用任意值 delay class）；
+   phase-delay 疊加在後面——場景分先後幾幕時，同一幕內物件仍保有彼此的 stagger。
+   09-17 從 70ms／400ms 放慢成 120ms／520ms、起點多沉 4px：原本每 70ms 就冒一件、每件又只有 400ms，
+   同時有五六件在動，新人看起來像「各方同時直接出現」；拉開之後才數得出一件一件擺上桌。
+   最後一件（order 16）在第三幕起跑後 1.9 秒開始、2.4 秒落定 */
 .si-enter {
-  animation: si-in 400ms var(--ease-emphasized) both;
-  animation-delay: calc(var(--i, 0) * 70ms + var(--phase-delay, 0ms));
+  animation: si-in 520ms var(--ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * 120ms + var(--phase-delay, 0ms));
 }
 
 @keyframes si-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.96);
+    transform: translateY(18px) scale(0.94);
   }
 }
 

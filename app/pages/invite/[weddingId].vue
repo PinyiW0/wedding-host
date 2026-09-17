@@ -1,6 +1,7 @@
 <!-- app/pages/invite/[weddingId].vue — 婚紗入口頁（喜帖桌面）
-     對外分享的第一站：一張會動的喜帖桌面，兩個出口——
-     蕾絲愛心卡 → /story/[weddingId]（婚禮故事頁）、拍立得 → /gallery/[weddingId]（婚紗照）。
+     對外分享的第一站：一張會動的喜帖桌面，三個出口——
+     蕾絲愛心卡 → /story/[weddingId]（婚禮故事頁）、拍立得 → /gallery/[weddingId]（婚紗照）、
+     「婚禮見」日期卡 → /rsvp/public/[weddingId]（出席回覆，新人 09-17）。
      內容為單一婚禮的靜態資料（見 useInviteScene），非後台可編輯的實體。 -->
 <script setup lang="ts">
 definePageMeta({ layout: 'story' })
@@ -60,8 +61,8 @@ useSeoMeta({
   pointer-events: none;
   transform: translate(-50%, -50%);
   animation: tagline-in 400ms var(--ease-emphasized) both;
-  /* 接在標題組（order 9）後面出現，見 useInviteScene 的 order 說明 */
-  animation-delay: 1600ms;
+  /* 接在標題組（order 9）後面出現，見 useInviteScene 的 order 說明：第三幕 900ms ＋ 9 階 × 120ms ＋ 520ms 落定 ≈ 2500ms */
+  animation-delay: 2400ms;
 }
 
 /* 引言兩行的排版由使用者指定：Noto Serif TC 16px / Light / 行高 200%。
