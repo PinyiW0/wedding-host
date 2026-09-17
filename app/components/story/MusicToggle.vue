@@ -16,6 +16,15 @@ const audioRef = ref<HTMLAudioElement>()
 const buttonRef = ref<HTMLButtonElement>()
 const isPlaying = ref(false)
 
+/** 播放／暫停的圖示直接內嵌（heroicons solid 的兩條 path，24×24）。
+ *  原本是 <UIcon :name="isPlaying ? 'pause' : 'play'">：Nuxt Icon 只把 SSR 當下用到的那顆（播放）打進頁面，
+ *  暫停那顆要等音樂真的開始播，才向 /api/_nuxt_icon 現抓——抓得慢或抓不到（手機網路、伺服器正忙），
+ *  角落的小標就是一顆空的黑圓（新人 09-17：播放時暫停的 icon 消失了，故事頁與相簿頁都是）。
+ *  控制項的狀態圖示不該靠一次網路請求，兩顆都內嵌；曲名前的音符是固定的一顆，SSR 就帶著，維持 UIcon */
+const ICON_PLAY = 'M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643z'
+const ICON_PAUSE = 'M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75z'
+const stateIcon = computed(() => (isPlaying.value ? ICON_PAUSE : ICON_PLAY))
+
 // 已播秒數與總長：托盤上的時間與兩段進度線
 const elapsed = ref(0)
 const duration = ref(0)
@@ -111,7 +120,9 @@ onBeforeUnmount(() => {
         <span class="rail relative h-px w-12 shrink-0 bg-line">
           <span class="absolute inset-0 origin-left bg-gold" :style="{ transform: `scaleX(${fillRight})` }" />
         </span>
-        <UIcon :name="isPlaying ? 'i-heroicons-pause-solid' : 'i-heroicons-play-solid'" class="size-4 shrink-0 text-ink" />
+        <svg viewBox="0 0 24 24" class="size-4 shrink-0 text-ink">
+          <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" :d="stateIcon" />
+        </svg>
       </span>
 
       <span class="disc relative block size-full rounded-full shadow-lg transition-transform duration-150 ease-standard group-hover:scale-105 group-active:scale-95">
@@ -123,7 +134,9 @@ onBeforeUnmount(() => {
         >
         <!-- 唱片角落的小標：托盤收著時顯示；托盤拉出來後由托盤右端的 ❚❚ 接手 -->
         <span class="badge absolute bottom-0 right-0 flex size-4 items-center justify-center rounded-full bg-ink text-paper shadow-sm sm:size-5">
-          <UIcon :name="isPlaying ? 'i-heroicons-pause-solid' : 'i-heroicons-play-solid'" class="size-2.5 sm:size-3" />
+          <svg viewBox="0 0 24 24" class="size-2.5 sm:size-3" aria-hidden="true">
+            <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" :d="stateIcon" />
+          </svg>
         </span>
       </span>
     </button>
