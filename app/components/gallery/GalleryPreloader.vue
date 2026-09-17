@@ -231,8 +231,10 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+/* 字樣 2026-09-17 換成比較高的那一版（寬高比 2.82 → 1.8）：寬度收一點，佔的面積跟原本差不多
+   （原本 420×149，現在 340×189；手機 218×77 → 179×99） */
 .pl-logo {
-  width: min(56vw, 420px);
+  width: min(46vw, 340px);
 }
 
 .pl-count {

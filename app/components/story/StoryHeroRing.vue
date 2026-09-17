@@ -4,7 +4,7 @@
      照片掛 data-ring-tile：首屏靠這個屬性分辨「點在照片上」（照片自己管開關）與「點在別處」（關掉祝福）。
      幾何全部走 CSS：每個位置先 rotate(--a) 轉到自己的角度，再往外推一個半徑。
      照片本身永遠直立（2026-09-15 改）：跟著圓弧側躺時整圈像一堆菱形在翻滾，搶走中央標題的注意力。
-     整圈的自轉是外層 .ring 一個 rotate 動畫；每張照片再掛一個同長度、反方向的 rotate 動畫，同時抵銷自己的 --a 與整圈的自轉。
+     整圈的自轉是外層 .orbit 一個 rotate 動畫（class 不叫 ring：那是 Tailwind 的 utility，會在 0×0 的圓心畫出一顆 1px 深灰點，新人 09-17 在 S 裡看到的黑點就是它）；每張照片再掛一個同長度、反方向的 rotate 動畫，同時抵銷自己的 --a 與整圈的自轉。
      半徑、照片邊長、圓心高度由外層（StoryHero）用 --ring-r／--tile／--ring-cy 決定：
      手機整圈繞著標題；桌機照 coveomusic.com 實測的比例——半徑 0.6 個視窗高、圓心壓在時間軸的高度，只露出上半圈，
      下半圈用 mask 淡掉，不跟時間軸與翻頁按鈕打架。
@@ -108,6 +108,24 @@ let wideQuery: MediaQueryList | null = null
 function syncWide() {
   wide.value = wideQuery?.matches ?? false
 }
+
+/* 首屏捲出畫面就整圈停轉：一圈加每張照片的反轉是十幾個一直在動的合成圖層，在畫面外也逐幀吃 GPU，
+   手機捲故事頁時跟頁面搶（新人 09-17：往下滑很卡）；捲回來再接著轉。
+   整組是 v-if 掛上的（live 之後才有），所以等元素真的出現再觀察 */
+const away = ref(false)
+const layerEl = ref<HTMLElement | null>(null)
+let awayObserver: IntersectionObserver | null = null
+watch(layerEl, (el) => {
+  awayObserver?.disconnect()
+  awayObserver = null
+  if (!el)
+    return
+  awayObserver = new IntersectionObserver((entries) => {
+    away.value = !entries.some(entry => entry.isIntersecting)
+  })
+  awayObserver.observe(el)
+})
+
 onMounted(() => {
   wideQuery = window.matchMedia(WIDE_QUERY)
   syncWide()
@@ -117,15 +135,16 @@ onMounted(() => {
 onBeforeUnmount(() => {
   wideQuery?.removeEventListener('change', syncWide)
   window.removeEventListener('keydown', onKeydown, true)
+  awayObserver?.disconnect()
 })
 </script>
 
 <template>
-  <div v-if="live && tiles.length" class="ring-layer pointer-events-none absolute inset-0" aria-hidden="false">
-    <!-- is-held：有對焦（游標指著或點開）就停轉，目標不會從游標下面溜走。
+  <div v-if="live && tiles.length" ref="layerEl" class="ring-layer pointer-events-none absolute inset-0" aria-hidden="false">
+    <!-- is-held：有對焦（游標指著或點開）就停轉，目標不會從游標下面溜走；is-away：整圈捲出畫面，停轉省合成。
          key 跟著 wide：跨過斷點時張數會變，新掛上的照片若沿用舊的一圈，反向動畫的起點會對不上整圈已經轉掉的角度，
          整組重掛讓自轉與反轉從同一個時間點起跑 -->
-    <ul :key="wide ? 'wide' : 'narrow'" ref="ringEl" class="ring absolute" :class="{ 'is-held': focus !== null }">
+    <ul :key="wide ? 'wide' : 'narrow'" ref="ringEl" class="orbit absolute" :class="{ 'is-held': focus !== null, 'is-away': away }">
       <li
         v-for="tile in placed"
         :key="tile.src"
@@ -146,7 +165,8 @@ onBeforeUnmount(() => {
           @blur="onLeave(tile.index)"
           @click="$emit('select', tile.index)"
         >
-          <img :src="tile.src" alt="" loading="lazy" draggable="false" class="size-full select-none object-cover">
+          <!-- 首屏第一眼就要看到整圈：不懶載、優先抓（一張 320px 正方小圖十幾 KB），解碼放到背景執行緒 -->
+          <img :src="tile.src" alt="" loading="eager" fetchpriority="high" decoding="async" draggable="false" class="size-full select-none object-cover">
         </button>
       </li>
     </ul>
@@ -155,7 +175,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* 圓心：水平置中、高度由外層的 --ring-cy 決定（手機＝標題中心、桌機＝時間軸的高度） */
-.ring {
+.orbit {
   left: 50%;
   top: var(--ring-cy, 50%);
   width: 0;
@@ -164,12 +184,17 @@ onBeforeUnmount(() => {
   /* 一圈三分鐘：看得出在動，又不會讓人想追著看。長度改動時 .tile 的 tile-upright 要一起改 */
   animation: ring-spin 180s linear infinite;
 }
-.ring.is-held {
+.orbit.is-held {
   animation-play-state: paused;
 }
 /* 照片的反轉跟著整圈一起停；進場動畫（第一個）照跑 */
-.ring.is-held .tile {
+.orbit.is-held .tile {
   animation-play-state: running, paused;
+}
+/* 捲出畫面：整圈、反轉、進場全停（看不到的東西不必動） */
+.orbit.is-away,
+.orbit.is-away .tile {
+  animation-play-state: paused;
 }
 @keyframes ring-spin {
   to {
@@ -204,7 +229,6 @@ onBeforeUnmount(() => {
   translate: -50% -50%;
   scale: var(--pop, 1);
   opacity: var(--dim, 1);
-  filter: blur(var(--blur, 0px));
   border-radius: calc(var(--tile, 3rem) * 0.12);
   box-shadow: 0 0.375rem 1.25rem rgb(60 48 32 / 0.14);
   pointer-events: auto;
@@ -217,11 +241,16 @@ onBeforeUnmount(() => {
     opacity 400ms var(--ease-standard),
     filter 400ms var(--ease-standard);
   /* 進場：從圓頂開始、往兩側依序放大進來（淡入在 img 上，見下）。
-     第二個動畫是反轉：與 .ring 的 ring-spin 同長度、同時起跑、不延遲，整圈轉多少照片就倒轉多少 */
+     第二個動畫是反轉：與 .orbit 的 ring-spin 同長度、同時起跑、不延遲，整圈轉多少照片就倒轉多少 */
   animation:
     tile-in 600ms var(--ease-emphasized) both,
     tile-upright 180s linear infinite;
   animation-delay: calc(var(--d, 0) * 800ms + 300ms), 0s;
+}
+/* 景深的模糊只在有對焦時掛：blur(0px) 也是一個濾鏡，整圈一直轉時每張照片都得多過一層濾鏡合成；
+   沒對焦就是 none，從 none 到 blur 一樣能過場 */
+.orbit.is-held .tile {
+  filter: blur(var(--blur, 0px));
 }
 .tile img {
   animation: tile-fade 600ms var(--ease-standard) both;

@@ -1,10 +1,12 @@
 <!-- app/components/story/StoryFlowers.vue — 祝福花田＋出席回覆入口：RSVP 時畫的小花長在這裡，回覆喜帖就是種下你的那一朵。
-     由上而下：賓客畫的花（FlowerField，2026-09-16 起長在花田上方、多了往上再長一排）→ 花田橫幅 → 新人自己畫的三朵小花 → 彩蛋提示。
+     由上而下：賓客畫的花（FlowerField，2026-09-16 起長在花田上方、多了往上再長一排）→ 新人自己畫的三朵小花 → 花田橫幅 → 彩蛋提示。
      三朵花指到（桌機游標／鍵盤）或點開（手機）會晃一下，背後探出一張手寫小紙條；
-     09-15 曾拿掉（蠟筆筆觸與水彩花田不合）、09-16 新人要求放回，同日從花田上方移到下方——
-     上方擺著會被找到的肥肥頂到，上方也要讓給賓客的花。內容層 flowers 清空時那一排整個不渲染。
+     09-15 曾拿掉（蠟筆筆觸與水彩花田不合）、09-16 新人要求放回，同日移到花田下方（怕被找到的肥肥頂到）；
+     09-17 新人看了手機再改回花田上方、並放大一倍（下方的三朵太小、像三個標點）——
+     肥肥探頭時就是貓在前、花在後（花田的層疊在三朵花之上），沒有頂到的問題。內容層 flowers 清空時那一排整個不渲染。
      花田裡另外藏了三隻貓（彩蛋）：預設只露耳朵，點耳朵才把那隻找出來，三隻都找到才出現結語。
-     賓客的花由故事頁用 listFlowers 抓來（client-only、沒簽章就是空陣列），這裡只負責排；整片花田頁仍由 PublicMenu 的「祝福花田」進得去。 -->
+     賓客的花由故事頁用 listFlowers 抓來（client-only、沒簽章就是空陣列），這裡只負責排；整片花田頁仍由 PublicMenu 的「祝福花田」進得去。
+     出席回覆的入口是一行文字連結，樣式與「看我們的婚紗照」（StoryCta）同一套（新人 09-17：原本 text-h3 加金圓章太大、不統一）。 -->
 <script setup lang="ts">
 import type { FlowerWallItem } from '~/types/api/flowers'
 import type { StoryFlowerCat, StoryFlowerField } from '~/types/story'
@@ -72,12 +74,12 @@ const groups = computed(() => {
 /** 三朵花的錯落：寬度、抬高多少（底邊對齊後加 margin-bottom）、傾角、紙條的傾角，由左到右。第四朵以後沿用最後一組。
     抬高用 margin 不用 translate：搖曳動畫寫在 translate 上，同一個屬性會互相覆蓋 */
 const ARRANGE = [
-  // 尺寸是原本的四分之一（80/96→20/24、112/128→28/32）：加了花田橫幅之後，
-  // 手繪的三朵花跟水彩花田筆觸不同，原本的大小會互相搶，縮成小綴飾才不突兀。
-  // 抬高的 margin 一起照四分之一縮，否則位移會比花本身還高
-  { size: 'w-5 sm:w-7', lift: 'mb-0', rotate: '-rotate-6', sway: '5.2s', noteRot: '-4deg' },
-  { size: 'w-6 sm:w-8', lift: 'mb-1.5 sm:mb-2', rotate: 'rotate-3', sway: '6.1s', noteRot: '3deg' },
-  { size: 'w-5 sm:w-7', lift: 'mb-0.5 sm:mb-1', rotate: 'rotate-6', sway: '5.6s', noteRot: '-3deg' },
+  // 尺寸是原本的一半（80/96→40/48、112/128→48/56）：加了花田橫幅之後手繪的三朵花跟水彩筆觸不同，
+  // 09-16 曾縮到四分之一當小綴飾，新人 09-17 在手機上看嫌太小，放大一倍、站回花田上方。
+  // 抬高的 margin 跟著尺寸走，否則位移會比花本身還高
+  { size: 'w-10 sm:w-12', lift: 'mb-0', rotate: '-rotate-6', sway: '5.2s', noteRot: '-4deg' },
+  { size: 'w-12 sm:w-14', lift: 'mb-2 sm:mb-3', rotate: 'rotate-3', sway: '6.1s', noteRot: '3deg' },
+  { size: 'w-10 sm:w-12', lift: 'mb-1 sm:mb-1.5', rotate: 'rotate-6', sway: '5.6s', noteRot: '-3deg' },
 ]
 
 /* 冒出紙條的那一朵：兩條通道。
@@ -100,10 +102,19 @@ function onFocus(index: number, event: FocusEvent) {
   if ((event.target as HTMLElement).matches(':focus-visible'))
     hovered.value = index
 }
+/** 最後一次按下去的是什麼（手指／滑鼠／筆）：WebKit 手指點出來的 click 其 pointerType 是 'mouse'（Playwright webkit 09-17 實測：
+    pointerdown／pointerup 都是 touch、click 卻是 mouse），只看 click 在 iPhone 上紙條永遠冒不出來；
+    pointerdown 在每個瀏覽器都對，從那裡記，用過就清掉（鍵盤 Enter 不會有 pointerdown，不該沿用上一次的手指） */
+let lastPointer = ''
+function onFlowerDown(event: PointerEvent) {
+  lastPointer = event.pointerType
+}
 /** 手機：同一朵再點一次收回，點另一朵換過去。
     只認手指——桌機游標與鍵盤各自有 hovered 那條通道，再存一份會在移開後把紙條留在畫面上 */
-function onPick(index: number, event: PointerEvent) {
-  if (event.pointerType !== 'touch')
+function onPick(index: number) {
+  const type = lastPointer
+  lastPointer = ''
+  if (type !== 'touch')
     return
   picked.value = picked.value === index ? null : index
 }
@@ -237,8 +248,46 @@ onBeforeUnmount(() => {
           class="mx-auto max-w-2xl pb-12"
         />
 
-        <!-- 花田＋左右兩側的兩叢賓客花：兩叢掛在花田框外（1280px 以上才有），落點隨 hash 散在框裡 -->
-        <div class="relative">
+        <!-- 新人畫的三朵花：站在花田上方、底邊對齊再各自上下位移，往下疊進花田 4px 像種在花叢最後一排。
+             加了互動就不再是純裝飾，所以每朵包成真的 button、拿掉整排的 aria-hidden。
+             isolate：紙條（.note）是 z-index -1，要有這一層當疊放範圍才不會沉到區塊底色後面；
+             不用 z-10——花田那塊（z-index 1）要疊在三朵花之上，肥肥探頭、對話框冒出來都是貓在前。
+             間距 gap-3：花有 40～56px，命中框撐到 44px 也不會跟隔壁那朵疊到 -->
+        <div v-if="field.flowers.length > 0" class="relative isolate mx-auto -mb-1 flex max-w-md items-end justify-center gap-3 sm:gap-4">
+          <button
+            v-for="(src, i) in field.flowers"
+            :key="src"
+            type="button"
+            class="flower-btn relative flex rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
+            :class="[ARRANGE[i]?.lift ?? '', { 'is-on': shown === i }]"
+            :style="{ '--note-rot': ARRANGE[i]?.noteRot ?? '-4deg' }"
+            :aria-label="`第 ${i + 1} 朵祝福小花`"
+            :aria-pressed="shown === i"
+            @pointerdown="onFlowerDown"
+            @pointerenter="onEnter(i, $event)"
+            @pointerleave="onLeave(i)"
+            @focus="onFocus(i, $event)"
+            @blur="onLeave(i)"
+            @click="onPick(i)"
+          >
+            <img
+              :src="src"
+              alt=""
+              loading="lazy"
+              class="flower h-auto drop-shadow-sm"
+              :class="[ARRANGE[i]?.size ?? ARRANGE.at(-1)!.size, ARRANGE[i]?.rotate ?? '']"
+              :style="{ '--sway-dur': ARRANGE[i]?.sway ?? '5.5s', '--sway-delay': `${i * 0.7}s` }"
+            >
+            <span class="note pointer-events-none absolute whitespace-nowrap rounded-sm px-3 py-2 font-hand text-body-l leading-none text-ink-700" aria-hidden="true">
+              {{ NOTE_TEXT }}
+            </span>
+          </button>
+        </div>
+
+        <!-- 花田＋左右兩側的兩叢賓客花：兩叢掛在花田框外（1280px 以上才有），落點隨 hash 散在框裡。
+             flow-root：花田那塊的負 margin-top 才不會穿透這一層往上收（margin 合併），把這個框拉高到蓋住上方三朵花——
+             框本身會吃點擊，蓋到就點不到花；隔開後只有 pointer-events: none 的花田探出來 -->
+        <div class="relative flow-root">
           <FlowerField
             v-if="groups.left.length > 0"
             :flowers="groups.left"
@@ -318,40 +367,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- 新人畫的三朵花：花田下方、底邊對齊再各自上下位移。
-             加了互動就不再是純裝飾，所以每朵包成真的 button、拿掉整排的 aria-hidden -->
-        <!-- 間距沒有跟著縮到四分之一：花只剩 20px，命中框要撐到 24px 寬才過得了 WCAG 2.5.8，
-             間距太小相鄰的命中框會疊在一起、點到隔壁那朵 -->
-        <div v-if="field.flowers.length > 0" class="relative z-10 mx-auto mt-2 flex max-w-md items-end justify-center gap-2 sm:gap-3">
-          <button
-            v-for="(src, i) in field.flowers"
-            :key="src"
-            type="button"
-            class="flower-btn relative flex rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
-            :class="[ARRANGE[i]?.lift ?? '', { 'is-on': shown === i }]"
-            :style="{ '--note-rot': ARRANGE[i]?.noteRot ?? '-4deg' }"
-            :aria-label="`第 ${i + 1} 朵祝福小花`"
-            :aria-pressed="shown === i"
-            @pointerenter="onEnter(i, $event)"
-            @pointerleave="onLeave(i)"
-            @focus="onFocus(i, $event)"
-            @blur="onLeave(i)"
-            @click="onPick(i, $event)"
-          >
-            <img
-              :src="src"
-              alt=""
-              loading="lazy"
-              class="flower h-auto drop-shadow-sm"
-              :class="[ARRANGE[i]?.size ?? ARRANGE.at(-1)!.size, ARRANGE[i]?.rotate ?? '']"
-              :style="{ '--sway-dur': ARRANGE[i]?.sway ?? '5.5s', '--sway-delay': `${i * 0.7}s` }"
-            >
-            <span class="note pointer-events-none absolute whitespace-nowrap rounded-sm px-3 py-2 font-hand text-body-l leading-none text-ink-700" aria-hidden="true">
-              {{ NOTE_TEXT }}
-            </span>
-          </button>
-        </div>
-
         <!-- 彩蛋的一句提示（2026-09-16 新人：「擔心賓客不知道怎麼用」）：沒有這句，只露耳朵的三隻貓沒人會去點。
              壓成最低層級的附註字（caption、ink-300），提示在、但不跟花田搶 -->
         <p class="mt-4 font-serif-tc text-caption text-ink-300">
@@ -371,23 +386,18 @@ onBeforeUnmount(() => {
         <span class="block">種進這片花田。</span>
       </p>
 
-      <!-- 出席回覆：說故事頁自己的話。原本是全頁唯一一顆實心膠囊，讀起來像從別的網站貼過來的元件（新人：「太突兀不搭」）。
-           改成故事頁那組車票按鈕的語彙——一條金線往右走，末端一顆金圓章配箭頭，標籤是襯線寬字距；
-           但這顆是轉換用的主行動，不是翻頁控制，所以標籤從 text-caption 放大到 text-h3、圓章也大一階。
-           金線末端接按鈕正是這一頁的骨架（首屏的訊號線、各頁的時間軸都是這樣收尾），不必再造第二種按鈕形狀。
-           標籤用 ink 不用金色：gold-deep 對紙白也只有 3.71:1，撐不起一般字級的 4.5:1。 -->
-      <div class="mt-5 flex justify-center">
+      <!-- 出席回覆：一行文字連結，襯線字、金色細底線、後面一支小箭頭——與「看我們的婚紗照」（StoryCta）同一個樣式。
+           09-06 曾做成「金線往右走、末端一顆金圓章」的 text-h3 大標籤（轉換用的主行動所以放大），
+           新人 09-17 看手機覺得字太大、跟婚紗照那條不統一，收回同一套。標籤用 ink 不用金色：gold-deep 對紙白只有 3.71:1 -->
+      <div class="mt-6 flex justify-center">
         <NuxtLink
           :to="rsvpTo"
-          class="group flex w-full max-w-sm items-center gap-4 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
+          class="group inline-flex items-center gap-2 border-b border-gold pb-1 font-serif-tc text-body-l tracking-widest text-ink transition-colors duration-250 hover:border-gold-deep hover:text-gold-deep focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
         >
-          <span class="font-serif-tc text-h3 tracking-widest text-ink">{{ rsvpLabel }}</span>
-          <span class="h-px flex-1 bg-gold-light" aria-hidden="true" />
-          <span class="inline-flex size-12 shrink-0 items-center justify-center rounded-full bg-gold-deep text-paper transition-colors duration-250 group-hover:bg-gold">
-            <svg viewBox="0 0 24 24" class="size-5" aria-hidden="true">
-              <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
-            </svg>
-          </span>
+          {{ rsvpLabel }}
+          <svg viewBox="0 0 24 24" class="size-4 text-gold transition-transform duration-250 group-hover:translate-x-0.5" aria-hidden="true">
+            <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6" />
+          </svg>
         </NuxtLink>
       </div>
     </div>
@@ -410,13 +420,13 @@ onBeforeUnmount(() => {
     translate: 0 0;
   }
   to {
-    /* 花縮成四分之一之後，原本的 5px 佔掉花身四分之一高、看起來像在跳，跟著縮到 2px */
-    translate: 0 -2px;
+    /* 幅度跟著花的大小走：40～56px 的花動 3px（原尺寸 5px 佔掉四分之一高、看起來像在跳） */
+    translate: 0 -3px;
   }
 }
 
-/* 花只有 20～32px 寬，圖本身當命中框會小於 WCAG 2.5.8 的 24×24。
-   用虛擬元素把命中框撐到 28×44，它是絕對定位所以不影響排版，也不會把相鄰兩朵推開 */
+/* 命中框至少 28×44（WCAG 2.5.8 的 24×24 以上）：花本身 40～56px 已經夠大，這層是保險；
+   虛擬元素是絕對定位所以不影響排版，也不會把相鄰兩朵推開 */
 .flower-btn::after {
   content: "";
   position: absolute;
@@ -505,11 +515,13 @@ onBeforeUnmount(() => {
   /* 給對話框的上方空間；margin-top 再扣掉同一個值，所以調 headroom 不會改變花田的位置 */
   --headroom: 4rem;
 
-  /* 疊在賓客的花上層：找到肥肥時牠從花田頂端探出來，碰到上方的花也是貓在前面 */
+  /* 疊在賓客的花與三朵花之上：找到肥肥時牠從花田頂端探出來，碰到上方的花也是貓在前面。
+     整塊不吃點擊（只有耳朵那顆 button 吃）：負的 margin-top 讓這塊蓋住上方三朵花的下半，不關掉會點不到花 */
   position: relative;
   z-index: 1;
   margin-top: calc(var(--headroom) * -1);
   overflow: hidden;
+  pointer-events: none;
 }
 .cat-stage {
   width: var(--stage-w);

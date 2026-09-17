@@ -55,7 +55,7 @@ onBeforeUnmount(() => clearInterval(swapTimer))
       </h1>
 
       <!-- 開場描完的那個字樣，縮小落回頁首 -->
-      <img src="/images/gallery/Union.svg" alt="" class="gh-logo">
+      <img src="/images/gallery/logo.svg" alt="" width="358" height="202" class="gh-logo">
 
       <span class="gh-word gh-word-top" aria-hidden="true">
         <!-- 換字時整個元件重掛，掃光因此每次都從頭跑一次：字出現 → 掃一道光 → 停 → 換下一個字。
@@ -100,11 +100,14 @@ onBeforeUnmount(() => clearInterval(swapTimer))
   /* 四個字共用的尺規：聚合時的相對位置全部以它為單位，字級不同也不會歪掉 */
   --word-size: clamp(2.25rem, 7vw, 6rem);
 
-  /* 字樣（Union.svg 564×200）的落點與畫布高度抽成變數：
-     上方那個大字要靠這兩個值算出自己不得越過的上界，見 .gh-word-top */
-  --logo-w: clamp(88px, 11vw, 138px);
+  /* 字樣（logo.svg，字形 349.77×194.02、畫布四邊各留 4 單位＝357.77×202.02，寬高比 1.77）的落點與畫布高度抽成變數：
+     上方那個大字要靠這兩個值算出自己不得越過的上界，見 .gh-word-top。
+     2026-09-17 換成新人重畫的字樣：多了一道掃到字底下的長底線，比例從 2.82 變成 1.8（同寬會高出一半）。
+     寬度照「字母的高度跟原本一樣」換算——字母佔新字樣高度的 74%：原本 138px 寬時字高 49px → 新的總高 66px → 寬 120px；
+     手機 88px 寬時字高 31px → 總高 42px → 寬 76px */
+  --logo-w: clamp(76px, 9.5vw, 120px);
   --logo-top: clamp(14px, 3vh, 34px);
-  --logo-bottom: calc(var(--logo-top) + var(--logo-w) / 2.82);
+  --logo-bottom: calc(var(--logo-top) + var(--logo-w) / 1.77);
   --frame-h: calc(100dvh - var(--gallery-frame, 16px) * 2);
 
   /* 捲動分兩段：先聚合（spread 1→0），再整組上滑（rise 0→1） */
@@ -210,7 +213,12 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 
 .gh-word-bottom {
   --fx: 0px;
-  --fy: 35vh;
+
+  /* 35vh 是設計稿的落點，但署名是貼在框底的固定 px：手機為了讓 Safari 的工具列，署名往上抬到 78px，
+     這個字用 vh 往下推就疊到署名上（新人 09-16 iPhone 實測：Love 壓在 Alex & Lele 上）。
+     用 min() 給它一條上界（值越小＝越靠上）：字的中心離框底至少「署名底距 ＋ 署名一行高 ＋ 12px 間距 ＋ 半個字高」。
+     桌機 35vh 仍是較小的那個，位置不變；做法對齊上方那個字用 max() 擋字樣的那條界線 */
+  --fy: min(35vh, calc(var(--frame-h) / 2 - var(--sign-bottom) - var(--text-body-l) * 1.7 - 12px - 0.5em));
   --cx: 0px;
   --cy: calc(var(--word-size) * 1.05);
 }
@@ -244,11 +252,14 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 }
 
 /* 署名置中、落在「Love」正下方，跟四邊的大字同一條中軸（新人 09-16：靠左角落看起來怪）。
-   手機的底部導覽膠囊是滿版的，署名要讓到它上面 */
+   手機的底部導覽膠囊是滿版的，署名要讓到它上面；底距抽成變數，上面那個「Love」靠它算自己不得越過的界線 */
+.gh-frame {
+  --sign-bottom: 78px;
+}
 .gh-sign {
   position: absolute;
   left: 50%;
-  bottom: 78px;
+  bottom: var(--sign-bottom);
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -274,8 +285,8 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 }
 
 @media (min-width: 640px) {
-  .gh-sign {
-    bottom: clamp(16px, 3vh, 28px);
+  .gh-frame {
+    --sign-bottom: clamp(16px, 3vh, 28px);
   }
 }
 </style>

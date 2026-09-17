@@ -23,7 +23,7 @@ const content = useStoryContent()
 const { data: guestFlowers } = await listFlowers(weddingId, { server: false, default: () => [], silent: true })
 
 /** 分享連結上的婚禮簽章（後台「故事頁連結」附的 ?sig=）：往 RSVP 與其他公開頁的連結都要帶下去，
- *  賓客點「告訴我們你會來」才過得了正式站的 enforced 模式（見 useSignedLink） */
+ *  賓客點「回覆我們的邀請」才過得了正式站的 enforced 模式（見 useSignedLink） */
 const { withSig } = useSignedLink()
 
 // 出口只剩婚紗照：「留下你的祝福」與「看完整流程表」新人 09-15 拿掉（祝福有花田那區的 RSVP，流程表對賓客是多餘的）
@@ -38,11 +38,12 @@ const entries = computed(() => [
     <StoryCats :cats="content.cats" :scene="content.catScene" />
     <StorySchedule :schedule="content.schedule" />
     <VenueInfo :venue="content.venue" />
+    <!-- 出席回覆的字：09-17 從「告訴我們你會來」改成跟「看我們的婚紗照」同一個句式（新人要換個詞、樣式也統一） -->
     <StoryFlowers
       :field="content.flowerField"
       :guest-flowers="guestFlowers ?? []"
       :rsvp-to="withSig(`/rsvp/public/${weddingId}`)"
-      rsvp-label="告訴我們你會來"
+      rsvp-label="回覆我們的邀請"
     />
     <StoryCta :date="content.venue.dateTime" :names="content.hero.namesZh" :entries="entries" :photo-drive="content.photoDrive" :trail="content.trail" />
     <!-- 選單開關不用混色翻色：由書的深色跨頁與當天流程回報底色（usePublicChrome），深色時換紙白 -->

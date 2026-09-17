@@ -1,8 +1,11 @@
 <!-- app/components/story/StoryFoilMark.vue — 首屏主標的金箔字樣：光只從字裡透出來，像金箔轉動時的明暗流動。
-     做法是鏤空版：字形當遮罩，後面放幾顆糊開的光斑慢慢漂，字外一律不透光。
+     做法是鏤空版：字形當遮罩，後面放幾顆軟邊的光斑慢慢漂，字外一律不透光。
      參考 studio-cc 首頁標題（那邊是 WebGL 球＋紅藍立體疊色），這裡不背 three.js——
      色調要收進金色，現成材質整組得重寫、優勢就沒了，卻要為首屏多扛一個 3D 函式庫；
      改用 SVG 遮罩＋CSS 光斑，零依賴、SSR 直接有畫面、無 JS 也完整。
+     光斑的軟邊是放射漸層、不是 feGaussianBlur（09-17 改）：模糊濾鏡在瀏覽器裡是 CPU 逐幀重算的，三顆光斑一直在漂，
+     iPhone 首屏因此每一幀多幾十毫秒（新人：進場會卡）；漸層由 GPU 直接畫，邊一樣軟。
+     捲出畫面時光斑停下（IntersectionObserver）：看不到的東西不必動。
      配色刻意收斂：底就是原本的 gold，亮斑 gold-light、暗斑 gold-deep、一顆紙白高光、
      一顆鼠尾草冷斑（對應原站紅青色散的克制版）。平均下來仍是金色，不是漸層字。
      尺寸：viewBox 固定，寬高用 em 表達，字級交給外面的 text-h2／sm:text-h1，行動裝置自動跟著縮。
@@ -17,24 +20,37 @@ withDefaults(defineProps<{
 }>(), { variant: 'gold' })
 
 const id = `foil-${useId()}`
+/** 三顆光斑的代號：各自一個放射漸層（顏色由 CSS 的 .stop-* 給，紙白版另換一組） */
+const ORBS = ['a', 'b', 'c'] as const
+
+/** 字樣捲出畫面就讓光斑停下（is-off），捲回來再漂 */
+const markEl = ref<SVGSVGElement | null>(null)
+const off = ref(false)
+let observer: IntersectionObserver | null = null
+onMounted(() => {
+  if (!markEl.value)
+    return
+  observer = new IntersectionObserver((entries) => {
+    off.value = !entries.some(entry => entry.isIntersecting)
+  })
+  observer.observe(markEl.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <svg viewBox="0 0 1000 160" role="img" :aria-label="text" class="mark" :class="{ 'is-paper': variant === 'paper' }">
+  <svg ref="markEl" viewBox="0 0 1000 160" role="img" :aria-label="text" class="mark" :class="{ 'is-paper': variant === 'paper', 'is-off': off }">
     <defs>
       <!-- 鏤空版：白字＝透光 -->
       <mask :id="`${id}-cut`" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="160">
         <text x="500" y="118" text-anchor="middle" class="glyph cut">{{ text }}</text>
       </mask>
-      <!-- 光斑統一柔化：一顆實心圓糊開，比堆 radialGradient 好讀也好調。
-           filter 範圍釘死在 userSpace，光斑漂動時不會因為 bbox 改變而重算 -->
-      <filter
-        :id="`${id}-soft`"
-        filterUnits="userSpaceOnUse"
-        x="-400" y="-300" width="1800" height="760"
-      >
-        <feGaussianBlur stdDeviation="28" />
-      </filter>
+      <!-- 光斑：中心實、往外淡到透明的放射漸層，半徑算進軟邊（原本實心圓的半徑加上模糊糊開的那一圈） -->
+      <radialGradient v-for="k in ORBS" :id="`${id}-glow-${k}`" :key="k">
+        <stop offset="0" :class="`stop-${k}`" />
+        <stop offset="0.55" :class="`stop-${k}`" stop-opacity="0.75" />
+        <stop offset="1" :class="`stop-${k}`" stop-opacity="0" />
+      </radialGradient>
     </defs>
 
     <!-- 字的本色直接畫字，不經遮罩。原本是「整片底色矩形經遮罩」：Chrome 在 SVG 的寬度不是整數像素時，
@@ -43,11 +59,9 @@ const id = `foil-${useId()}`
          底色不走遮罩，遮罩下面只剩光斑，而光斑的漂移範圍收在離 SVG 兩側 60 以上，邊上沒有內容，遮罩對不準也漏不出東西 -->
     <text x="500" y="118" text-anchor="middle" class="glyph base" aria-hidden="true">{{ text }}</text>
     <g :mask="`url(#${id}-cut)`">
-      <g :filter="`url(#${id}-soft)`">
-        <circle class="orb orb-a" r="150" />
-        <circle class="orb orb-b" r="55" />
-        <circle class="orb orb-c" r="190" />
-      </g>
+      <circle class="orb orb-a" r="210" :fill="`url(#${id}-glow-a)`" />
+      <circle class="orb orb-b" r="110" :fill="`url(#${id}-glow-b)`" />
+      <circle class="orb orb-c" r="250" :fill="`url(#${id}-glow-c)`" />
     </g>
   </svg>
 </template>
@@ -87,42 +101,59 @@ const id = `foil-${useId()}`
    animation 一定要寫死名字：scoped style 會把 @keyframes 加上 scope hash 一起改寫，
    若把名字藏進 var() 就改寫不到，動畫會靜靜地不跑 */
 /* 三顆都在金的同色系裡：金箔轉動是同一個顏色的明暗，不是換色。
-   試過加一顆鼠尾草冷斑（想對應原站的紅青色散），金底上疊冷色會發灰、像褪色，拿掉 */
+   試過加一顆鼠尾草冷斑（想對應原站的紅青色散），金底上疊冷色會發灰、像褪色，拿掉。
+   顏色寫在漸層的 stop 上（.stop-*），圓本身只管透明度與漂移 */
+.stop-a {
+  stop-color: var(--color-gold-light);
+}
 .orb-a {
-  fill: var(--color-gold-light);
   opacity: 0.75;
   animation: drift-a 15s ease-in-out infinite;
 }
 /* 鏡面高光：要小也要淡。放大或加亮都會把字洗白到看不見 */
+.stop-b {
+  stop-color: var(--color-paper);
+}
 .orb-b {
-  fill: var(--color-paper);
   opacity: 0.3;
   animation: drift-b 11s ease-in-out infinite;
 }
+.stop-c {
+  stop-color: var(--color-secondary-800);
+}
 .orb-c {
-  fill: var(--color-secondary-800);
   opacity: 0.5;
   animation: drift-c 19s ease-in-out infinite;
+}
+/* 捲出畫面：光斑停在原地 */
+.is-off .orb {
+  animation-play-state: paused;
 }
 
 /* 紙白版：底是紙白，亮斑金、高光白、暗斑金——白字上流過的暖光，不是換成另一種金 */
 .is-paper .base {
   fill: var(--color-paper);
 }
+.is-paper .stop-a {
+  stop-color: var(--color-gold-light);
+}
 .is-paper .orb-a {
-  fill: var(--color-gold-light);
   opacity: 0.55;
 }
+.is-paper .stop-b {
+  stop-color: #fff;
+}
 .is-paper .orb-b {
-  fill: #fff;
   opacity: 0.6;
 }
+.is-paper .stop-c {
+  stop-color: var(--color-gold);
+}
 .is-paper .orb-c {
-  fill: var(--color-gold);
   opacity: 0.4;
 }
 
-/* 漂移的左右端點收在「圓心 ± 半徑 ± 糊邊 84（3σ）」不碰到 SVG 兩側（0／1000）：
+/* 漂移的左右端點收在「圓心 ± 半徑」附近不碰到 SVG 兩側（0／1000）：
    邊上沒有光斑的內容，遮罩圖層的邊才漏不出東西（見 template 的說明）。字佔 177～822，光斑仍掃過整行 */
 @keyframes drift-a {
   0%,

@@ -30,6 +30,16 @@ const HERO_PHOTOS = Array.from({ length: 24 }, (_, i) =>
   `/images/story/ring-${String(i + 1).padStart(2, '0')}.webp`)
 const heroTiles: StoryHeroTile[] = HERO_PHOTOS.map((src, k) => ({ src, message: HERO_WISHES[k % HERO_WISHES.length]! }))
 
+// 結尾那一區的拖尾照片：相簿三批裡全部 42 張直式縮成長邊 320px（public/images/story/trail-01～42.webp）。
+// 池子越大滑鼠掃過越不會繞回同一張（新人 09-15：「用原本那 30 張就不會重複」）；16 張橫式不放——塞進 3:4 的拍立得會切掉人。
+// 順序是同場景連著出（草原 19 → 海邊 15 → 都會 8）：三種場景輪流出過一版，連著冒的每張換色調，新人說「散散的」，同場景連著出色調才連貫。
+// 數字是 trail 檔的編號、陣列順序才是出場順序：01～36 是前兩批（檔名就是當時的出場順序），
+// 37～42 是第三批（09-17）的六張直式（依序來自相簿 51、53、54、58、61、62），穿插進各自的場景裡、不重排舊檔；
+// trail-19、23 同一天換成重修版（相簿 42、50）。trail 檔對回相簿編號的整張表在 docs/public-landing-assets.md §68
+const TRAIL_MEADOW = [1, 38, 2, 3, 4, 5, 6, 37, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+const TRAIL_SEASIDE = [18, 39, 19, 20, 40, 21, 22, 41, 23, 24, 42, 25, 26, 27, 28]
+const TRAIL_CITY = [29, 30, 31, 32, 33, 34, 35, 36]
+
 // 桌機左緣的直排英文（新人 2026-09-04 定稿），固定兩行、不折第三行。
 // 三個數字的開頭與「orbits」「home」用 Cormorant 斜體，跟頁面上所有數字走同一套襯線
 const heroAside: StoryTextRun[][] = [
@@ -379,7 +389,9 @@ export function useStoryContent(): StoryContent {
       // 201 公里就是故事第一頁大學那段高雄—花蓮的距離，兩地與數字對得起來（新人 2026-09-04 確認）；
       // 年份是整段故事的起訖，不是那一段的
       distance: { from: 'Kaohsiung', to: 'Hualien', years: '2015 → 2026' },
-      cta: { start: '出發', next: '下一站', end: '繼續往下', hint: '點右側開始' },
+      // 手機是直向翻頁（issue #162），提示改成往下滑；圓上的照片可以點這件事也要講出來（新人 09-16：怕賓客不知道要點）
+      cta: { start: '出發', next: '下一站', end: '繼續往下', hint: '往下滑，出發' },
+      ringHint: '點一張照片，領取祝福',
       tiles: heroTiles,
       aside: heroAside,
     },
@@ -492,6 +504,15 @@ export function useStoryContent(): StoryContent {
           width: 52,
           height: 72,
         },
+        // 色票板上的照片（新人 09-17 從相簿選 gallery-29：黃昏沙灘、米白魚尾白紗配灰西裝，色系對到香檳／米白／燕麥，
+        // 也跟結尾拍立得用的粉紗草原那組錯開）。從 1111×1600 裁成 4:5 再縮到 1000 寬：
+        // cwebp -crop 0 80 1111 1389 -resize 1000 0 -q 80，50KB
+        look: {
+          src: '/images/story/dress-look.webp',
+          alt: '新娘穿米白色魚尾白紗、拿著淡紫與奶油色的捧花，新郎穿灰色西裝，兩人在黃昏的沙灘上對望',
+          width: 1000,
+          height: 1251,
+        },
         // 四個色碼是新人指定的婚禮資料，不可改（頁面不渲染色塊，見型別註解）；
         // 材質取自原稿底部那四行（香檳緞帶／奶油色花瓣／白色薄紗／燕麥色亞麻布）。
         // 插畫的 width／height 是視覺正規化後的顯示尺寸，四張不同是刻意的——理由見 VenueInfo.vue
@@ -501,6 +522,9 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Champagne',
             material: '緞帶',
             hex: '#F1E1BE',
+            // 取色點：雲層後的夕陽光暈（x 40～54%、y 4～6% 那一帶量起來都是 #ede5d9～#f4ebd7 的暖亮色）。
+            // 要離新郎的頭髮遠一點：頭髮左緣在 x 58% 上下，放 63,7 與 57,4.5 新人都說像點在頭髮上，定在 46,5
+            pick: { x: 46, y: 5 },
             image: {
               src: '/images/story/dress-champagne.webp',
               alt: '香檳色緞帶打成的蝴蝶結，一條長飄帶往左延伸',
@@ -513,6 +537,8 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Butter Cream',
             material: '花瓣',
             hex: '#F7EEDC',
+            // 取色點：捧花右側那幾朵奶油色的花
+            pick: { x: 56.5, y: 54.5 },
             image: {
               src: '/images/story/dress-cream.webp',
               alt: '三片奶油色花瓣鋪開，根部帶一點淡綠',
@@ -525,6 +551,8 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Ivory',
             material: '薄紗',
             hex: '#F4F0E8',
+            // 取色點：白紗的裙身
+            pick: { x: 38.5, y: 80.5 },
             image: {
               src: '/images/story/dress-ivory.webp',
               alt: '米白色薄紗打成的蝴蝶結，半透明、隱約帶一點灰藍',
@@ -537,6 +565,9 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Oat',
             material: '亞麻布',
             hex: '#D8CBB3',
+            // 取色點：捧花左下那束乾燥的葉子（平均色 #b9b09f）——沙灘在這張照片裡是深褐色，不像燕麥；
+            // 色票的插畫本身就是一束乾燥麥穗，點在乾燥花上反而對得上
+            pick: { x: 29.5, y: 62 },
             image: {
               src: '/images/story/dress-oat.webp',
               alt: '一束燕麥色乾燥麥穗，底下綁著一條亞麻緞帶',
@@ -557,11 +588,8 @@ export function useStoryContent(): StoryContent {
       url: 'https://drive.google.com/drive/folders/1N_svXqePPzIXKfYE4Jf_EnPrGhJcJQJd?usp=sharing',
       label: '把你今天拍的照片放進來',
     },
-    // 拖尾照片：相簿兩批裡全部 36 張直式縮成長邊 320px（trail-01～36.webp，合計 441KB，前 12 張進頁面就抓、其餘快捲到才抓）。
-    // 池子越大滑鼠掃過越不會繞回同一張（新人 09-15：「用原本那 30 張就不會重複」）。
-    // 順序是同場景連著出（草原 17 → 海邊 11 → 都會 8）：三種場景輪流出過一版，連著冒的每張換色調，新人說「散散的」；
-    // 同場景連著出色調才連貫。13 張橫式不放——塞進 3:4 的拍立得會切掉人
-    trail: Array.from({ length: 36 }, (_, i) => `/images/story/trail-${String(i + 1).padStart(2, '0')}.webp`),
+    // 拖尾照片：相簿三批裡全部 42 張直式（出場順序與檔案對照見檔頭的 TRAIL_*）；前 12 張進頁面就抓、其餘快捲到才抓
+    trail: [...TRAIL_MEADOW, ...TRAIL_SEASIDE, ...TRAIL_CITY].map(n => `/images/story/trail-${String(n).padStart(2, '0')}.webp`),
     music: {
       src: '/audio/wedding-bgm.mp3',
       title: 'Our Song',

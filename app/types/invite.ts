@@ -147,6 +147,8 @@ export interface InviteScene {
   cats: SceneCat[]
   /** 貓咪進場時一步一步浮現的腳印素材（三隻共用） */
   catTrail: string[]
+  /** 桌上三個腳印不定時輪流冒出來的那句提示（怕賓客不知道腳印可以按） */
+  catHint: string
   items: SceneItem[]
   music: SceneMusic
 }

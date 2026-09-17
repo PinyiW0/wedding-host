@@ -11,6 +11,13 @@ const props = defineProps<{
   catTrail: string[]
   items: SceneItem[]
   music: SceneMusic
+  /** 腳印旁邊不定時冒出來的那句提示 */
+  catHint: string
+}>()
+
+const emit = defineEmits<{
+  /** 信封離場、桌面開始演：頁面用它決定右上角的選單開關什麼時候出現 */
+  scene: []
 }>()
 
 /** 視差最大位移（px，depth=1 時）——低振幅，只做空氣感不做眩目 */
@@ -33,6 +40,21 @@ const activeCatKey = ref<string | null>(null)
 const activeCat = computed(
   () => props.cats.find(c => c.key === activeCatKey.value) ?? null,
 )
+
+/* ── 腳印的提示（新人 09-17：怕沒有人知道腳印可以按）──
+   進到桌面後，三個腳印不定時輪流晃一下、旁邊冒一句「點我看看」（晃與字都在 InviteObject，這裡只負責點名）。
+   有人點過任何一個腳印就不再提示——已經知道了，再晃就是打擾；貓在桌上、分頁在背景時跳過這一輪。
+   間隔取 6～10 秒的亂數：固定節拍看起來像故障的燈號，不定時才像桌上的東西自己動了一下。
+   reduced-motion 下晃動被全域 guard 收掉，只剩那句字淡入淡出，提示的意思還在 */
+const NUDGE_FIRST_MS = 5000
+const NUDGE_MIN_MS = 6000
+const NUDGE_MAX_MS = 10000
+const NUDGE_SHOW_MS = 2600
+const nudgeCat = ref<string | null>(null)
+let catDiscovered = false
+let nudgeTurn = 0
+let nudgeTimer: ReturnType<typeof setTimeout> | undefined
+let nudgeHideTimer: ReturnType<typeof setTimeout> | undefined
 
 let introTimer: ReturnType<typeof setTimeout> | undefined
 let motionQuery: MediaQueryList | null = null
@@ -81,11 +103,38 @@ function enterScene() {
   // reduce 模式下離場動畫被全域 guard 壓成 0.01ms，還等 1 秒會變成盯著一張空白紙
   introTimer = setTimeout(() => {
     phase.value = 'scene'
+    emit('scene')
+    scheduleNudge(NUDGE_FIRST_MS)
   }, motionQuery?.matches ? 0 : INTRO_EXIT_MS)
+}
+
+function stopNudge() {
+  clearTimeout(nudgeTimer)
+  clearTimeout(nudgeHideTimer)
+  nudgeCat.value = null
+}
+
+function scheduleNudge(delay: number) {
+  clearTimeout(nudgeTimer)
+  nudgeTimer = setTimeout(() => {
+    if (catDiscovered)
+      return
+    // 貓正在桌上、或分頁在背景：這一輪不點名，下一輪再說
+    if (!activeCatKey.value && !document.hidden && props.cats.length) {
+      nudgeCat.value = props.cats[nudgeTurn % props.cats.length]!.key
+      nudgeTurn++
+      nudgeHideTimer = setTimeout(() => {
+        nudgeCat.value = null
+      }, NUDGE_SHOW_MS)
+    }
+    scheduleNudge(NUDGE_MIN_MS + Math.random() * (NUDGE_MAX_MS - NUDGE_MIN_MS))
+  }, delay)
 }
 
 // 再點一次同一個腳印＝請牠回去休息（腳印本身就是開關，不用另外找出口）
 function openCat(key: string) {
+  catDiscovered = true
+  stopNudge()
   activeCatKey.value = activeCatKey.value === key ? null : key
 }
 
@@ -167,6 +216,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown)
   window.removeEventListener('click', handleFirstInteraction, { capture: true })
   clearTimeout(introTimer)
+  stopNudge()
   if (frame)
     cancelAnimationFrame(frame)
 })
@@ -193,6 +243,8 @@ onBeforeUnmount(() => {
         :float-enabled="floatEnabled"
         :is-music-playing="isMusicPlaying"
         :active-cat="activeCatKey"
+        :nudge="!!item.cat && nudgeCat === item.cat"
+        :hint="catHint"
         @toggle-music="toggleMusic"
         @open-cat="openCat"
       />

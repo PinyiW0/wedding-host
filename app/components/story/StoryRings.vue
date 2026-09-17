@@ -5,7 +5,9 @@
      畫法是「紙底加墨」的四層：受光面金、暗面墨的雙色套印；每顆點底下一圈 multiply 的墨暈；
      動的時候不清畫布、削透明度留殘影；成形後一道高光每 7 秒沿戒圈掃一圈（位置不動，只有光在走）。
      canvas 的 rAF 蓋不到 main.css 的 reduced-motion guard，所以這裡自己判斷：不散沙、不推開、鑽石瞬切。
-     觸控沒有游標，推開整組不掛；鑽石改用一顆透明按鈕點開（同時給讀屏名稱與鍵盤焦點）。
+     觸控沒有游標（issue #162）：聚合完成後用一個虛擬指標從左掃到右，推開的效果不用手也看得到（每次重新聚合都再掃一次）；
+     輕點畫布另外在點的位置推一下——click 只在沒捲動的輕點才會發，不跟直向捲動打架。
+     鑽石改用一顆透明按鈕點開（同時給讀屏名稱與鍵盤焦點）。
      那顆按鈕還有一個作用：StoryDeck 的翻頁把「起手點在 button 裡」排除在點擊翻頁之外，所以點鑽石不會順手翻掉整頁。
      聚合等「這一頁走到了」而且「畫面真的看得到它」才起跑——桌機翻頁的滑動要 1.8 秒，
      光看 drawn 會讓整段聚合演在還在滑的面板上，滑到定位時已經散場了。
@@ -50,6 +52,9 @@ const DAMPING = 0.86
 const PUSH_FORCE = 2.4
 /** 靜止判定：位移與速度都小於這個值就收掉迴圈 */
 const REST_EPSILON = 0.05
+/** 觸控的自動掃描：虛擬指標從左緣掃到右緣的時間（SWEEP_MS 是成形後掃光的週期，不是這個）；輕點之後推力留在那一點多久 */
+const TOUCH_SWEEP_MS = 1400
+const TAP_HOLD_MS = 500
 /** 整頁完全離開畫面後等這麼久才打散：翻到一半又拉回來、捲動時邊緣抖一下，都不重播 */
 const SCATTER_DELAY_MS = 300
 /** 成形後只剩掃光與閃光在動，畫面每 33ms 更新一次就夠（三千多顆點兩道 pass，60fps 白燒電） */
@@ -116,6 +121,10 @@ let glintT0 = -Infinity
 let pointerOn = false
 let pointerX = 0
 let pointerY = 0
+/** 觸控的自動掃描起跑時間；null＝沒在掃 */
+let sweepT0: number | null = null
+let tapTimer = 0
+let lastPointerType = ''
 let frame = 0
 let lastNow = 0
 let lastPaint = 0
@@ -239,6 +248,10 @@ function scatter(): void {
   if (reduced || phase === 'sand' || !particles.length)
     return
   phase = 'sand'
+  // 掃到一半被捲走就不掃了，下次聚合完再從頭掃
+  sweepT0 = null
+  if (!hoverable)
+    pointerOn = false
   for (const p of particles) {
     const [sx, sy] = sandOrigin(p.x, p.y, boxW, boxH)
     p.sx = sx
@@ -501,6 +514,21 @@ function tick(now: number): void {
         p.vx = 0
         p.vy = 0
       }
+      startSweep()
+    }
+  }
+
+  // 觸控的自動掃描：虛擬指標沿著兩枚戒指的中線從左掃到右，經過的粒子被推開、過了就彈回
+  if (sweepT0 !== null) {
+    const k = Math.min(1, (now - sweepT0) / TOUCH_SWEEP_MS)
+    const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2
+    pointerX = boxW * (0.04 + 0.92 * e)
+    pointerY = boxH * (0.5 + 0.06 * Math.sin(Math.PI * k))
+    pointerOn = true
+    if (k >= 1) {
+      sweepT0 = null
+      if (!tapTimer)
+        pointerOn = false
     }
   }
 
@@ -573,6 +601,38 @@ function onPointerLeave(): void {
   wake()
 }
 
+/** 觸控裝置聚合完成後自動掃一次：沒有游標也看得到推開的效果（桌機有滑鼠就不掃，reduced-motion 不掃） */
+function startSweep(): void {
+  if (hoverable || reduced || !visible)
+    return
+  sweepT0 = performance.now()
+  wake()
+}
+
+function onPointerDown(event: PointerEvent): void {
+  lastPointerType = event.pointerType
+}
+
+/** 觸控的輕點：在點的位置推一下、半秒後放開。click 只在沒捲動的輕點才會發，不跟直向捲動打架；點在鑽石按鈕上的歸它 */
+function onTap(event: MouseEvent): void {
+  if (hoverable || reduced || lastPointerType !== 'touch' || !root.value)
+    return
+  if ((event.target as Element | null)?.closest?.('.gem'))
+    return
+  const rect = root.value.getBoundingClientRect()
+  pointerX = event.clientX - rect.left
+  pointerY = event.clientY - rect.top
+  pointerOn = true
+  sweepT0 = null
+  window.clearTimeout(tapTimer)
+  tapTimer = window.setTimeout(() => {
+    tapTimer = 0
+    pointerOn = false
+    wake()
+  }, TAP_HOLD_MS)
+  wake()
+}
+
 function onGemEnter(event: PointerEvent): void {
   if (event.pointerType !== 'touch')
     hovering.value = true
@@ -588,6 +648,9 @@ function updateMotion(): void {
   hoverable = Boolean(pointerQuery?.matches)
   if (reduced) {
     pointerOn = false
+    sweepT0 = null
+    window.clearTimeout(tapTimer)
+    tapTimer = 0
     if (phase !== 'settled')
       settle()
     gemAnim = null
@@ -683,6 +746,7 @@ onBeforeUnmount(() => {
   inView?.disconnect()
   gone?.disconnect()
   window.clearTimeout(scatterTimer)
+  window.clearTimeout(tapTimer)
   if (frame)
     cancelAnimationFrame(frame)
 })
@@ -695,6 +759,8 @@ onBeforeUnmount(() => {
     @pointerenter="onPointerMove"
     @pointermove="onPointerMove"
     @pointerleave="onPointerLeave"
+    @pointerdown="onPointerDown"
+    @click="onTap"
   >
     <canvas ref="canvasRef" class="absolute inset-0 block size-full" aria-hidden="true" />
 

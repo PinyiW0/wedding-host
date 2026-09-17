@@ -13,6 +13,10 @@ const props = defineProps<{
   isMusicPlaying: boolean
   /** 目前在桌上的貓（SceneCat.key）；腳印用它標 aria-expanded */
   activeCat: string | null
+  /** 這個腳印現在被舞台點名：晃一下、旁邊冒出提示那句字（只有腳印會是 true） */
+  nudge?: boolean
+  /** 腳印的提示文字 */
+  hint?: string
 }>()
 
 const emit = defineEmits<{
@@ -148,6 +152,7 @@ const linkClass = computed(() => [
   props.item.note ? 'si-note-trigger' : null,
   props.item.hover === 'wobble' ? 'si-wobble' : null,
   props.item.cat ? 'si-cat' : null,
+  props.item.cat && props.nudge ? 'is-nudging' : null,
   props.item.caption ? 'si-cap-host' : null,
 ])
 </script>
@@ -193,6 +198,8 @@ const linkClass = computed(() => [
         <span v-if="item.caption?.mobileLines" class="si-caption si-caption-static" :style="captionStyle" aria-hidden="true">
           <span v-for="line in item.caption.mobileLines" :key="line">{{ line }}</span>
         </span>
+        <!-- 腳印的提示：被點名時浮出來的一句小字。按鈕的可及名稱已經是圖的 alt（認識貓咪 …），這句純視覺 -->
+        <span v-if="item.cat && hint" class="si-hint" :class="{ 'is-on': nudge }" aria-hidden="true">{{ hint }}</span>
       </component>
     </div>
     <Transition name="story-note">
@@ -307,17 +314,20 @@ const linkClass = computed(() => [
   }
 }
 
-/* 進場：單拍上浮，step 70ms（遞延用 calc()，不用任意值 delay class）；
-   phase-delay 疊加在後面——場景分先後幾幕時，同一幕內物件仍保有彼此的 stagger。 */
+/* 進場：單拍上浮，step 120ms（遞延用 calc()，不用任意值 delay class）；
+   phase-delay 疊加在後面——場景分先後幾幕時，同一幕內物件仍保有彼此的 stagger。
+   09-17 從 70ms／400ms 放慢成 120ms／520ms、起點多沉 4px：原本每 70ms 就冒一件、每件又只有 400ms，
+   同時有五六件在動，新人看起來像「各方同時直接出現」；拉開之後才數得出一件一件擺上桌。
+   最後一件（order 16）在第三幕起跑後 1.9 秒開始、2.4 秒落定 */
 .si-enter {
-  animation: si-in 400ms var(--ease-emphasized) both;
-  animation-delay: calc(var(--i, 0) * 70ms + var(--phase-delay, 0ms));
+  animation: si-in 520ms var(--ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * 120ms + var(--phase-delay, 0ms));
 }
 
 @keyframes si-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.96);
+    transform: translateY(18px) scale(0.94);
   }
 }
 
@@ -377,6 +387,81 @@ const linkClass = computed(() => [
   width: max(100%, 44px);
   height: max(100%, 44px);
   transform: translate(-50%, -50%);
+}
+
+/* 腳印被點名：晃兩下、放大一點點。用獨立的 rotate／scale 屬性（同下面的 si-wobble），
+   跟 .si-art 自己的 transform 鏈相乘、不互蓋；提示小字是按鈕的子元素，會跟著一起晃。
+   腳印很小（手機 21～58px），幅度給到 ±12°／1.12 倍才看得出來 */
+.si-cat.is-nudging {
+  animation: si-paw-nudge 900ms var(--ease-standard) 2;
+}
+
+@keyframes si-paw-nudge {
+  0%,
+  100% {
+    rotate: 0deg;
+    scale: 1;
+  }
+
+  20% {
+    rotate: -12deg;
+    scale: 1.12;
+  }
+
+  45% {
+    rotate: 9deg;
+    scale: 1.12;
+  }
+
+  70% {
+    rotate: -5deg;
+    scale: 1.05;
+  }
+}
+
+/* 提示小字：沿用手寫小字那套對話框（紙色底、細框、手寫字），貼在腳印上方；平常透明、被點名才浮出來。
+   不用 cqw：腳印的按鈕不能掛 container-type（會被算成 0 寬，見上面 .si-cap-host 的註解），字級給固定值 */
+.si-hint {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 1;
+  padding: 0.35em 0.85em 0.4em;
+  translate: -50% 0;
+  border: 1px solid var(--color-line);
+  border-radius: 1.1em;
+  background: var(--color-paper);
+  box-shadow: var(--shadow);
+  font-family: var(--font-hand);
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--color-ink);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 250ms var(--ease-standard),
+    transform 250ms var(--ease-standard);
+  pointer-events: none;
+}
+
+.si-hint::after {
+  content: '';
+  position: absolute;
+  bottom: -0.46em;
+  left: calc(50% - 0.43em);
+  width: 0.86em;
+  height: 0.86em;
+  transform: rotate(45deg);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  border-bottom-right-radius: 0.16em;
+  background: var(--color-paper);
+}
+
+.si-hint.is-on {
+  opacity: 1;
+  transform: none;
 }
 
 /* hover 的左右晃：轉軸放在頂端（拍立得是用迴紋針夾著的），撥一下晃兩下就停。

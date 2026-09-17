@@ -1,4 +1,4 @@
-<!-- app/components/PublicMenu.vue — 公開頁右上角的選單（相簿首頁／系列頁／故事頁共用）
+<!-- app/components/PublicMenu.vue — 公開頁右上角的選單（相簿首頁／系列頁／故事頁／公開出席回覆頁共用）
      取代原本散在頁尾的兩顆 UButton 與底部的系列膠囊：那兩者一個是後台元件混進編輯風格的頁面，
      一個只有捲到最底才出現，中段整段沒有導覽。
      互動抄 vue-bits 的 Flowing Menu——滑過某一列時，一條跑馬燈從游標進入的那一側掃進來——
@@ -55,8 +55,17 @@ const rows = computed<MenuRow[]>(() => {
         { label: '出席回覆', word: 'RSVP', to: `/rsvp/public/${props.weddingId}`, image: content.inviteThumb },
         ...list.filter(row => ['Gallery', 'Invitation'].includes(row.word)),
       ]
-    // 不連到自己所在的那一頁
-    : list.filter(row => row.to !== route.path)
+    // 出席回覆頁：只列三個公開頁（故事、相簿、喜帖），相簿的系列頁不列——那是相簿裡面的分頁，從回覆表單直接跳過去太跳
+    : route.path === `/rsvp/public/${props.weddingId}`
+      ? list.filter(row => ['Our Story', 'Gallery', 'Invitation'].includes(row.word))
+      // 喜帖頁：就是桌上那三個出口（故事、相簿、出席回覆），相簿的系列頁同樣不列
+      : route.path === `/invite/${props.weddingId}`
+        ? [
+            ...list.filter(row => ['Our Story', 'Gallery'].includes(row.word)),
+            { label: '出席回覆', word: 'RSVP', to: `/rsvp/public/${props.weddingId}`, image: content.inviteThumb },
+          ]
+      // 不連到自己所在的那一頁
+        : list.filter(row => row.to !== route.path)
   return rowsForPage.map(row => ({ ...row, to: withSig(row.to) }))
 })
 
