@@ -210,7 +210,12 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 
 .gh-word-bottom {
   --fx: 0px;
-  --fy: 35vh;
+
+  /* 35vh 是設計稿的落點，但署名是貼在框底的固定 px：手機為了讓 Safari 的工具列，署名往上抬到 78px，
+     這個字用 vh 往下推就疊到署名上（新人 09-16 iPhone 實測：Love 壓在 Alex & Lele 上）。
+     用 min() 給它一條上界（值越小＝越靠上）：字的中心離框底至少「署名底距 ＋ 署名一行高 ＋ 12px 間距 ＋ 半個字高」。
+     桌機 35vh 仍是較小的那個，位置不變；做法對齊上方那個字用 max() 擋字樣的那條界線 */
+  --fy: min(35vh, calc(var(--frame-h) / 2 - var(--sign-bottom) - var(--text-body-l) * 1.7 - 12px - 0.5em));
   --cx: 0px;
   --cy: calc(var(--word-size) * 1.05);
 }
@@ -244,11 +249,14 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 }
 
 /* 署名置中、落在「Love」正下方，跟四邊的大字同一條中軸（新人 09-16：靠左角落看起來怪）。
-   手機的底部導覽膠囊是滿版的，署名要讓到它上面 */
+   手機的底部導覽膠囊是滿版的，署名要讓到它上面；底距抽成變數，上面那個「Love」靠它算自己不得越過的界線 */
+.gh-frame {
+  --sign-bottom: 78px;
+}
 .gh-sign {
   position: absolute;
   left: 50%;
-  bottom: 78px;
+  bottom: var(--sign-bottom);
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -274,8 +282,8 @@ onBeforeUnmount(() => clearInterval(swapTimer))
 }
 
 @media (min-width: 640px) {
-  .gh-sign {
-    bottom: clamp(16px, 3vh, 28px);
+  .gh-frame {
+    --sign-bottom: clamp(16px, 3vh, 28px);
   }
 }
 </style>
