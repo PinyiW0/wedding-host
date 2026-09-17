@@ -106,6 +106,11 @@ export default defineEventHandler(async (event) => {
   if (route.kind === 'share' || route.kind === 'guest') {
     if (!enforced)
       return
+    // 新人自己那場（landingWeddingId）的公開頁讀取與出席回覆提交不驗簽章（issue #163）：
+    // 只放行 route-auth 標成 open 的那幾支、只放行這一個婚禮 ID；其他婚禮、賓客專屬連結、投影牆照舊要簽章
+    const landingId = useRuntimeConfig().public.landingWeddingId
+    if (route.kind === 'share' && route.open && landingId && weddingId === landingId)
+      return
     const query = getQuery(event)
     const sig = getHeader(event, 'x-guest-sig') || (typeof query.sig === 'string' ? query.sig : undefined)
     const valid = !!sig && !!weddingId

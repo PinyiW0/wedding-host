@@ -6,7 +6,9 @@
 
 export type RouteAccess
   = | { kind: 'public' } // 完全公開：登入、管理員註冊（RegisterAdmin: Anonymous）
-    | { kind: 'share', weddingId: string } // 婚禮分享資料：有效簽名（w/g）或任一有權使用者
+    // 婚禮分享資料：有效簽名（w/g）或任一有權使用者。
+    // open＝公開三頁（故事／喜帖／相簿）與出席回覆本身需要的那幾支：新人自己那場（landingWeddingId）不帶簽章也放行（issue #163）
+    | { kind: 'share', weddingId: string, open?: boolean }
     | { kind: 'guest', weddingId: string, guestId: string } // 賓客專屬：相符的 g 簽名或有權使用者
     | { kind: 'auth', weddingId: string | null, receptionist: boolean, adminOnly?: boolean }
 
@@ -34,6 +36,12 @@ const RECEPTION_GET = new Set([
   'cake-box-exclusions',
   'cake-box-extra-orders',
 ])
+
+// 公開三頁與出席回覆頁「自己就會打」的讀取：婚禮詳情、RSVP 表單設定、LINE 加好友、花田。
+// 這幾支對新人自己那場不驗簽章（issue #163）——公開頁已寫死綁一個婚禮 ID、ID 本來就在網址上，簽章沒有多保護什麼，
+// 卻是上線後每一次「出席回覆載入失敗」的原因（入口網址少了 ?sig=，喜帖／相簿頁不打 API 看不出來，點到出席回覆才 403）。
+// 投影牆（blessings、guests/display-names、projection-settings）與流程表不在此列：那些會列出賓客姓名，維持要簽章
+const LANDING_OPEN_GET = new Set(['', 'rsvp-config', 'line-oa', 'flowers'])
 
 const GUEST_ACTION_RE = /^guests\/([^/]+)\/(?:rsvp|self-check-in|line-binding)$/
 const GUEST_LINE_LOGIN_RE = /^guests\/([^/]+)\/line-login$/ // OAuth 起手（GET）：同賓客專屬授權
@@ -82,9 +90,12 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
 
   // 婚禮分享資料：公開頁讀取＋公開表單／祝福提交（SubmitRsvp、SubmitBlessing: Guest）
   if (method === 'GET' && SHARE_GET.has(sub))
-    return { kind: 'share', weddingId }
-  // uploads/presign：公開頁（祝福照片等）與管理端共用的圖片直傳簽名
-  if (method === 'POST' && (sub === 'guests/rsvp-public' || sub === 'blessings' || sub === 'uploads/presign'))
+    return LANDING_OPEN_GET.has(sub) ? { kind: 'share', weddingId, open: true } : { kind: 'share', weddingId }
+  // 出席回覆提交：跟上面四支讀取同一組，新人那場免簽章
+  if (method === 'POST' && sub === 'guests/rsvp-public')
+    return { kind: 'share', weddingId, open: true }
+  // uploads/presign：公開頁（祝福照片等）與管理端共用的圖片直傳簽名；祝福提交會上牆，兩者維持要簽章
+  if (method === 'POST' && (sub === 'blessings' || sub === 'uploads/presign'))
     return { kind: 'share', weddingId }
 
   // 接待端白名單（CheckInByReception／RecordGiftMoney／DistributeCakeBox／審核祝福）
