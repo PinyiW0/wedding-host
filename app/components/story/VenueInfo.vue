@@ -2,10 +2,10 @@
      版面骨架參考 kevin-irene-wedding-invitation.vercel.app/info：桌機左「在哪裡＋地圖」、右「怎麼去」，
      區塊之間只用細線分隔不做卡片，每個小標題底下墊一行小寫英文回音。
      中文內文一律 Noto Serif TC，與故事段同一套；英文小標（When & Where、Getting There、日期／地址這類 dt）維持無襯線，它們是資料標籤。
-     整區讀成四拍：場館名 → 場地照（外觀／廳內輪播，滿寬橫幅）→ 哪裡（時間地點＋地圖）與怎麼去（交通折疊）並排 → 穿什麼（色票）。
+     整區讀成四拍：場館名 → 場地照（外觀／廳內輪播，滿寬橫幅）→ 哪裡（時間地點＋地圖）與怎麼去（交通折疊）並排 → 穿什麼（色票板：兩人的婚紗照＋色票）。
      場地照 2026-09-15 從左欄底下搬到標題正下方：留在左欄時左欄被照片拉到 y≈990、右欄折疊收合後 y≈660 就結束，右下空出 330px；
      改成橫幅之後兩欄都只剩文字，底部相差不到一行。桌機橫幅 2:1、手機維持 4:3（手機一欄，照片本來就不需要壓扁）。
-     著裝建議以色票呈現（色碼是婚禮資料，不是介面色）。 -->
+     著裝建議以色票呈現（色碼是婚禮資料，不是介面色）；09-17 起色票旁邊多一張兩人穿相近色系的婚紗照（新人：這一段太平）。 -->
 <script setup lang="ts">
 import type { StoryVenue } from '~/types/story'
 
@@ -104,6 +104,88 @@ function onSwipeCancel() {
   swipeId = null
 }
 
+/* ── 色票板：照片上的取色點 ↔ 色票（新人 09-17：照片直接放很沒視覺創意）──
+   色票是從這張照片「取」出來的：取色點的位置寫在內容層每個色票的 pick（照片框的百分比），沒給的就不標。
+   activeSwatch 是現在亮著的那一組，取色點與色票共用同一個索引：點（滑過）哪一邊，另一邊跟著亮。
+   進場：拍立得捲進畫面時四顆一顆一顆點出來、各亮 0.8 秒（點到哪顆、哪個色票就跟著亮），走完就停——
+   不靠說明字，看一遍就懂這四個顏色是從這張照片來的。只播一次；中途有人動手就直接收場、四顆都留在照片上。
+   沒有 JS、reduced-motion：四顆一開始就在，不巡迴（shownPicks 的初值就是全部）。 */
+const lookFrame = ref<HTMLElement | null>(null)
+const activeSwatch = ref<number | null>(null)
+const picks = computed(() => (props.venue.dressCode.look
+  ? props.venue.dressCode.swatches.flatMap((s, index) => (s.pick ? [{ index, name: s.name, hex: s.hex, x: s.pick.x, y: s.pick.y }] : []))
+  : []))
+/** 已經點出來到第幾個色票（索引小於它的取色點才顯示） */
+const shownPicks = ref(Number.POSITIVE_INFINITY)
+const TOUR_START_MS = 300
+const TOUR_STEP_MS = 800
+let tourTimers: number[] = []
+let lookObserver: IntersectionObserver | null = null
+let lastPointer = ''
+
+function endTour() {
+  tourTimers = []
+  shownPicks.value = Number.POSITIVE_INFINITY
+  activeSwatch.value = null
+}
+
+function stopTour() {
+  if (!tourTimers.length)
+    return
+  tourTimers.forEach(timer => clearTimeout(timer))
+  endTour()
+}
+
+function runTour() {
+  picks.value.forEach((pick, k) => {
+    tourTimers.push(window.setTimeout(() => {
+      shownPicks.value = pick.index + 1
+      activeSwatch.value = pick.index
+    }, TOUR_START_MS + k * TOUR_STEP_MS))
+  })
+  tourTimers.push(window.setTimeout(endTour, TOUR_START_MS + picks.value.length * TOUR_STEP_MS))
+}
+
+/* 滑鼠：滑過就亮、移開就收；觸控與鍵盤：點一下亮、再點一下收。
+   WebKit 手指點出來的 click 其 pointerType 是 'mouse'（pointerdown 才是 'touch'），型別要從 pointerdown 記（同 StoryFlowers） */
+function onPickDown(event: PointerEvent) {
+  lastPointer = event.pointerType
+  stopTour()
+}
+
+function onPickEnter(i: number, event: PointerEvent) {
+  if (event.pointerType !== 'mouse' || !picks.value.length)
+    return
+  stopTour()
+  activeSwatch.value = i
+}
+
+function onPickLeave(i: number, event: PointerEvent) {
+  if (event.pointerType === 'mouse' && activeSwatch.value === i)
+    activeSwatch.value = null
+}
+
+function onPickFocus(i: number, event: FocusEvent) {
+  if (!picks.value.length || !(event.target as HTMLElement).matches(':focus-visible'))
+    return
+  stopTour()
+  activeSwatch.value = i
+}
+
+function onPickBlur(i: number) {
+  if (activeSwatch.value === i)
+    activeSwatch.value = null
+}
+
+function onPickClick(i: number) {
+  const type = lastPointer
+  lastPointer = ''
+  if (type === 'mouse' || !picks.value.length)
+    return
+  stopTour()
+  activeSwatch.value = activeSwatch.value === i ? null : i
+}
+
 onMounted(() => {
   if (!photoFrame.value)
     return
@@ -114,10 +196,27 @@ onMounted(() => {
   photoObserver.observe(photoFrame.value)
 })
 
+// 取色點的進場巡迴：拍立得露出六成才開始；reduced-motion 不收、不巡迴
+onMounted(() => {
+  if (!lookFrame.value || !picks.value.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    return
+  shownPicks.value = 0
+  lookObserver = new IntersectionObserver(([entry]) => {
+    if (!entry?.isIntersecting)
+      return
+    lookObserver?.disconnect()
+    lookObserver = null
+    runTour()
+  }, { threshold: 0.6 })
+  lookObserver.observe(lookFrame.value)
+})
+
 onBeforeUnmount(() => {
   photoObserver?.disconnect()
+  lookObserver?.disconnect()
   clearInterval(photoTimer)
   clearTimeout(quickTimer)
+  tourTimers.forEach(timer => clearTimeout(timer))
 })
 </script>
 
@@ -336,35 +435,99 @@ onBeforeUnmount(() => {
           class="mx-auto mt-6 block"
         >
 
-        <!-- 手機四張排一列會擠到英文名逐字斷行；2×2 grid 讓每格拿到夠寬的字欄，
-             也不會有第四張落單置中看起來像漏排。640px 以上回到一排四張。
-             最寬的香檳飄帶是 142px，欄寬（手機 159／桌機 168）都容得下 -->
-        <ul class="mx-auto mt-10 grid max-w-sm grid-cols-2 gap-x-6 gap-y-8 sm:max-w-3xl sm:grid-cols-4 sm:gap-x-8">
-          <li v-for="swatch in venue.dressCode.swatches" :key="swatch.name" class="text-center">
-            <!-- 四張插畫的長寬比是 2:1／3:2／1:1／1:1，畫布原本還有大片透明邊，
+        <!-- 色票板（新人 09-17：這一段太平）：照片在左、四個色票在右，像一塊色票板；手機照片在上、色票在下。
+             照片講「穿起來長這樣」、色票講「什麼顏色」——§26 原本用廳內照定調性，那張後來搬去上面的場地輪播，
+             這裡改用兩人自己的婚紗照補回來。沒有照片時色票整排置中，版面不變 -->
+        <div class="mx-auto mt-10 grid max-w-4xl items-center gap-x-12 gap-y-10 lg:grid-cols-12">
+          <!-- 照片是一張貼著紙膠帶的拍立得（白框沿用上面場地照的 .frame，微微歪一點，跟故事七頁、結尾的拍立得同一套語言）。
+               照片上的四顆取色點：色票是從這個畫面「取」出來的——夕陽的光是香檳、捧花的花瓣是奶油、白紗是米白、乾燥花是燕麥。
+               點（或滑過）一顆，旁邊冒出色名、對應的色票亮起來；反過來點色票，照片上那顆也會亮。
+               新人 09-17：照片直接放很沒視覺創意——照片跟色票之間要有關係，它才有理由在這裡 -->
+          <figure v-if="venue.dressCode.look" class="mx-auto w-full max-w-sm lg:col-span-5 lg:max-w-none">
+            <div ref="lookFrame" class="frame look-frame relative">
+              <img src="/images/story/tape.webp" alt="" loading="lazy" class="look-tape absolute" aria-hidden="true">
+              <div class="relative">
+                <img
+                  :src="venue.dressCode.look.src"
+                  :alt="venue.dressCode.look.alt"
+                  :width="venue.dressCode.look.width"
+                  :height="venue.dressCode.look.height"
+                  loading="lazy"
+                  decoding="async"
+                  class="block aspect-4/5 w-full object-cover"
+                >
+                <button
+                  v-for="pick in picks"
+                  :key="pick.index"
+                  type="button"
+                  class="pick absolute flex size-11 cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-paper"
+                  :class="{ 'is-on': activeSwatch === pick.index, 'is-shown': pick.index < shownPicks, 'is-left': pick.x > 60 }"
+                  :style="{ 'left': `${pick.x}%`, 'top': `${pick.y}%`, '--pick': pick.hex }"
+                  :aria-label="`照片上的${pick.name}色`"
+                  :aria-pressed="activeSwatch === pick.index"
+                  @pointerdown="onPickDown"
+                  @pointerenter="onPickEnter(pick.index, $event)"
+                  @pointerleave="onPickLeave(pick.index, $event)"
+                  @focus="onPickFocus(pick.index, $event)"
+                  @blur="onPickBlur(pick.index)"
+                  @click="onPickClick(pick.index)"
+                >
+                  <span class="pick-dot block rounded-full" aria-hidden="true" />
+                  <span class="pick-tag pointer-events-none absolute whitespace-nowrap rounded-sm px-2 py-0.5 font-serif-tc text-caption tracking-wider text-ink" aria-hidden="true">{{ pick.name }}</span>
+                </button>
+              </div>
+            </div>
+          </figure>
+
+          <!-- 手機四張排一列會擠到英文名逐字斷行；2×2 grid 讓每格拿到夠寬的字欄，
+               也不會有第四張落單置中看起來像漏排。640px 以上回到一排四張；
+               桌機有照片時色票站在照片旁邊、維持 2×2（每格約 230px，最寬的香檳飄帶 142px 放得下） -->
+          <ul
+            class="mx-auto grid w-full max-w-sm grid-cols-2 gap-x-6 gap-y-8 sm:max-w-3xl sm:grid-cols-4 sm:gap-x-8"
+            :class="venue.dressCode.look ? 'lg:col-span-7 lg:max-w-none lg:grid-cols-2' : 'lg:col-span-12'"
+          >
+            <!-- 有取色點時整格是一顆按鈕（點了照片上那一顆會亮）；沒有照片就只是一格靜態的色票 -->
+            <li v-for="(swatch, i) in venue.dressCode.swatches" :key="swatch.name" class="text-center">
+              <component
+                :is="picks.length ? 'button' : 'div'"
+                :type="picks.length ? 'button' : undefined"
+                class="swatch block w-full rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-deep"
+                :class="{ 'is-on': activeSwatch === i, 'cursor-pointer': picks.length > 0 }"
+                :aria-pressed="picks.length ? activeSwatch === i : undefined"
+                @pointerdown="onPickDown"
+                @pointerenter="onPickEnter(i, $event)"
+                @pointerleave="onPickLeave(i, $event)"
+                @focus="onPickFocus(i, $event)"
+                @blur="onPickBlur(i)"
+                @click="onPickClick(i)"
+              >
+                <!-- 四張插畫的長寬比是 2:1／3:2／1:1／1:1，畫布原本還有大片透明邊，
                  所以「用同一個外框對齊」會失真：香檳被壓扁、米白反而顯得最大。
                  轉檔時已先裁到 alpha 邊界，再讓四張的 √(寬×高) 相等（幾何平均）——
                  只對齊高度的話，2:1 的香檳會比 1:1 的米白寬一倍、看起來大一倍；
                  只對齊面積則相反，筆觸最疏的香檳會被放大到失控。
                  所以顯示尺寸四張各不相同（142×69／119×82／98×100／99×99），寫在內容層。
                  外層固定 104px 高、置中對齊，四行標籤才會落在同一條線上 -->
-            <span class="swatch-art flex h-28 items-center justify-center">
-              <img
-                :src="swatch.image.src"
-                :alt="swatch.image.alt"
-                :width="swatch.image.width"
-                :height="swatch.image.height"
-                loading="lazy"
-                class="block"
-              >
-            </span>
-            <span class="mx-auto mt-4 block h-2 w-16 rounded-full border border-ink/10" :style="{ backgroundColor: swatch.hex }" aria-hidden="true" />
-            <span class="mt-4 block font-serif-tc text-body font-medium text-ink">{{ swatch.name }}</span>
-            <span class="mt-1 block text-caption uppercase tracking-widest text-ink-500">{{ swatch.nameEn }}</span>
-          </li>
-        </ul>
+                <span class="swatch-art flex h-28 items-center justify-center">
+                  <img
+                    :src="swatch.image.src"
+                    :alt="swatch.image.alt"
+                    :width="swatch.image.width"
+                    :height="swatch.image.height"
+                    loading="lazy"
+                    class="block"
+                  >
+                </span>
+                <span class="mx-auto mt-4 block h-2 w-16 rounded-full border transition-colors duration-250" :class="activeSwatch === i ? 'border-gold-deep' : 'border-ink/10'" :style="{ backgroundColor: swatch.hex }" aria-hidden="true" />
+                <span class="mt-4 block font-serif-tc text-body font-medium transition-colors duration-250" :class="activeSwatch === i ? 'text-gold-deep' : 'text-ink'">{{ swatch.name }}</span>
+                <span class="mt-1 block text-caption uppercase tracking-widest text-ink-500">{{ swatch.nameEn }}</span>
+              </component>
+            </li>
+          </ul>
+        </div>
 
-        <!-- 手繪人物：新人尚未提供，沒值就整組不渲染。版面已經留好位子，之後只補內容層的值 -->
+        <!-- 手繪人物：新人尚未提供，沒值就整組不渲染。版面已經留好位子，之後只補內容層的值；
+             真的補上人物時，跟上面色票板的照片二選一，兩個都放會太滿 -->
         <ul
           v-if="venue.dressCode.figures?.length"
           class="mx-auto mt-12 flex max-w-xl flex-wrap items-end justify-center gap-x-12 gap-y-8"
@@ -449,5 +612,106 @@ onBeforeUnmount(() => {
     0 8px 22px rgb(17 17 17 / 8%);
   /* 直向捲動交給瀏覽器，橫向的手勢留給左右滑換照片 */
   touch-action: pan-y pinch-zoom;
+}
+
+/* ── 色票板的拍立得：白框沿用 .frame，微微歪一點、左上貼一段紙膠帶（與故事七頁、結尾的拍立得同一套語言） ── */
+.look-frame {
+  rotate: -2deg;
+}
+/* 膠帶靠左貼（右端到框寬 38%）：香檳那顆取色點在照片 46% 處，膠帶要讓開它 */
+.look-tape {
+  width: 30%;
+  aspect-ratio: 72 / 25;
+  top: -18px;
+  left: 8%;
+  rotate: -4deg;
+}
+
+/* 取色點：44px 的命中框置中在取色位置上，看得到的只有中間 14px 的圓點——填的是那個色票的色碼，
+   白圈＋一圈淡墨＋投影，壓在亮的天空或暗的裙身上都看得到 */
+.pick {
+  translate: -50% -50%;
+}
+.pick.is-on {
+  z-index: 1;
+}
+.pick-dot {
+  width: 14px;
+  height: 14px;
+  background: var(--pick);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 3px rgb(17 17 17 / 20%),
+    0 2px 6px rgb(17 17 17 / 35%);
+}
+/* 還沒點出來（進場巡迴前）：整顆收起來、不吃點擊；點出來時圓點從 0 彈到原尺寸。
+   keyframes 只寫 from：終點就是元素自己的樣子，不會蓋掉之後的狀態 */
+.pick:not(.is-shown) {
+  opacity: 0;
+  pointer-events: none;
+}
+.pick.is-shown .pick-dot {
+  animation: pick-pop 400ms var(--ease-emphasized);
+}
+@keyframes pick-pop {
+  from {
+    transform: scale(0);
+  }
+}
+/* 亮著的那一顆：一圈白線往外擴散（只在亮著時跑，reduced-motion 由全域 guard 收掉） */
+.pick::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  translate: -50% -50%;
+  border: 1.5px solid #fff;
+  border-radius: 9999px;
+  opacity: 0;
+}
+.pick.is-on::after {
+  animation: pick-pulse 1.6s var(--ease-standard) infinite;
+}
+@keyframes pick-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.2);
+  }
+}
+/* 色名小籤：貼在圓點旁邊（靠右的點改貼左邊，不出框），亮著時才浮出來 */
+.pick-tag {
+  top: 50%;
+  left: calc(50% + 14px);
+  translate: 0 -50%;
+  background: rgb(250 247 241 / 94%);
+  box-shadow: 0 1px 4px rgb(17 17 17 / 20%);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 250ms var(--ease-standard),
+    transform 250ms var(--ease-standard);
+}
+.pick.is-left .pick-tag {
+  right: calc(50% + 14px);
+  left: auto;
+  transform: translateX(4px);
+}
+.pick.is-on .pick-tag {
+  opacity: 1;
+  transform: none;
+}
+
+/* 亮著的色票：插畫抬起來一點（只動 transform），色條與色名換金色在 class 上切 */
+.swatch .swatch-art img {
+  transition: transform 250ms var(--ease-standard);
+}
+.swatch.is-on .swatch-art img {
+  transform: translateY(-4px);
 }
 </style>

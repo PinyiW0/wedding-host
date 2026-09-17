@@ -281,6 +281,11 @@ export interface StoryDressSwatch {
    */
   hex: string
   image: StoryDressImage
+  /**
+   * 這個顏色在色票板照片（StoryDressCode.look）上的取色點：照片框的百分比，左上是 0,0。
+   * 點的是「這個顏色在畫面裡的來源」（夕陽、捧花、白紗、乾燥花），不是像素最接近的位置；沒給就不標。
+   */
+  pick?: { x: number, y: number }
 }
 
 /**
@@ -298,7 +303,18 @@ export interface StoryDressFigure {
 }
 
 /**
- * 著裝建議整塊：標題「服裝建議」＋英文小字＋中文導語一句＋四塊布片色票＋兩句結語。
+ * 著裝建議色票板上的那張照片：一張 4:5 的婚紗照（新人 09-17：這一段太平）。
+ * 色票講「什麼顏色」、照片講「穿起來長這樣」。width／height 是輸出尺寸，用來鎖長寬比防跳動。
+ */
+export interface StoryDressLook {
+  src: string
+  alt: string
+  width: number
+  height: number
+}
+
+/**
+ * 著裝建議整塊：標題「服裝建議」＋英文小字＋中文導語一句＋色票板（照片＋四塊布片色票）＋兩句結語。
  * 標題「服裝建議」寫死在元件裡；原稿的英文主標（Wear a Little Warmth）2026-09-15 拿掉，
  * 全頁區塊統一成「中文在上、英文小字在下」（§49）。
  */
@@ -309,6 +325,8 @@ export interface StoryDressCode {
   subtitle: string
   /** 中文副標與色票之間的一枝白色花草。它是一個標點不是一張圖，所以放很小 */
   flower?: StoryDressImage
+  /** 色票板上的照片：桌機在色票左邊、手機在色票上方；沒值就只剩色票 */
+  look?: StoryDressLook
   swatches: StoryDressSwatch[]
   /** 結語英文句（含新人原稿的 ♡，符號屬文案不是 icon） */
   closingEn: string

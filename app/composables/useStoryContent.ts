@@ -494,6 +494,15 @@ export function useStoryContent(): StoryContent {
           width: 52,
           height: 72,
         },
+        // 色票板上的照片（新人 09-17 從相簿選 gallery-29：黃昏沙灘、米白魚尾白紗配灰西裝，色系對到香檳／米白／燕麥，
+        // 也跟結尾拍立得用的粉紗草原那組錯開）。從 1111×1600 裁成 4:5 再縮到 1000 寬：
+        // cwebp -crop 0 80 1111 1389 -resize 1000 0 -q 80，50KB
+        look: {
+          src: '/images/story/dress-look.webp',
+          alt: '新娘穿米白色魚尾白紗、拿著淡紫與奶油色的捧花，新郎穿灰色西裝，兩人在黃昏的沙灘上對望',
+          width: 1000,
+          height: 1251,
+        },
         // 四個色碼是新人指定的婚禮資料，不可改（頁面不渲染色塊，見型別註解）；
         // 材質取自原稿底部那四行（香檳緞帶／奶油色花瓣／白色薄紗／燕麥色亞麻布）。
         // 插畫的 width／height 是視覺正規化後的顯示尺寸，四張不同是刻意的——理由見 VenueInfo.vue
@@ -503,6 +512,9 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Champagne',
             material: '緞帶',
             hex: '#F1E1BE',
+            // 取色點：雲層後的夕陽光暈（x 40～54%、y 4～6% 那一帶量起來都是 #ede5d9～#f4ebd7 的暖亮色）。
+            // 要離新郎的頭髮遠一點：頭髮左緣在 x 58% 上下，放 63,7 與 57,4.5 新人都說像點在頭髮上，定在 46,5
+            pick: { x: 46, y: 5 },
             image: {
               src: '/images/story/dress-champagne.webp',
               alt: '香檳色緞帶打成的蝴蝶結，一條長飄帶往左延伸',
@@ -515,6 +527,8 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Butter Cream',
             material: '花瓣',
             hex: '#F7EEDC',
+            // 取色點：捧花右側那幾朵奶油色的花
+            pick: { x: 56.5, y: 54.5 },
             image: {
               src: '/images/story/dress-cream.webp',
               alt: '三片奶油色花瓣鋪開，根部帶一點淡綠',
@@ -527,6 +541,8 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Ivory',
             material: '薄紗',
             hex: '#F4F0E8',
+            // 取色點：白紗的裙身
+            pick: { x: 38.5, y: 80.5 },
             image: {
               src: '/images/story/dress-ivory.webp',
               alt: '米白色薄紗打成的蝴蝶結，半透明、隱約帶一點灰藍',
@@ -539,6 +555,9 @@ export function useStoryContent(): StoryContent {
             nameEn: 'Oat',
             material: '亞麻布',
             hex: '#D8CBB3',
+            // 取色點：捧花左下那束乾燥的葉子（平均色 #b9b09f）——沙灘在這張照片裡是深褐色，不像燕麥；
+            // 色票的插畫本身就是一束乾燥麥穗，點在乾燥花上反而對得上
+            pick: { x: 29.5, y: 62 },
             image: {
               src: '/images/story/dress-oat.webp',
               alt: '一束燕麥色乾燥麥穗，底下綁著一條亞麻緞帶',
