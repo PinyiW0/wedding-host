@@ -123,6 +123,7 @@
 公開三頁（`/story`、`/invite`、`/gallery`）已寫死綁 `runtimeConfig.public.landingWeddingId`（`wedding-2cf97d94`），婚禮 ID 本來就在網址上，`w.` 簽章對這一場沒有多保護什麼；卻是上線當天每一次「出席回覆載入失敗」的原因——喜帖與相簿頁本身不打 API，入口網址少了 `?sig=` 也看不出異狀，一路點到出席回覆才三支 API 全部 403。
 
 - **放行範圍**（`server/utils/route-auth.ts` 標 `open: true`，`server/middleware/auth.ts` 於 enforced 下比對 `landingWeddingId` 後跳過驗簽）：GET 婚禮詳情、`rsvp-config`、`line-oa`、`flowers`；POST `guests/rsvp-public`。只放行這一個婚禮 ID。
+- **訪客身上帶的登入不擋**（2026-09-17，PR #165 審查）：`useHttp` 在公開頁一樣會帶 token，原本中介層先走「已登入」分支——綁在別場的新人／接待員拿到 403，登入過期的人拿到 401（前端接著清登入態、導去 `/login`）。現在這五支遇到「沒有這場權限的登入」或「無效的 token」一律當成沒登入放行：不掛 `authUser`，婚禮詳情回的是剔除 `ownerId`／`deletedAt` 的匿名版。有這場權限的登入照舊走登入身分。判斷集中在 `isLandingOpen()`，其他路由的 401／403 不變。
 - **維持要簽章**：其他婚禮 ID；賓客專屬連結（`g.`：謝卡、賓客 RSVP、綁 LINE）；投影牆讀取（`blessings`、`guests/display-names`、`projection-settings`）、流程表、祝福提交、圖片直傳——這些會列出賓客姓名或寫上牆。
 - **殘餘風險接受**：任何人拿到網址都能讀這場的公開資料（新人姓名、日期、場地、RSVP 題目、花田手繪＋賓客名，見 R2）與提交出席回覆；提交仍是「待確認」狀態、由新人審核，且 `rsvp-public` 已有輸入驗證（M4）。做成多場婚禮的模板時，這條例外要一起拿掉（`landingWeddingId` 留空即整體回到要簽章）。
 
