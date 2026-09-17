@@ -81,8 +81,9 @@ onBeforeUnmount(stopObserving)
            桌機收在右半邊、手機靠右對齊，兩個人留在左邊；做法與 StorySlide 手機版相同——左緣一條直線往下接，三個時間點排在線旁。
            愛心在流內置中，不用 translate，所以不會跟 StoryHeart 的任何位移打架 -->
       <div class="relative mx-auto max-w-5xl">
-        <!-- 手機 w-60：滿版時時間軸從 126px 起，左邊留得下兩個人（§43） -->
-        <div class="ml-auto w-60 lg:mr-24 lg:w-72">
+        <!-- 手機 w-48：時間軸從 174px 起（原本 w-60 從 126px 起），配合底圖往左挪，兩個人連新娘伸出去的捧花都留在左邊（新人 09-17）；
+             最寬的「12:15」（text-h1）在 132px 的字欄裡放得下 -->
+        <div class="ml-auto w-48 lg:mr-24 lg:w-72">
           <div class="pl-15">
             <h2 id="story-schedule-title" class="font-serif-tc text-h3 font-semibold tracking-wider text-paper">
               當天流程
@@ -138,11 +139,12 @@ onBeforeUnmount(stopObserving)
   will-change: transform;
 }
 /* 手機：畫面窄，兩個人要留在左緣給右邊的時間軸讓位。
-   390 寬的視窗只看得到 cover 後 900 寬裡的一截，兩個人在原圖的 40% 處：
-   object-position 58% 時視窗從 295px 起算，兩個人落在畫面左緣 0～130px、時間軸（w-60）從 126px 起，剛好錯開（§43） */
+   390 寬的視窗只看得到 cover 後約 780 寬裡的一截：兩個人在原圖的 38～46%，新娘伸出去的捧花到 24%。
+   原本 object-position 58% 讓捧花那隻手切在畫面左緣外（新人 09-17）；改 45% 時視窗從 174px 起算，
+   捧花落在左緣 12px、兩個人在 120～185px，時間軸（w-48）從 174px 起、直線在 194px，人與線不疊 */
 @media (width < 64rem) {
   .bg-photo {
-    object-position: 58% 55%;
+    object-position: 45% 55%;
   }
 }
 /* 薄紗兩層：

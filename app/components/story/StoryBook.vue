@@ -9,9 +9,11 @@
      只有 0<t<1 的那兩面掛 3D transform：靜止的面是平的，字才清晰、合成層只有正在動的兩面。
      書鋪滿整個視窗（新人 09-14：留紙色邊太突兀）：每一面 50vw×100vh，照片 cover 依 focus 裁。
      滿版照片左右各一張 img，各自 200% 寬、右面往左偏一個頁寬——兩張裁法一樣，接縫在任何視窗比例都連續。
-     手機（lg 以下）：一個跨頁＝一整張紙，繞左緣翻，翻過 90° 就出畫面；紙內兩面上下疊，
-     滿版照片也鋪滿整張紙（cover、構圖點 50% 40%），活字壓在底部一層墨色薄紗上。
-     2026-09-15 以前是 contain（怕裁到烙在圖上的字），照片變成中間一條、上下大片空白；烙字已抹掉（docs §40），理由不成立。
+     手機（lg 以下、stacked）：五個跨頁直式疊、各自一屏，往下捲就是翻頁（issue #162）；每一跨的照片鋪滿整屏（cover、構圖點 50% 40%），
+     文字面（標題、眉標、內文）疊在照片底部一層墨色薄紗上（StoryBookFace 的 overlay），活字與海邊的小字也一樣壓在底部。
+     第一跨是進相簿的門（StoryBookOpener，新人 09-17）：照片是一張圓角卡片從畫面底升上來、一露面就隨捲動撐開，
+     升到頂端釘住撐滿、字再疊上去（軌道 1.5 屏），之後四跨照舊。
+     2026-09-16 以前手機是一個跨頁＝一整張紙繞左緣翻、紙內兩面上下疊（字在上、照片在下），新人實測要照片滿版、直向翻。
      無 JS（live=false）：五個跨頁直式堆疊、全部看得到。 -->
 <script setup lang="ts">
 import type { StorySpread } from '~/types/story'
@@ -24,9 +26,43 @@ const props = defineProps<{
   reached: number
   /** JS 已接管；false 時不做 3D、不藏任何東西 */
   live: boolean
+  /** 手機的直向翻頁模式（StoryDeck）：五跨直式疊、各自一屏，沒有翻紙、不 inert */
+  stacked: boolean
+  /** 提前把五跨的照片抓下來（StoryDeck 在走到書前三頁時打開）：捲到才抓會在進到那一跨的瞬間頓一下 */
+  warm: boolean
   /** 在整組面板裡的序號（data-panel） */
   index: number
 }>()
+
+const emit = defineEmits<{
+  /** 手機第一跨的門開了沒（框撐過一半）：StoryDeck 拿去決定右上角開關的顏色 */
+  openerOpen: [open: boolean]
+}>()
+
+/** 手機第一跨改走 StoryBookOpener：要是「兩面」的跨頁、其中一面是照片（求婚那跨）；不是就照一般的疊法 */
+const opener = computed(() => {
+  const s = props.spreads[0]
+  if (!props.stacked || !s || s.kind !== 'pages')
+    return null
+  const photo = s.right.kind === 'photo' ? s.right : s.left.kind === 'photo' ? s.left : null
+  const copy = s.left.kind === 'copy' ? s.left : s.right.kind === 'copy' ? s.right : null
+  return photo ? { photo, lines: copy?.lines ?? [] } : null
+})
+
+/** 第 i 跨的照片要不要現在就抓：第一跨一露面就要在，其餘等 warm */
+function eagerAt(i: number) {
+  return i === 0 || props.warm
+}
+
+/** 滿版跨頁的手機版：照片 2880×2048 只用得到中間 1440 那截（390×664 的直式框裁掉左右各四分之一），
+ *  另切一張同高、只留中段的 -m.webp（cwebp -crop 720 0 1440 2048）給手機——解碼的像素少一半，進到那一跨才不會頓。
+ *  用 <picture> 依寬度切、不用 srcset：-m 是裁切不是縮圖，構圖不同，srcset 讓非 retina 的桌機也可能挑到它 */
+const WEBP_EXT = /\.webp$/
+function bleedMobile(src: string) {
+  return src.replace(WEBP_EXT, '-m.webp')
+}
+/** 與 StoryDeck 的 DECK_QUERY 同一條分界：這寬度以下是手機（直式框） */
+const MOBILE_QUERY = '(max-width: 63.999rem)'
 
 const count = computed(() => props.spreads.length)
 /** 目前停在（或最接近）哪一跨：其餘跨頁 inert，鍵盤與讀屏只走得到這一跨 */
@@ -63,9 +99,6 @@ function spreadStyle(i: number) {
     '--tr': rightTurn(i).toFixed(4),
     '--zl': i === 0 ? 0 : zSheet(i - 1),
     '--zr': i === count.value - 1 ? 0 : zSheet(i),
-    // 手機：整個跨頁就是一張紙，翻開露出下一跨；DOM 越前面越上層
-    '--ts': turn(i).toFixed(4),
-    '--zs': count.value - i,
   }
 }
 
@@ -79,12 +112,6 @@ function rightClass(i: number) {
   const t = rightTurn(i)
   return { 'is-turning': t > 0 && t < 1, 'is-away': t >= 0.5 }
 }
-/** 手機的整張紙：翻過 90° 就背對（此時也已出畫面） */
-function sheetClass(i: number) {
-  const t = turn(i)
-  return { 'is-turning': t > 0 && t < 1, 'is-gone': t >= 0.5 }
-}
-
 /** 滿版跨頁的裁切重心（內容層的 focus）；左右兩面是同一張圖各露一半，兩面都要套同一個值 */
 function bleedStyle(s: StorySpread) {
   return s.kind === 'bleed' && s.focus ? { objectPosition: `${s.focus.x}% ${s.focus.y}%` } : undefined
@@ -99,25 +126,39 @@ function titleSide(s: StorySpread) {
 </script>
 
 <template>
-  <div class="book-panel relative bg-paper" :class="{ 'is-live': live }" :data-panel="index">
+  <div class="book-panel relative bg-paper" :class="{ 'is-live': live, 'is-stacked': stacked }" :data-panel="index">
     <div class="book">
+      <!-- 桌機翻紙時其餘跨頁 inert（鍵盤與讀屏只走得到這一跨）；手機直式疊，每一跨都在版面上，不 inert -->
       <section
         v-for="(s, i) in spreads"
         :id="`spread-${s.key}`"
         :key="s.key"
         :aria-labelledby="`spread-${s.key}-title`"
         class="spread"
-        :class="[sheetClass(i), { 'is-drawn': reached >= i, 'is-bleed': s.kind === 'bleed' }]"
-        :inert="live && here !== i"
+        :class="{ 'is-drawn': reached >= i, 'is-bleed': s.kind === 'bleed', 'is-opener': i === 0 && !!opener }"
+        :inert="live && !stacked && here !== i"
         :style="spreadStyle(i)"
       >
+        <!-- 手機的第一跨：進相簿的門（框隨捲動撐滿），停點仍是這個 section 的頂端 -->
+        <StoryBookOpener
+          v-if="i === 0 && opener"
+          :photo="opener.photo"
+          :lines="opener.lines"
+          :title="s.title"
+          :title-id="`spread-${s.key}-title`"
+          :eager="eagerAt(i)"
+          @open="emit('openerOpen', $event)"
+        />
         <!-- 滿版跨頁：同一張照片左右各露一半（cover ＋ object-position 0%／100%）；右半純裝飾 -->
-        <template v-if="s.kind === 'bleed'">
+        <template v-else-if="s.kind === 'bleed'">
           <div class="page page-l page-photo" :class="leftClass(i)">
             <h2 :id="`spread-${s.key}-title`" class="sr-only">
               {{ s.title }}
             </h2>
-            <img :src="s.src" :alt="s.alt" :loading="i === 0 ? 'eager' : 'lazy'" class="bleed bleed-l" :style="bleedStyle(s)">
+            <picture>
+              <source :media="MOBILE_QUERY" :srcset="bleedMobile(s.src)">
+              <img :src="s.src" :alt="s.alt" :loading="eagerAt(i) ? 'eager' : 'lazy'" decoding="async" class="bleed bleed-l" :style="bleedStyle(s)">
+            </picture>
             <!-- 活字疊在照片左下：首屏那組金箔字＋手寫字樣的紙白版，翻到這一跨才起筆。名稱已由 h2 給，這裡不再讀 -->
             <div v-if="s.mark" class="mark-box" aria-hidden="true">
               <StoryFoilMark :text="s.mark.title" variant="paper" class="text-h3 lg:text-h2" />
@@ -131,7 +172,10 @@ function titleSide(s: StorySpread) {
             </div>
           </div>
           <div class="page page-r page-photo" :class="rightClass(i)" aria-hidden="true">
-            <img :src="s.src" alt="" :loading="i === 0 ? 'eager' : 'lazy'" class="bleed bleed-r" :style="bleedStyle(s)">
+            <picture>
+              <source :media="MOBILE_QUERY" :srcset="bleedMobile(s.src)">
+              <img :src="s.src" alt="" :loading="eagerAt(i) ? 'eager' : 'lazy'" decoding="async" class="bleed bleed-r" :style="bleedStyle(s)">
+            </picture>
           </div>
         </template>
         <template v-else>
@@ -140,7 +184,8 @@ function titleSide(s: StorySpread) {
             :title="s.title"
             :title-id="`spread-${s.key}-title`"
             :with-title="titleSide(s) === 'l'"
-            :eager="i === 0"
+            :eager="eagerAt(i)"
+            :overlay="stacked"
             class="page page-l"
             :class="[leftClass(i), s.left.kind === 'photo' ? 'page-photo' : 'page-copy']"
           />
@@ -149,7 +194,8 @@ function titleSide(s: StorySpread) {
             :title="s.title"
             :title-id="`spread-${s.key}-title`"
             :with-title="titleSide(s) === 'r'"
-            :eager="i === 0"
+            :eager="eagerAt(i)"
+            :overlay="stacked"
             class="page page-r"
             :class="[rightClass(i), s.right.kind === 'photo' ? 'page-photo' : 'page-copy']"
           />
@@ -251,16 +297,23 @@ function titleSide(s: StorySpread) {
     background: linear-gradient(to bottom, transparent, rgb(17 17 17 / 45%));
     pointer-events: none;
   }
-  /* 手機的字樣放寬一點：金箔字是固定的 em 寬，盒子太窄手寫字反而比它小 */
+  /* 手機的字樣放寬一點：金箔字是固定的 em 寬，盒子太窄手寫字反而比它小。
+     離底 11%（664 高約 73px）：讓開右下角的「回到最上方」膠囊與左下角的「跳過故事」（issue #162 直向翻頁後這些都釘在視窗底）。
+     投影改用 text-shadow、字樣不投影：filter: drop-shadow 在 iOS 上是逐幀重算的合成濾鏡，
+     疊在正在進場（opacity／transform 過場）的元素上，進到這一跨的那一秒每一幀都在重算（新人 09-17：照片區會頓）；
+     手機底下已有薄紗托字，投影只是描邊，換掉看不出差別 */
   .mark-box {
     left: 6%;
-    bottom: 7%;
+    bottom: 11%;
     width: 70%;
+    filter: none;
   }
   .caption-box {
     left: 6%;
-    bottom: 6%;
+    bottom: 11%;
     letter-spacing: 0.2em;
+    filter: none;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 40%);
   }
   .mark-box .script {
     margin-top: -0.5rem;
@@ -315,44 +368,32 @@ function titleSide(s: StorySpread) {
      第一版有一道 6% 寬的書脊暗溝與翻動中從自由邊暗下去的漸層，整組拿掉，翻頁只靠透視的形變 */
 }
 
-/* ── 手機（JS 接管）：一個跨頁＝一整張紙，繞左緣翻；紙內兩面上下疊 ── */
+/* ── 手機（JS 接管，直向翻頁 issue #162）：五個跨頁直式疊、各自一屏。
+   照片面鋪滿整屏、文字面疊在底部（字色與薄紗在 StoryBookFace 的 overlay）；沒有翻紙——翻頁就是往下捲，
+   停點的 snap 由 StoryDeck 掛在每個 .spread 上。用 svh 不用 dvh（工具列收合時 dvh 會變，頁高會抖） ── */
 @media (width < 64rem) {
-  /* 底下 7rem 留給頁次軸，與其他面板的 padding 對齊；perspective 屬性放這裡沒問題——紙是直接子元素、各自成 stacking context */
-  .is-live .book {
-    position: absolute;
-    inset: 0 0 7rem;
-    perspective: 1200px;
-  }
-  /* 紙要不透明：任何一面沒蓋滿（例如照片還在載入）時，下一跨都不會從底下透出來。
-     桌機不能這樣做（各面的 z-index 跨 section 交錯，section 有底色會蓋住底頁），只在手機的整張紙上鋪 */
-  .is-live .spread {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    z-index: var(--zs);
-    transform-origin: 0 50%;
+  .is-stacked .spread {
+    position: relative;
+    display: block;
+    min-height: 100svh;
+    overflow: hidden;
     background: var(--color-paper);
   }
-  .is-live .spread.is-turning {
-    transform: rotateY(calc(var(--ts) * -180deg));
-    backface-visibility: hidden;
+  /* 第一跨是門：高度由 StoryBookOpener 的軌道決定，overflow 不能 hidden——
+     overflow 非 visible 的祖先會變成 sticky 的參考框，舞台就釘不住 */
+  .is-stacked .spread.is-opener {
+    min-height: auto;
+    overflow: visible;
   }
-  .is-live .spread.is-gone {
-    visibility: hidden;
+  .is-stacked .page-photo {
+    position: absolute;
+    inset: 0;
   }
-  /* 照片面吃剩餘高度，文字面自適應；滿版照片那一跨只有左面，所以就是整張紙 */
-  .is-live .page-photo {
-    flex: 1 1 0;
-    min-height: 0;
-  }
-  .is-live .page-copy {
-    flex: 0 0 auto;
-  }
-  /* 文字面在上半（左面）時，頂端讓出右上角選單與唱片那一列（到 y≈64px）：
-     原本 2rem 頂距讓置中的長標題（We’re getting married!）壓在兩顆按鈕底下 */
-  .is-live .page-l.page-copy {
-    padding-top: 4.5rem;
+  /* 文字面在照片之上（左面是文字時 DOM 在照片前面，靠 z-index 壓上去） */
+  .is-stacked .page-copy {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 1;
   }
 }
 </style>

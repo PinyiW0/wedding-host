@@ -84,13 +84,15 @@ export interface StoryHeroContent {
     to: string
     years: string
   }
-  /** 翻頁的文字：桌機按鈕的首屏、中途、翻完（沿用車票的語彙：出發／下一站／繼續往下），與手機的操作提示 */
+  /** 翻頁的文字：桌機按鈕的首屏、中途、翻完（沿用車票的語彙：出發／下一站／繼續往下），與手機出發前的操作提示（往下滑） */
   cta: {
     start: string
     next: string
     end: string
     hint: string
   }
+  /** 副標下面那一行：告訴人圓上的照片可以點、點了會翻出祝福（手機沒有 hover，不寫出來沒人知道） */
+  ringHint: string
   /** 整圈的照片與祝福，從正上方順時針排一圈；後半圈把祝福再排一次，桌機只露上半圈時才不會稀疏。空陣列＝不畫圓 */
   tiles: StoryHeroTile[]
   /** 桌機左緣的直排英文（一句話點題的英文版），由下往上讀；外層一個元素＝一行，行內再分節 */

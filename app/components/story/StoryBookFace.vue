@@ -1,7 +1,8 @@
 <!-- app/components/story/StoryBookFace.vue — 書的一面：整面照片，或紙色文字頁（標題、眉標、幾行字，可選一張鋪底的插畫）。
      這一面貼在書的哪裡、轉多少、疊在哪一層，都由 StoryBook 掛在根元素上的 class 與變數決定；這裡只畫內容。
      文字頁的進場沿用 StorySlide 的 .reveal（走到這一跨才浮出，翻頁本身是主動作，照片不另外動）。
-     手機（lg 以下）兩面上下疊：照片面吃剩餘高度（cover、依 focus 裁）、文字面自適應；鋪底的插畫塞不下就不顯示。 -->
+     手機（lg 以下，overlay）：照片面鋪滿整屏（cover、依 focus 裁），文字面疊在照片底部——字改紙白、底下一層墨色薄紗；
+     鋪底的插畫與標題上的小插圖塞不下也不需要，不顯示。 -->
 <script setup lang="ts">
 import type { StoryBookPage } from '~/types/story'
 
@@ -13,6 +14,8 @@ const props = defineProps<{
   withTitle: boolean
   /** 第一跨的照片先載（書一露面就要在），其餘懶載 */
   eager: boolean
+  /** 手機直向翻頁（StoryBook 的 stacked）：文字面疊在鋪滿整屏的照片底部，字改紙白 */
+  overlay: boolean
 }>()
 
 /** 有沒有中日韓文字：拉丁標題（We’re getting married!）換展示字體用 */
@@ -35,14 +38,15 @@ const photoStyle = computed(() => (props.page.kind === 'photo' && props.page.foc
       :src="page.src"
       :alt="page.alt"
       :loading="eager ? 'eager' : 'lazy'"
+      decoding="async"
       class="photo"
       :style="photoStyle"
     >
   </div>
   <div
     v-else
-    class="face face-copy bg-cream"
-    :class="{ 'at-top': page.top !== undefined, 'has-art': !!page.art }"
+    class="face face-copy"
+    :class="{ 'at-top': page.top !== undefined, 'has-art': !!page.art, 'is-overlay': overlay, 'bg-cream': !overlay }"
     :style="copyStyle"
   >
     <!-- 桌機插圖使用文字下方的剩餘空間，避免寬矮視窗裁切後與標題重疊。 -->
@@ -67,20 +71,22 @@ const photoStyle = computed(() => (props.page.kind === 'photo' && props.page.foc
         style="--i: 0"
       >
       <!-- 標題與故事各頁同級（text-h3），眉標是它底下一行金色小型大寫的英文 -->
+      <!-- 疊在照片上（overlay）時整組換紙白／亮金，紙色文字頁維持墨色 -->
       <h2
         v-if="withTitle"
         :id="titleId"
-        class="reveal font-semibold text-ink"
-        :class="latinTitle ? 'font-display text-h2 tracking-wide' : 'font-serif-tc text-h3 tracking-wider'"
+        class="reveal font-semibold"
+        :class="[latinTitle ? 'font-display text-h2 tracking-wide' : 'font-serif-tc text-h3 tracking-wider', overlay ? 'text-paper' : 'text-ink']"
         style="--i: 0"
       >
         {{ title }}
       </h2>
-      <p v-if="page.eyebrow" class="reveal mt-3 font-display text-body-l font-semibold uppercase tracking-widest text-gold-deep" style="--i: 1">
+      <p v-if="page.eyebrow" class="reveal mt-3 font-display text-body-l font-semibold uppercase tracking-widest" :class="overlay ? 'text-gold-light' : 'text-gold-deep'" style="--i: 1">
         {{ page.eyebrow }}
       </p>
       <!-- 沒有眉標的頁（氣球那頁）內文貼近標題一點（新人 09-14） -->
-      <div class="reveal space-y-1 font-serif-tc text-body leading-loose tracking-wider text-ink-500" :class="page.eyebrow ? 'mt-6' : 'mt-2'" style="--i: 2">
+      <!-- 疊在照片上時行高收成 relaxed：六行的 Meet the Bride 才不會把照片蓋掉一半 -->
+      <div class="reveal space-y-1 font-serif-tc text-body tracking-wider" :class="[page.eyebrow ? 'mt-6' : 'mt-2', overlay ? 'leading-relaxed text-paper' : 'leading-loose text-ink-500']" style="--i: 2">
         <!-- 空字串是段落間距（同 StorySlide） -->
         <template v-for="(line, i) in page.lines" :key="i">
           <p v-if="line === ''" class="h-4" aria-hidden="true" />
@@ -163,10 +169,25 @@ const photoStyle = computed(() => (props.page.kind === 'photo' && props.page.foc
     object-fit: contain;
   }
 }
-/* 手機：插畫收掉（半屏塞不下）、文字一律置中 */
+/* 手機：插畫收掉（塞不下）、文字一律置中 */
 @media (width < 64rem) {
   .art-frame {
     display: none;
+  }
+  /* 直向翻頁（overlay）：這一面疊在鋪滿整屏的照片底部，底下一層由透明到墨的漸層托住字
+     （同 StoryBook 滿版跨頁的薄紗：亮的草地、白牆上只靠投影托不住）；文字靠左下，跟海邊那跨的小字同一個角落。
+     內距上方 7rem 是漸層的緩坡，字從 40% 深的地方才開始 */
+  .face-copy.is-overlay {
+    justify-content: flex-end;
+    /* 底距 4.5rem：讓開右下角的「回到最上方」膠囊（離底 1.5rem、高 2.5rem）與左下角的「跳過故事」 */
+    padding: 5rem 1.5rem 4.5rem;
+    text-align: left;
+    background: linear-gradient(to bottom, transparent, rgb(17 17 17 / 42%) 40%, rgb(17 17 17 / 68%));
+  }
+  /* 字的投影用 text-shadow 不用 filter：drop-shadow 濾鏡在 iOS 上會跟進場的 opacity／transform 過場一起逐幀重算，
+     進到這一跨的那一秒每一幀都在重畫（新人 09-17：照片區會頓）；text-shadow 畫一次就進圖層 */
+  .is-overlay .copy {
+    text-shadow: 0 2px 8px rgb(0 0 0 / 35%);
   }
 }
 

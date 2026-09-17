@@ -289,7 +289,7 @@ function copyPublicLink() {
   return copySignedLink(`/rsvp/public/${weddingId.value}`, '已複製公開回覆連結')
 }
 
-// 複製故事頁連結（賓客看故事、從裡面按「告訴我們你會來」進公開回覆）：
+// 複製故事頁連結（賓客看故事、從裡面按「回覆我們的邀請」進公開回覆）：
 // 故事頁會把網址上的簽名帶給 RSVP 連結，所以分享故事頁要用這一顆，裸網址在正式站點回覆會被擋
 function copyStoryLink() {
   return copySignedLink(`/story/${weddingId.value}`, '已複製故事頁連結')
@@ -696,7 +696,7 @@ async function confirmImport() {
           >
             公開回覆連結
           </UButton>
-          <!-- 故事頁（/story）是給賓客的邀請入口，網址要帶同一個簽名，裡面的「告訴我們你會來」才進得了公開回覆 -->
+          <!-- 故事頁（/story）是給賓客的邀請入口，網址要帶同一個簽名，裡面的「回覆我們的邀請」才進得了公開回覆 -->
           <UButton
             data-testid="vibe-guest-story-link"
             icon="i-heroicons-book-open"

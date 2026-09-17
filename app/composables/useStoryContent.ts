@@ -379,7 +379,9 @@ export function useStoryContent(): StoryContent {
       // 201 公里就是故事第一頁大學那段高雄—花蓮的距離，兩地與數字對得起來（新人 2026-09-04 確認）；
       // 年份是整段故事的起訖，不是那一段的
       distance: { from: 'Kaohsiung', to: 'Hualien', years: '2015 → 2026' },
-      cta: { start: '出發', next: '下一站', end: '繼續往下', hint: '點右側開始' },
+      // 手機是直向翻頁（issue #162），提示改成往下滑；圓上的照片可以點這件事也要講出來（新人 09-16：怕賓客不知道要點）
+      cta: { start: '出發', next: '下一站', end: '繼續往下', hint: '往下滑，出發' },
+      ringHint: '點一張照片，領取祝福',
       tiles: heroTiles,
       aside: heroAside,
     },

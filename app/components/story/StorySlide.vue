@@ -6,7 +6,7 @@
      站排在照片之前，一屏就看得到，不必在頁內再捲一次。
      slide.visual 有值的那一頁（歸零）不排照片，改放程式畫的視覺（一對粒子婚戒 StoryRings）；
      那一站合起來的愛心也換成網點版（StoryHeartDots），跟戒指同一套灰金圓點。
-     出場分兩段：這一頁被走到時（drawn）文字浮出、線分段畫、愛心浮出、數字從上一段的公里數走到這一段；
+     出場分兩段：這一頁被走到時（drawn）標題先浮出、內文一句接一句跟上、線分段畫、愛心浮出、數字從上一段的公里數走到這一段；
      軌道停穩後（settled）拼貼件才照疊放順序一件一件落下（每件隔 90ms），不跟翻頁的平移疊在一起。
      全部是 transform／opacity／scale／translate 的 transition，順序用 transition-delay 排（--at、--i）。
      SSR／無 JS（live=false）直接是終態：線畫滿、愛心在位、文字照片都在，沒有東西被藏死。 -->
@@ -106,12 +106,13 @@ const srText = computed(() => {
   >
     <!-- 手機的上內距 pt-20：標題要落在右上唱片與漢堡（下緣 y 64）之下。原本 pt-10 上面還有一行頁碼（28px＋間距 16px），
          頁碼拿掉後改成 pt-20，標題的位置與內容下緣跟原本只差 4px，一屏的算法不變（桌機 lg:pt-0 不受影響） -->
+    <!-- 手機：貫穿整頁的直線（淡灰底，金線從上往下畫），與 px-6 同一個 x。
+         掛在 section 這一層、不掛在內層容器：內層容器不含底部 3rem 的內距，線會在每頁底下斷一截、
+         接不到下一頁的線（新人 09-17 截圖）；掛在 section 上 inset-y-0 就是整頁高，頁與頁的線才連成一條 -->
+    <div class="absolute inset-y-0 left-6 w-0.5 bg-line lg:hidden" aria-hidden="true">
+      <span class="rail-fill absolute inset-0 origin-top bg-gold" />
+    </div>
     <div class="relative mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 pt-20 lg:justify-center lg:pb-[30vh] lg:pt-0">
-      <!-- 手機：貫穿整頁的直線（淡灰底，金線從上往下畫），與 px-6 同一個 x -->
-      <div class="absolute inset-y-0 left-6 w-0.5 bg-line lg:hidden" aria-hidden="true">
-        <span class="rail-fill absolute inset-0 origin-top bg-gold" />
-      </div>
-
       <!-- 手機是單欄：文字 →「站」（愛心與公里數）→ 照片。站排在照片之前，一屏就看得到，不必在頁內再捲一次。
            桌機維持左文右圖，站由下方的橫向時間軸負責，所以站這一塊 lg:hidden。
            左內距 pl-10 改掛在各欄上（不掛 grid）：站才能退回直線的 x，與線同一個起點。
@@ -131,12 +132,14 @@ const srText = computed(() => {
               </template>
             </template>
           </h2>
-          <!-- 手機收一階行高：leading-loose 在窄欄會多換幾行，一屏放不下站；桌機維持原本的鬆 -->
-          <div class="reveal mt-4 space-y-1 font-serif-tc text-body leading-relaxed tracking-wider text-ink-500 lg:leading-loose" style="--i: 1">
+          <!-- 手機收一階行高：leading-loose 在窄欄會多換幾行，一屏放不下站；桌機維持原本的鬆。
+               內文一句一句浮出（新人 09-17）：每行各自掛 reveal、序號接在標題後面，每句隔 60ms，
+               八行的頁最後一句在到頁後約 0.9 秒出來，讀的速度剛好跟得上 -->
+          <div class="mt-4 space-y-1 font-serif-tc text-body leading-relaxed tracking-wider text-ink-500 lg:leading-loose">
             <!-- 空字串是段落間距（斷行照新人給的，段與段之間空一行） -->
             <template v-for="(line, i) in slide.lines" :key="i">
               <p v-if="line === ''" class="h-4" aria-hidden="true" />
-              <p v-else>
+              <p v-else class="reveal" :style="{ '--i': i + 1 }">
                 {{ line }}
               </p>
             </template>
@@ -144,8 +147,10 @@ const srText = computed(() => {
         </div>
 
         <!-- 手機：距離段（這一頁的「站」）。愛心欄與直線同一個起點，兩顆愛心框出這一段、公里數在旁邊；歸零只剩一顆愛心。
-             年份跟著站走，收在同一格裡，不另外多佔一列 -->
-        <div v-if="marker" class="relative py-2 pl-10 lg:hidden" aria-hidden="true">
+             年份跟著站走，收在同一格裡，不另外多佔一列。
+             整格也掛 reveal、序號排在最後一句之後：手機往下滑會先看到它、說明文字才浮出來，順序反了（新人 09-17）；
+             跟著文字由下往上進場，就是讀完最後一句才看到這一段的距離 -->
+        <div v-if="marker" class="reveal relative py-2 pl-10 lg:hidden" :style="{ '--i': slide.lines.length + 1 }" aria-hidden="true">
           <StoryHeart class="absolute -left-3 top-4 size-6 text-gold" />
           <div class="flex items-center justify-between gap-4 border-y border-line py-3">
             <div>
@@ -164,8 +169,8 @@ const srText = computed(() => {
             </p>
           </div>
         </div>
-        <!-- 手機：片刻（空心愛心＋日期）；沒有日期的頁就只讓線穿過 -->
-        <div v-else-if="slide.years" class="flex items-center lg:hidden" aria-hidden="true">
+        <!-- 手機：片刻（愛心＋日期）；沒有日期的頁就只讓線穿過。進場順序同上 -->
+        <div v-else-if="slide.years" class="reveal flex items-center lg:hidden" :style="{ '--i': slide.lines.length + 1 }" aria-hidden="true">
           <div class="relative h-6 w-10 shrink-0 text-gold">
             <StoryHeart class="heart m-heart m-heart-end absolute top-1/2 size-5" />
           </div>
@@ -192,6 +197,7 @@ const srText = computed(() => {
               :src="o.src"
               :alt="o.alt"
               loading="lazy"
+              decoding="async"
               class="reveal prop absolute hidden lg:block"
               :style="objectStyle(o, j)"
             >
@@ -206,6 +212,7 @@ const srText = computed(() => {
                 :src="photo.src"
                 :alt="photo.alt"
                 :loading="photo.eager ? 'eager' : 'lazy'"
+                decoding="async"
                 class="block w-full"
                 :class="photo.framed ? '' : 'aspect-[5/6] object-cover'"
               >
@@ -224,6 +231,7 @@ const srText = computed(() => {
               :src="slide.illustration.src"
               :alt="slide.illustration.alt"
               loading="lazy"
+              decoding="async"
               class="reveal art absolute block w-full"
               :style="artStyle"
             >
@@ -243,6 +251,7 @@ const srText = computed(() => {
               :src="o.src"
               :alt="o.alt"
               loading="lazy"
+              decoding="async"
               class="reveal prop absolute hidden lg:block"
               :style="objectStyle(o, frontOrder + j)"
             >
@@ -301,7 +310,7 @@ const srText = computed(() => {
 </template>
 
 <style scoped>
-/* 文字在切頁途中開始進場，每項錯開 60ms，內容更早可讀。 */
+/* 文字在切頁途中開始進場，標題先、內文一句接一句，每項錯開 60ms，內容更早可讀。 */
 .reveal {
   transform: rotate(var(--rot, 0deg));
   transition:
@@ -326,11 +335,15 @@ const srText = computed(() => {
   scale: 1.04;
 }
 
-/* 無 JS 的手機版是直式堆疊、原生捲動：頁與頁之間補回留白。
-   翻頁模式（is-live）的底部留白由 StoryDeck 的 7rem 負責，這裡不能再加，否則吃掉一屏的高度 */
+/* 手機是直式堆疊（有沒有 JS 都是，issue #162）：每頁照內容高、不撐到一屏（理由見 StoryDeck 的樣式段），底部留 3rem，
+   加上下一頁的上距 pt-20 就是章與章的間距；下一頁的頂端不會貼著這一頁的照片。
+   手機的拼貼件跟文字同一個時間點起跑（StoryDeck 在手機不等停穩），多墊 240ms 讓標題與前幾句先出來、照片再落下 */
 @media (width < 64rem) {
-  .slide:not(.is-live) {
-    padding-bottom: 4rem;
+  .slide {
+    padding-bottom: 3rem;
+  }
+  .collage .reveal {
+    transition-delay: calc(240ms + var(--i, 0) * 90ms);
   }
 }
 
@@ -344,38 +357,25 @@ const srText = computed(() => {
 .collage {
   aspect-ratio: 10 / 13;
 }
-/* 手機：拼貼跟著螢幕高度縮放，矮螢幕自己變小，站與公里數才進得了一屏。
-   上限 30svh → 25svh（新人裁示：照片一起縮小，換照片在小螢幕上完整進一屏）。
-   25 是算出來的：綁死的是有插畫的頁——插畫 bottom: 0，拼貼盒的下緣就是可見內容的下緣，
-   文字＋站把拼貼頂到 y = 446px（各頁固定，只跟文案行數有關、與螢幕高無關），
-   390×844 的可用高度 = 844 − 112（頁次軸留白 7rem）− 446 = 286px；
-   10/13 要 1.3W ≤ 286 → W ≤ 220px ＝ 26.06svh，取 25svh（＝211px）留 12px 餘裕。
-   沒有插畫的頁寬鬆得多：第二張照片的下緣落在 0.22H + 0.752W
-   （0.752 是量出來的——白框 padding 佔 0.728W，再加 4° 傾角撐大的外框），
-   最緊的第 3 頁可用 258px，0.9632 × 211 = 203px，還剩 55px。
-
-   第三項 calc(77svh - 438px) 管矮一階的螢幕：可用高度是 h − 558（＝112 + 446），
-   不是 h 的固定比例，所以純 25svh 在 h < 842 就會不夠——393×786、375×812 這種常見機型
-   第 1 頁的火車還是會被切（火車 09-15 已拿掉，現在沒有「照片＋插畫」同頁的頁，這項保留給之後再加插畫時用）。把限制式 1.3W ≤ h − 558 解開得 W ≤ 0.7692h − 429，
-   取 0.77h − 438 留約 8px 餘裕；842px 以上換 25svh 接手（兩式在 842.3 交會），
-   390×844 以上完全不受這一項影響。
-   下限 9rem：再小照片只剩縮圖、失去存在感，寧可讓 h < 735 的機型（360×640 這種）被裁到。
+/* 手機：拼貼放大到「照片看得清楚」（issue #162，新人 09-16：拍立得太小）——寬度吃螢幕寬的八成（390 → 312px，原本 211px），
+   不再綁螢幕高度。原本綁高度是為了塞進「一屏減 8rem 頁次軸」；改成直向翻頁後頁次軸沒了，
+   而且真機 Safari 的 svh 是工具列佔掉後的小視窗（iPhone 13 只有 664px），綁高度只會把照片算得更小（177px）。
+   文字＋站把拼貼頂到 y = 446px，沒有插畫的頁第二張照片下緣在 0.963W（§28 量的 0.22H + 0.752W，H = 0.96W），
+   第 1～3 頁在 390 寬約 794px 高：工具列收合後（大視窗約 750～844）差不多一屏，工具列在時多捲 130px 看照片下半。
+   直向模式的 snap 是 proximity、面板比視窗高時任何「面板蓋滿視窗」的位置都算對齊點，不會被彈回頁頂。
    沒有插畫的頁維持 10/9.6：佔位框在手機已收掉，那 22% 的高度是純空白；
    9.6 的下限是 0.9333（0.22H + 0.728W ≤ H 解出來的），留一點餘裕才不會讓照片凸出自己的盒子 */
 @media (width < 64rem) {
   .collage {
-    max-width: max(9rem, min(20rem, 25svh, calc(77svh - 438px)));
+    max-width: min(22rem, 80vw);
   }
   .collage.no-art {
     aspect-ratio: 10 / 9.6;
   }
-  /* 只有插畫的頁（夜景、抱貓）：插畫往左出血到直線旁（欄的左內距 2.5rem 收回 1.75rem，離直線還有 12px），
-     寬度從 18rem 變 330px、盒子高度跟著插畫走。原本插畫下方空了三成多（09-15 審視）；
-     再寬就會蓋住左邊那條直線，所以到這裡為止 */
+  /* 只有插畫的頁（夜景、抱貓）：原本往左出血到 330px 寬，跟放大後的拍立得站在一起反而太大（新人 09-16：五口之家太大）。
+     收成 62vw、最多 17rem（390 → 242px），置中在照片那一欄，盒子高度跟著插畫走 */
   .collage.art-only {
-    width: calc(100% + 1.75rem);
-    max-width: none;
-    margin-left: -1.75rem;
+    max-width: min(17rem, 62vw);
     aspect-ratio: auto;
   }
   .collage.art-only .art {
@@ -384,10 +384,10 @@ const srText = computed(() => {
     width: 100%;
   }
   /* 只有一張拍立得的頁（MARRY ME 燈牌）：那一疊的兩格座標只用到第一格（48% 寬＝101px，底下空四成），
-     改成一張吃滿盒子、盒子放大到 34svh。盒子高度跟著照片走（有框無框都成立），
-     第三項管矮螢幕：文字＋日期把盒子頂到 y≈355，可用高度 h − 112 − 355，燈牌高 0.88W，解出 W ≤ 0.85h − 420 */
+     改成一張吃滿盒子、跟其他頁同一個寬度。盒子高度跟著照片走（有框無框都成立）：
+     文字＋日期把盒子頂到 y≈355，燈牌高 0.88W，390 寬整頁約 680px，工具列在時剛好一屏 */
   .collage.solo {
-    max-width: max(9rem, min(20rem, 34svh, calc(85svh - 420px)));
+    max-width: min(22rem, 80vw);
     aspect-ratio: auto;
   }
   .collage.solo .photo-a {

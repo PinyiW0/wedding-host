@@ -1,8 +1,10 @@
-<!-- app/components/story/StoryHero.vue — 首屏：名字、In Your Love、手寫 I Shine、一句點題。
-     畫面下方一顆愛心是時間軸的起點。還沒出發時愛心以心跳的節拍送出一道訊號，沿著一條虛線往右跑：
-     桌機跑向「出發」按鈕，手機跑向畫面右緣、末端配一行「點右側開始」（右側 25% 就是下一頁的點擊區），告訴人往哪邊走。
-     使用者出發後（started）訊號收掉，金線從愛心往右長出來接到下一頁。
-     無 JS 的窄螢幕例外：面板直式堆疊，線改成沿左緣往下長、接第一頁的直線。
+<!-- app/components/story/StoryHero.vue — 首屏：名字、In Your Love、手寫 I Shine、一句點題，
+     副標下面一行「點一張照片，領取祝福」——圓上的照片可以點這件事，手機沒有 hover，不寫出來沒人知道（新人 09-16）。
+     畫面下方一顆愛心是時間軸的起點。還沒出發時愛心以心跳的節拍送出一道訊號，沿著一條虛線跑：
+     桌機往右跑向「出發」按鈕；手機（直向翻頁，vertical）改成另一個版型（新人 09-17）：「往下滑，出發」在上、愛心在下（都置中），
+     線從愛心往下、轉個彎到左緣、再往下接第一頁沿左緣的直線——出發前虛線沿著這條路往下流，出發後金線照同一條路畫到底。
+     使用者出發後（started）訊號收掉，金線從愛心長出來接到下一頁。
+     無 JS 的窄螢幕也是直式堆疊，愛心在左下、線沿左緣往下（沒有訊號，直接畫滿）。
      紙白底；婚紗照只出現在祝福圓上（其餘交給 /gallery）。左上葉影沿用入口頁的背景素材——從信封點進來，仍是同一張桌面；
      葉影會像午後的日光一樣慢慢漂、忽明忽暗，游標移動時再跟著挪個兩三像素。 -->
 <script setup lang="ts">
@@ -14,6 +16,8 @@ const props = defineProps<{
   started: boolean
   /** JS 已接管；false（SSR／無 JS）時線直接畫滿、沒有訊號 */
   live: boolean
+  /** 手機的直向翻頁模式（StoryDeck）：時間軸的起點改成沿左緣往下、提示改成往下滑 */
+  vertical: boolean
 }>()
 
 /** 名字中間的連接詞（全形或半形 &），連同前後空白一起切掉 */
@@ -97,13 +101,49 @@ function onBackdrop(event: PointerEvent) {
   event.stopPropagation()
 }
 
+/* ── 手機直向的時間軸起點（is-vertical）──
+   提示在上、愛心在下（都置中），線從愛心底下往下、在 V_TURN_Y 轉彎到左緣 V_X0、再往下到首屏底，接第一頁沿左緣的直線。
+   線是一條 SVG path：橫向座標隨視窗寬（量 section 的寬），縱向固定 V_H px；SSR 不畫這一塊（vertical 只在 JS 接管後為真），
+   所以初始寬用 390 也沒有 hydration 的問題，mount 時量到真值就換掉 */
+const V_H = 120
+/** 愛心中心離這一塊頂端多少（size-9 的一半） */
+const V_HEART_Y = 18
+/** 線往下走到這裡開始轉彎 */
+const V_TURN_Y = 66
+/** 轉彎的半徑 */
+const V_RADIUS = 20
+/** 左緣直線的 x：與 StorySlide 手機直線同一個位置（px-6 內距 1.5rem ＋ 線半寬 1px） */
+const V_X0 = 25
+const rootRef = ref<HTMLElement | null>(null)
+const heroWidth = ref(390)
+let sizeObserver: ResizeObserver | null = null
+
+/** 從愛心底下出發：往下 → 四分之一圓轉向左 → 橫走到左緣 → 四分之一圓轉向下 → 到底 */
+const vPath = computed(() => {
+  const cx = heroWidth.value / 2
+  const r = V_RADIUS
+  const y = V_TURN_Y
+  return `M${cx} ${V_HEART_Y + 18} V${y} Q${cx} ${y + r} ${cx - r} ${y + r} H${V_X0 + r} Q${V_X0} ${y + r} ${V_X0} ${y + 2 * r} V${V_H}`
+})
+
+function measureWidth() {
+  if (rootRef.value)
+    heroWidth.value = rootRef.value.clientWidth || 390
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKey)
   parallaxOn = window.matchMedia(PARALLAX_QUERY).matches
+  measureWidth()
+  if (rootRef.value) {
+    sizeObserver = new ResizeObserver(measureWidth)
+    sizeObserver.observe(rootRef.value)
+  }
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
   cancelAnimationFrame(parallaxFrame)
+  sizeObserver?.disconnect()
 })
 
 // 名字裡的「＆」單獨拿出來用 Cormorant 斜體：兩個中文名之間一個小小的西文連接詞
@@ -130,8 +170,9 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
 
 <template>
   <section
+    ref="rootRef"
     class="hero relative isolate flex min-h-svh flex-col items-center justify-center overflow-hidden bg-paper px-6 pb-44 pt-24 text-center lg:pb-0 lg:pt-0"
-    :class="{ 'is-live': live, 'is-started': started }"
+    :class="{ 'is-live': live, 'is-started': started, 'is-vertical': vertical }"
     :style="{ '--px': `${shift.x}px`, '--py': `${shift.y}px` }"
     data-panel="0"
     @pointermove="onMove"
@@ -199,6 +240,12 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
             </template>
           </template>
         </p>
+        <!-- 圓上的照片可以點，但手機沒有 hover、看不出來（新人 09-16）：副標下面補一行提示。
+             跟標題同一組，翻開祝福時一起淡出；字級用最低的 caption、金色，跟出發的提示同一套。
+             桌機不顯示：滑鼠有 hover 的景深與游標當提示，而且多一行會把整組標題往上推 19px、動到首屏的構圖 -->
+        <p v-if="hero.tiles.length" class="rise mt-5 font-serif-tc text-caption tracking-widest text-gold-deep lg:hidden" style="--i: 4">
+          {{ hero.ringHint }}
+        </p>
       </div>
 
       <!-- 翻開的祝福：一張便簽（紙紋、愛心迴紋針、微傾，跟貓段的紙條同一套）疊在標題上，不進版面流，圓心不會因為句子長短而位移。
@@ -237,15 +284,23 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
       <span class="km-to">{{ hero.distance.to }}</span>
     </span>
 
-    <!-- 時間軸起點：訊號虛線與跑動的光點往右指（桌機指向翻頁按鈕、手機指向滑動的方向），出發後換成金線長出來 -->
-    <div class="origin absolute text-gold" aria-hidden="true">
+    <!-- 時間軸起點（桌機、無 JS）：訊號虛線與跑動的光點指向翻頁的方向（桌機往右指向翻頁按鈕），出發後換成金線長出來 -->
+    <div v-if="!vertical" class="origin absolute text-gold" aria-hidden="true">
       <span class="signal-path absolute" />
       <span class="signal-run absolute" />
       <StoryHeart class="origin-heart absolute size-9" />
       <span class="origin-line absolute bg-gold" />
     </div>
-    <!-- 手機沒有翻頁按鈕，訊號末端補一行字：線指向哪裡就點哪裡（畫面右側 25% 是「下一頁」的點擊區） -->
-    <span class="swipe-hint font-serif-tc text-caption tracking-widest text-gold-deep" aria-hidden="true">{{ hero.cta.hint }}</span>
+    <!-- 手機直向：提示在上、愛心在下，線從愛心往下轉到左緣接第一頁（幾何見 script 的 vPath）。
+         手機沒有翻頁按鈕，這行字就是「往下滑就是翻頁」的提示，出發後跟虛線一起收掉 -->
+    <div v-else class="v-origin absolute inset-x-0 bottom-0 text-gold" aria-hidden="true">
+      <span class="v-hint absolute left-1/2 font-serif-tc text-body tracking-widest text-gold-deep">{{ hero.cta.hint }}</span>
+      <StoryHeart class="v-heart absolute left-1/2 top-0 size-9" />
+      <svg class="v-line absolute inset-0 size-full" :viewBox="`0 0 ${heroWidth} ${V_H}`" preserveAspectRatio="none" fill="none">
+        <path class="v-signal" :d="vPath" pathLength="1" vector-effect="non-scaling-stroke" />
+        <path class="v-ink" :d="vPath" pathLength="1" vector-effect="non-scaling-stroke" />
+      </svg>
+    </div>
   </section>
 </template>
 
@@ -510,10 +565,10 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
   grid-area: years;
 }
 
-/* ── 時間軸起點 ──
-   JS 接管後（桌機捲動翻頁、手機滑動翻頁）都是橫的：愛心在畫面中央、離底 --rail-y（與各頁橫線同高），
-   線從愛心往右長到面板右緣。無 JS 的窄螢幕面板直式堆疊，改成沿左緣往下長、接第一頁的直線（在最後面覆寫）。
-   線只動 transform（scale），愛心一直在。 */
+/* ── 時間軸起點（桌機、無 JS）──
+   桌機是橫的：愛心在畫面中央、離底 --rail-y（與各頁橫線同高），線從愛心往右長到面板右緣。
+   無 JS 的窄螢幕面板直式堆疊，改成沿左緣往下長、接第一頁的直線（在最後面覆寫）。
+   手機 JS 接管後是另一塊（.v-origin，見最後面）。線只動 transform（scale），愛心一直在。 */
 .origin {
   left: 50%;
   right: 0;
@@ -594,24 +649,13 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
   }
 }
 
-/* 手機的滑動提示：訊號末端一行字，出發後跟訊號一起收掉 */
-.swipe-hint {
-  position: absolute;
-  right: 1.5rem;
-  bottom: calc(var(--rail-y, 22%) + 0.75rem);
-  opacity: 0;
-  transition: opacity 0.4s var(--ease-standard);
-}
-
 @media (max-width: 63.999rem) {
   .signal-path,
   .signal-run {
     right: 1.5rem;
   }
-  .hero.is-live:not(.is-started) .swipe-hint {
-    opacity: 1;
-  }
-  /* 無 JS：面板直式堆疊，線改成沿左緣往下長、接第一頁的直線（愛心落在直線的 x：1.5rem 內距 + 線半寬 1px） */
+  /* 無 JS 的直式堆疊：線改成沿左緣往下長、接第一頁的直線
+     （愛心落在直線的 x：1.5rem 內距 + 線半寬 1px），線從愛心往下長（scaleY） */
   .hero:not(.is-live) .origin {
     left: calc(1.5rem + 1px);
     right: auto;
@@ -626,7 +670,75 @@ const subtitleRuns = computed(() => splitDigits(props.hero.subtitle))
     right: auto;
     width: 2px;
     height: auto;
+    transform-origin: top;
+    transform: scaleY(0);
   }
+  /* 手機：葉影不動、只留清楚那一層。模糊層、混色與 26 秒的漂移在 iPhone 上是首屏每一幀的合成負擔
+     （新人 09-17：進場會卡）；葉影本來就大半被圓上的照片蓋住，靜止版看不出差別 */
+  .leaf-art,
+  .leaf-sharp {
+    animation: none;
+  }
+  .leaf-sharp {
+    opacity: 0.8;
+  }
+  .leaf-soft {
+    display: none;
+  }
+}
+
+/* ── 手機直向的時間軸起點（is-vertical，幾何見 script）──
+   提示在上（比原本大一階：text-body）、愛心在下，都置中；線是 SVG path，pathLength=1 讓虛線與描線都用比例算，
+   不管螢幕多寬節奏都一樣，vector-effect 讓線寬固定。
+   出發前：虛線沿著路徑往下流（dashoffset 遞減＝往終點跑，一個週期剛好一組 dash＋gap，循環無縫）；
+   出發後：虛線淡出、心跳停、金線從愛心照同一條路畫到底（1.2 秒，與桌機的線同速）。 */
+.v-origin {
+  height: 120px;
+}
+.v-hint {
+  bottom: calc(100% + 0.75rem);
+  translate: -50% 0;
+  white-space: nowrap;
+  transition: opacity 0.4s var(--ease-standard);
+}
+.v-heart {
+  translate: -50% 0;
+  animation: beat 2.4s var(--ease-standard) infinite;
+}
+.v-line {
+  overflow: visible;
+}
+.v-signal {
+  stroke: currentColor;
+  stroke-width: 1px;
+  stroke-dasharray: 0.018 0.03;
+  opacity: 0.55;
+  animation: v-flow 1.2s linear infinite;
+  transition: opacity 0.4s var(--ease-standard);
+}
+.v-ink {
+  stroke: currentColor;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+@keyframes v-flow {
+  to {
+    stroke-dashoffset: -0.048;
+  }
+}
+.is-started .v-hint,
+.is-started .v-signal {
+  opacity: 0;
+}
+.is-started .v-signal,
+.is-started .v-heart {
+  animation: none;
+}
+.is-started .v-ink {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1.2s var(--ease-standard);
 }
 
 /* 出發之後：訊號收掉、心跳停、金線 1.2 秒慢慢長出來。沒有 JS（不是 live）直接畫滿、也沒有訊號 */

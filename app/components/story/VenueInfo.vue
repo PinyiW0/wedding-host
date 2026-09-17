@@ -22,10 +22,14 @@ function toggleGroup(key: string) {
 }
 
 // 場地照原地輪播：每 5 秒淡入下一張。自動變換的內容要能停（WCAG 2.2.2）——點下方的圓點就換到那張、之後不再自動換；
-// 游標停在照片上暫停、照片不在畫面內不跑、reduced-motion 不自動換（只留圓點手動切）
+// 游標停在照片上暫停、照片不在畫面內不跑、reduced-motion 不自動換（只留圓點手動切）。
+// 手機也可以左右滑（新人 09-17）：滑了跟點圓點一樣停掉自動輪播；手動切的那一下換得快一點（0.5 秒），自動輪播維持 1.2 秒
 const PHOTO_MS = 5000
+const QUICK_MS = 600
 const photoIndex = ref(0)
 const photoFrame = ref<HTMLElement | null>(null)
+const quick = ref(false)
+let quickTimer = 0
 const currentPhoto = computed(() => props.venue.photos[photoIndex.value] ?? props.venue.photos[0])
 /** 桌機橫幅把 4:3 的照片裁成 2:1，各張的裁切重心（object-position 的 y）依內容層的順序排：
  *  外觀照（大樓在上、階梯與入口在下）取偏下，把「晶宴」招牌與入口留在框內、只犧牲頂樓；廳內照取略偏上，吊燈與桌面都在。
@@ -59,7 +63,45 @@ function hoverPhoto(on: boolean) {
 function pickPhoto(i: number) {
   photoIndex.value = i
   photoPicked = true
+  quick.value = true
+  clearTimeout(quickTimer)
+  quickTimer = window.setTimeout(() => {
+    quick.value = false
+  }, QUICK_MS)
   syncPhotoTimer()
+}
+
+/* 左右滑切換：frame 掛 touch-action: pan-y，直向捲動仍交給瀏覽器、橫向的手勢才到這裡。
+   手指橫移超過 SWIPE_PX、而且橫向明顯多於縱向才算一次滑；往左滑＝下一張、往右滑＝上一張 */
+const SWIPE_PX = 40
+let swipeId: number | null = null
+let swipeX = 0
+let swipeY = 0
+
+function onSwipeStart(event: PointerEvent) {
+  if (event.pointerType === 'mouse')
+    return
+  swipeId = event.pointerId
+  swipeX = event.clientX
+  swipeY = event.clientY
+}
+
+function onSwipeEnd(event: PointerEvent) {
+  if (swipeId === null || event.pointerId !== swipeId)
+    return
+  swipeId = null
+  const dx = event.clientX - swipeX
+  const dy = event.clientY - swipeY
+  if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 1.5)
+    return
+  const n = props.venue.photos.length
+  if (n < 2)
+    return
+  pickPhoto((photoIndex.value + (dx < 0 ? 1 : n - 1)) % n)
+}
+
+function onSwipeCancel() {
+  swipeId = null
 }
 
 onMounted(() => {
@@ -75,6 +117,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   photoObserver?.disconnect()
   clearInterval(photoTimer)
+  clearTimeout(quickTimer)
 })
 </script>
 
@@ -88,9 +131,18 @@ onBeforeUnmount(() => {
       <div class="mx-auto mt-4 h-px w-10 bg-gold" />
 
       <!-- 場地照：外觀與廳內疊在同一個框裡交替淡入（照片同為 4:3）。桌機框是 2:1 的橫幅、手機 4:3；
-           沒有 JS 時停在第一張；看不見的那張 aria-hidden，讀屏只讀現在這張 -->
+           沒有 JS 時停在第一張；看不見的那張 aria-hidden，讀屏只讀現在這張。手機在框上左右滑也能換 -->
       <figure v-if="currentPhoto" class="mt-12">
-        <div ref="photoFrame" class="frame" @pointerenter="hoverPhoto(true)" @pointerleave="hoverPhoto(false)">
+        <div
+          ref="photoFrame"
+          class="frame"
+          :class="{ 'is-quick': quick }"
+          @pointerenter="hoverPhoto(true)"
+          @pointerleave="hoverPhoto(false)"
+          @pointerdown="onSwipeStart"
+          @pointerup="onSwipeEnd"
+          @pointercancel="onSwipeCancel"
+        >
           <div class="relative aspect-4/3 overflow-hidden lg:aspect-2/1">
             <img
               v-for="(photo, i) in venue.photos"
@@ -355,6 +407,10 @@ onBeforeUnmount(() => {
 .venue-photo.is-shown {
   opacity: 1;
 }
+/* 手動切（滑、點圓點）換得快一點：手指才剛放開就要看到回應 */
+.is-quick .venue-photo {
+  transition-duration: 0.5s;
+}
 
 .swatch-art {
   position: relative;
@@ -391,5 +447,7 @@ onBeforeUnmount(() => {
   box-shadow:
     0 1px 1px rgb(17 17 17 / 6%),
     0 8px 22px rgb(17 17 17 / 8%);
+  /* 直向捲動交給瀏覽器，橫向的手勢留給左右滑換照片 */
+  touch-action: pan-y pinch-zoom;
 }
 </style>
