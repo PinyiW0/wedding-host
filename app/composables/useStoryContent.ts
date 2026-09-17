@@ -30,6 +30,16 @@ const HERO_PHOTOS = Array.from({ length: 24 }, (_, i) =>
   `/images/story/ring-${String(i + 1).padStart(2, '0')}.webp`)
 const heroTiles: StoryHeroTile[] = HERO_PHOTOS.map((src, k) => ({ src, message: HERO_WISHES[k % HERO_WISHES.length]! }))
 
+// 結尾那一區的拖尾照片：相簿三批裡全部 42 張直式縮成長邊 320px（public/images/story/trail-01～42.webp）。
+// 池子越大滑鼠掃過越不會繞回同一張（新人 09-15：「用原本那 30 張就不會重複」）；16 張橫式不放——塞進 3:4 的拍立得會切掉人。
+// 順序是同場景連著出（草原 19 → 海邊 15 → 都會 8）：三種場景輪流出過一版，連著冒的每張換色調，新人說「散散的」，同場景連著出色調才連貫。
+// 數字是 trail 檔的編號、陣列順序才是出場順序：01～36 是前兩批（檔名就是當時的出場順序），
+// 37～42 是第三批（09-17）的六張直式（依序來自相簿 51、53、54、58、61、62），穿插進各自的場景裡、不重排舊檔；
+// trail-19、23 同一天換成重修版（相簿 42、50）。trail 檔對回相簿編號的整張表在 docs/public-landing-assets.md §68
+const TRAIL_MEADOW = [1, 38, 2, 3, 4, 5, 6, 37, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+const TRAIL_SEASIDE = [18, 39, 19, 20, 40, 21, 22, 41, 23, 24, 42, 25, 26, 27, 28]
+const TRAIL_CITY = [29, 30, 31, 32, 33, 34, 35, 36]
+
 // 桌機左緣的直排英文（新人 2026-09-04 定稿），固定兩行、不折第三行。
 // 三個數字的開頭與「orbits」「home」用 Cormorant 斜體，跟頁面上所有數字走同一套襯線
 const heroAside: StoryTextRun[][] = [
@@ -578,11 +588,8 @@ export function useStoryContent(): StoryContent {
       url: 'https://drive.google.com/drive/folders/1N_svXqePPzIXKfYE4Jf_EnPrGhJcJQJd?usp=sharing',
       label: '把你今天拍的照片放進來',
     },
-    // 拖尾照片：相簿兩批裡全部 36 張直式縮成長邊 320px（trail-01～36.webp，合計 441KB，前 12 張進頁面就抓、其餘快捲到才抓）。
-    // 池子越大滑鼠掃過越不會繞回同一張（新人 09-15：「用原本那 30 張就不會重複」）。
-    // 順序是同場景連著出（草原 17 → 海邊 11 → 都會 8）：三種場景輪流出過一版，連著冒的每張換色調，新人說「散散的」；
-    // 同場景連著出色調才連貫。13 張橫式不放——塞進 3:4 的拍立得會切掉人
-    trail: Array.from({ length: 36 }, (_, i) => `/images/story/trail-${String(i + 1).padStart(2, '0')}.webp`),
+    // 拖尾照片：相簿三批裡全部 42 張直式（出場順序與檔案對照見檔頭的 TRAIL_*）；前 12 張進頁面就抓、其餘快捲到才抓
+    trail: [...TRAIL_MEADOW, ...TRAIL_SEASIDE, ...TRAIL_CITY].map(n => `/images/story/trail-${String(n).padStart(2, '0')}.webp`),
     music: {
       src: '/audio/wedding-bgm.mp3',
       title: 'Our Song',
