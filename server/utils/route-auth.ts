@@ -43,6 +43,11 @@ const RECEPTION_GET = new Set([
 // 投影牆（blessings、guests/display-names、projection-settings）與流程表不在此列：那些會列出賓客姓名，維持要簽章
 const LANDING_OPEN_GET = new Set(['', 'rsvp-config', 'line-oa', 'flowers'])
 
+// 這個請求是不是「新人自己那場的 open 路由」（issue #163）。landingId 沒設（dev／e2e 是空字串）＝沒有這個例外
+export function isLandingOpen(route: RouteAccess, landingId: string | null | undefined): boolean {
+  return route.kind === 'share' && route.open === true && !!landingId && route.weddingId === landingId
+}
+
 const GUEST_ACTION_RE = /^guests\/([^/]+)\/(?:rsvp|self-check-in|line-binding)$/
 const GUEST_LINE_LOGIN_RE = /^guests\/([^/]+)\/line-login$/ // OAuth 起手（GET）：同賓客專屬授權
 const THANK_YOU_PUBLIC_RE = /^thank-you-card\/public\/([^/]+)$/
