@@ -87,8 +87,13 @@ useSeoMeta({
   line-height: 2;
 }
 
-/* 選單開關：桌上的東西差不多擺好（第三幕約 2.4 秒落定）才淡進來，不跟進場搶 */
+/* 選單開關：桌上的東西差不多擺好（第三幕約 2.4 秒落定）才淡進來，不跟進場搶。
+   這一層掛著 opacity 動畫（fill both），瀏覽器會讓它自成一個疊層——裡面 PublicMenu 的 z-index 65／70 出不了這一層，
+   整層要自己排到桌面物件（InviteStage 的 .si，z 12～42）與引言（z 40）上面，不然選單打開會被信封、照片、日期卡蓋住。
+   70 對齊 PublicMenu 開關自己的層級。 */
 .invite-menu {
+  position: relative;
+  z-index: 70;
   animation: menu-in 400ms var(--ease-standard) 1800ms both;
 }
 
