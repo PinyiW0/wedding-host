@@ -6,7 +6,7 @@
 - 範圍：`server/**` 全部 handler、授權鏈、簽名機制、密鑰設定
 - 方法：`/security-review` 起手 + 四路對抗式掃描（租戶隔離 / 注入輸入驗證 / 資訊洩露 PII / 密鑰與基礎設施）
 
-授權模型現況（供對照）：`server/middleware/auth.ts` 對登入者以 `assertWeddingScope` 驗 path 上的 `weddingId` 歸屬（新人限自有、接待員限綁定、管理者跨場放行）；匿名存取以 HMAC 簽名（`w.` 婚禮／`g.` 賓客）綁定 path `weddingId`。`enforced` 模式（production）無 token 即 401、分享／賓客連結需簽名；`open` 模式（dev／e2e）無 token 退回預設管理員、簽名不強制。
+授權模型現況（供對照）：`server/middleware/auth.ts` 對登入者以 `hasWeddingScope` 驗 path 上的 `weddingId` 歸屬（新人限自有、接待員限綁定、管理者跨場放行），不符即 403；匿名存取以 HMAC 簽名（`w.` 婚禮／`g.` 賓客）綁定 path `weddingId`。`enforced` 模式（production）無 token 即 401、無效 token 即 401、分享／賓客連結需簽名；`open` 模式（dev／e2e）無 token 退回預設管理員、簽名不強制。唯一例外是新人自己那場（`landingWeddingId`）的五支 open 路由：不驗簽章，遇到沒有這場權限的登入或無效 token 也當成沒登入放行（`isLandingOpen()`，見 R5）。
 
 ---
 
