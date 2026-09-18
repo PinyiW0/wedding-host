@@ -29,9 +29,12 @@ const THEMES: { value: RsvpTheme, label: string, hint: string }[] = [
   { value: 'photo', label: '大圖主視覺', hint: '以照片拼貼開場，賓客可左右切換' },
 ]
 
-// 底色預設色票：低彩度、中明度，大面積鋪開才不會搶掉照片。
-// 參考站兩組底色（陶土 #C7997E、橄欖 #B4B19A）也落在這個區間
-const TONE_PRESETS = ['#BBA595', '#A8929A', '#B4B19A', '#C7997E', '#A8B2AC', '#D8C39B']
+// 底色預設色票：低彩度，前三個是中明度、後三個貼近頁面的 cream #F4EFE6。
+// 中明度那階才襯得起色帶上的白色英文大字（設計者 09-18 的版面圖用的就是這一階）；
+// 色帶與底下 cream 的接縫靠照片跨出色帶下緣打斷，不是靠把底色調淺
+// 灰階那幾個要留明確的黃綠傾向（G ≥ R > B）：三個通道差太少的中性灰，
+// 擺在偏暖的另一組旁邊會被同時對比推成偏紫，設計者 09-18 實際看到過
+const TONE_PRESETS = ['#C7B2A2', '#AFAEA0', '#B8BCAE', '#E3D6C8', '#DBDACE', '#E6DED0']
 
 // 照片以 dataURL 進 draft，存檔時才直傳（與交通參考圖片同模式）
 const MAX_BANNER_SIZE = 5 * 1024 * 1024

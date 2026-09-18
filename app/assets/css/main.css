@@ -201,6 +201,11 @@
   --font-serif-tc: "Noto Serif TC", ui-serif, Georgia, serif;
 
   /* ── fontSize（含行高/字重/字距） ── */
+  /* 大圖模板色帶上的英文主視覺（設計者 09-18 依版面圖指定加的一級）。
+     只給那一處用，而且只在 2xl（1536）以上——再窄的螢幕色帶裝不下這一級，用 display-xl */
+  --text-display-xxl: 132px;
+  --text-display-xxl--line-height: 0.88;
+  --text-display-xxl--font-weight: 600;
   --text-display-xl: 96px;
   --text-display-xl--line-height: 0.92;
   --text-display-xl--font-weight: 600;

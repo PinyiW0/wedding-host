@@ -39,6 +39,8 @@ const emit = defineEmits<{ submit: [body: SubmitRsvpBody] }>()
 // 09-18 早上曾改成「2026.12.01」（中間點資訊列是任何主題都能貼的模板樣式），
 // 同日設計者給了版面圖、把中間點與 RSVP 眉標都放回來——這是這張回函卡的既定版型，別再拿掉
 const heroDate = computed(() => props.weddingDate?.replaceAll('-', ' · ') ?? '')
+// 大圖模板的眉標是「RSVP —— 2026」（設計者 09-18 的版面圖），年份取自婚禮日期
+const heroYear = computed(() => props.weddingDate?.slice(0, 4) ?? '')
 
 // === 依設定解析題目 ===
 // 系統題：key → { enabled, label, description, audience }；查無視為停用
@@ -100,7 +102,45 @@ function isLightTone(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b >= 0.2
 }
 
-const onDarkBand = computed(() => isPhoto.value && !isLightTone(activeTone.value))
+const hasBanner = computed(() => isPhoto.value && banners.value.length > 0)
+
+// hero 文字要不要壓到色帶上（桌機版型）。後台預覽卡一律不壓：
+// 斷點看的是螢幕寬度、不是卡片寬度，後台螢幕一寬，448px 的預覽卡就會套到桌機版型，
+// 96px 的英文大字整個爆出卡片（09-19 截圖抓到）。預覽卡固定走窄版：文字排在色帶下方
+const heroOnBand = computed(() => hasBanner.value && !props.preview)
+
+// 只有文字真的壓在色帶上才需要翻色；排在色帶下方時底是紙色，翻成紙字會整段消失
+const onDarkBand = computed(() => heroOnBand.value && !isLightTone(activeTone.value))
+
+// 大圖模板的送出列一開始收起來，賓客捲過色帶才出現（設計者 09-19）：
+// 首屏整個交給照片，底下再橫一條金色按鈕會跟照片搶。其他模板沒有色帶，送出列照舊一直都在。
+// 預設 false＝SSR 與 client 第一幀都當作「還停在色帶上」，兩端算出來一樣
+const bannerRef = ref<{ root: HTMLElement | null } | null>(null)
+const pastBanner = ref(false)
+const showSubmitBar = computed(() => !hasBanner.value || pastBanner.value)
+let bannerObserver: IntersectionObserver | null = null
+
+// 盯的是色帶本身、不是外面包的那層：手機版的 hero 文字排在色帶下方，
+// 連它一起算的話賓客要多捲半屏才看得到送出鈕。
+// 用 watch 不用 onMounted：色帶掛著 v-if，模板切換時會重新掛載
+watch(bannerRef, (instance) => {
+  bannerObserver?.disconnect()
+  bannerObserver = null
+  const el = instance?.root
+  if (!el || props.preview)
+    return
+  // 不支援就直接顯示：寧可多一條，也不能讓賓客找不到送出鈕
+  if (!('IntersectionObserver' in window)) {
+    pastBanner.value = true
+    return
+  }
+  bannerObserver = new IntersectionObserver((entries) => {
+    pastBanner.value = !entries.some(entry => entry.isIntersecting)
+  })
+  bannerObserver.observe(el)
+})
+
+onBeforeUnmount(() => bannerObserver?.disconnect())
 
 // 外觀模板包裹樣式
 const themeClass = computed(() => {
@@ -467,10 +507,13 @@ function onSubmit() {
     <!-- 照片拼貼：只有大圖主視覺模板才出現，而且這時新人插畫與桌面裝飾都收起來，
          整個開場交給照片。另外兩個模板即使存了照片也不顯示 -->
     <!-- 大圖模板的 hero 壓在色帶中間（照片分左右兩叢、中間讓出空白），
-         所以外面包一層 relative 當定位基準。lg 以下版面塞不下，hero 回到色帶下方 -->
-    <div :class="isPhoto && banners.length ? 'relative' : ''">
+         所以外面包一層 relative 當定位基準。xl（1280）以下版面塞不下，hero 回到色帶下方。
+         原本從 lg（1024）就開始壓：1024 時照片中間的縫只有 163px，姓名、日期、邀請語整排壓到照片上、
+         墨字疊在深色沙灘上讀不到（09-19 截圖才發現），所以門檻往上提一級 -->
+    <div :class="hasBanner ? 'relative' : ''">
       <RsvpBannerCollage
-        v-if="isPhoto && banners.length"
+        v-if="hasBanner"
+        ref="bannerRef"
         v-model:active="activeBanner"
         data-testid="vibe-rsvp-banner"
         :banners="banners"
@@ -485,10 +528,10 @@ function onSubmit() {
       <div
         data-testid="vibe-rsvp-hero"
         class="relative pb-1 pt-4 text-center"
-        :class="isPhoto && banners.length
+        :class="heroOnBand
           // pointer-events-none 不可省：這層疊在色帶中間，會攔下滑鼠事件。
           // 滑鼠從左半穿過它到右半時，色帶收到的是「離開了」，跨越中線的判斷就被重置、整組永遠不換
-          ? 'lg:pointer-events-none lg:absolute lg:inset-0 lg:z-10 lg:mx-auto lg:flex lg:max-w-xs lg:flex-col lg:justify-center lg:py-0 xl:max-w-sm'
+          ? 'xl:pointer-events-none xl:absolute xl:inset-0 xl:z-10 xl:mx-auto xl:flex xl:max-w-3xl xl:flex-col xl:justify-center xl:py-0'
           : ''"
       >
         <!-- 插畫與「Better Together」包在同一層：手寫字用百分比定位，才會跟著插畫縮放
@@ -537,37 +580,66 @@ function onSubmit() {
            連大字的 3:1 都過不了。深色底再整組翻成紙色（onDarkBand） -->
         <p
           class="enter mt-2 font-display text-overline [--enter-step:1]"
-          :class="isPhoto ? (onDarkBand ? 'text-ink-700 lg:text-paper' : 'text-ink-700') : 'text-gold-deep'"
+          :class="isPhoto ? (onDarkBand ? 'text-ink-700 xl:text-paper' : 'text-ink-700') : 'text-gold-deep'"
         >
-          RSVP
+          <template v-if="isPhoto && heroYear">
+            RSVP<span aria-hidden="true" class="mx-3 inline-block w-6 border-t border-current align-middle" />{{ heroYear }}
+          </template>
+          <template v-else>
+            RSVP
+          </template>
         </p>
+
+        <!-- 英文大字：設計者 09-18 的版面圖指定它當主視覺，中文姓名退成第二層。
+             只在桌機的色帶上出現——手機沒有色帶可以襯，96px 的字也擺不下。
+             紙色壓在中明度底色上約 2:1，過不了 3:1；這一行是氣氛字，
+             姓名／日期／場地／邀請語那幾行才是資訊，它們走墨色、對比是夠的。
+
+             字樣沿用故事頁首屏「In Your Love」的金箔流光（設計者 09-19 指定），用它的紙白版：
+             金箔版的底是 gold-deep，壓在這種中明度的底色上只有 1.7:1，字會糊掉。
+             StoryFoilMark 一次只排一行，所以兩行各放一個；字級照舊由外層的 text-display-* 給。
+             它的框比字寬很多（8.3em），items-center 讓超出的部分左右對稱溢出、字才會置中。
+             第二行往上收 0.43em：每個框高 1.33em，收完兩行基線相距 0.9em，跟原本的行距一樣。
+             整組 aria-hidden：元件自己帶 role=img 與名稱，不蓋掉的話讀屏會唸兩次氣氛字 -->
+        <div
+          v-if="heroOnBand"
+          aria-hidden="true"
+          class="band-mark enter -mt-[0.1em] hidden flex-col items-center text-display-xl xl:flex 2xl:text-display-xxl [--enter-step:2]"
+        >
+          <StoryFoilMark text="Our Day," variant="paper" />
+          <StoryFoilMark text="With You." variant="paper" class="-mt-[0.43em]" />
+        </div>
         <h1
-          class="enter mt-3 text-balance text-h2 font-semibold tracking-wider sm:text-h1 [--enter-step:2]"
+          class="enter mt-3 text-balance text-h2 font-semibold tracking-wider sm:text-h1 [--enter-step:3]"
           :class="[
-            isPhoto && banners.length ? 'lg:text-display-l lg:leading-tight' : '',
-            onDarkBand ? 'text-ink lg:text-paper' : 'text-ink',
+            heroOnBand ? 'xl:mt-6 xl:text-h2' : '',
+            onDarkBand ? 'text-ink xl:text-paper' : 'text-ink',
           ]"
         >
           {{ groomName }}<span
             class="mx-3 font-display font-medium"
-            :class="isPhoto ? 'text-ink-700 lg:text-inherit' : 'text-gold-deep'"
+            :class="isPhoto ? 'text-ink-700 xl:text-inherit' : 'text-gold-deep'"
           >&amp;</span>{{ brideName }}
         </h1>
         <p
           v-if="heroDate || venue"
-          class="enter mt-4 flex flex-wrap items-baseline justify-center gap-x-6 gap-y-1 [--enter-step:3]"
-          :class="onDarkBand ? 'text-ink-700 lg:text-paper' : 'text-ink-700'"
+          class="enter mt-4 flex flex-wrap items-baseline justify-center gap-x-6 gap-y-1 [--enter-step:4]"
+          :class="[
+            heroOnBand ? 'xl:mt-3' : '',
+            onDarkBand ? 'text-ink-700 xl:text-paper' : 'text-ink-700',
+          ]"
         >
           <span v-if="heroDate" class="font-display text-body-l tracking-widest">{{ heroDate }}</span>
           <span v-if="venue" class="text-body">{{ venue }}</span>
         </p>
+        <!-- 金短線：版面圖裡的大圖模板沒有這條，英文大字已經扛住分隔的角色 -->
         <span
-          class="enter mx-auto mt-6 block h-px w-10 [--enter-step:4]"
-          :class="isPhoto ? (onDarkBand ? 'bg-ink/30 lg:bg-paper/50' : 'bg-ink/30') : 'bg-gold'"
+          v-if="!hasBanner"
+          class="enter mx-auto mt-6 block h-px w-10 bg-gold [--enter-step:5]"
         />
         <p
-          class="enter mx-auto mt-6 max-w-md text-body leading-relaxed sm:text-body-l [--enter-step:5]"
-          :class="onDarkBand ? 'text-ink-700 lg:text-paper' : 'text-ink-700'"
+          class="enter mx-auto mt-6 max-w-md text-body leading-relaxed sm:text-body-l [--enter-step:6]"
+          :class="onDarkBand ? 'text-ink-700 xl:text-paper' : 'text-ink-700'"
         >
           很開心能與您分享這特別的一天<br>誠摯邀請您，請撥空填寫以下出席資訊
         </p>
@@ -613,7 +685,13 @@ function onSubmit() {
     </div>
 
     <!-- pb-36：預留固定送出列的高度，最後一題不會被壓在底下（preview 無送出列，不需留白） -->
-    <form v-else class="mt-8 space-y-10" :class="preview ? '' : 'pb-36'" @submit.prevent="onSubmit">
+    <!-- xl:mt-24：大圖模板的照片會跨出色帶下緣一截，表單要往下讓開，第一個欄位才不會被壓到 -->
+    <form
+      v-else
+      class="mt-8 space-y-10"
+      :class="[preview ? '' : 'pb-36', heroOnBand ? 'xl:mt-24' : '']"
+      @submit.prevent="onSubmit"
+    >
       <!-- 基本資料（身分識別，常駐） -->
       <section class="space-y-5">
         <div>
@@ -1179,9 +1257,14 @@ function onSubmit() {
            所以字級必須是 20px／600 以上才算 WCAG 的大字（門檻 3:1），text-lg 18px 不算。
            hover 只能往深走（secondary-700 對紙 7.7:1），往淺走白字會掉到 2.4:1。
            箭頭包 aria-hidden：主 spec 用 /送出|提交|確定/ 抓這顆鈕，可及名稱要維持乾淨 -->
+      <!-- 大圖模板在色帶還看得到的時候整條收起來（showSubmitBar）。
+           收起來用 inert 不用 v-if／invisible：按鈕要一直留在 DOM 裡，在欄位按 Enter 才送得出去；
+           inert 同時擋掉滑鼠與 Tab，不會有人聚焦到一顆看不見的按鈕。只動 opacity 與 translate -->
       <div
         v-if="!preview"
-        class="pointer-events-none fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-cream from-60% to-transparent pb-4 pt-8"
+        :inert="!showSubmitBar"
+        class="pointer-events-none fixed inset-x-0 bottom-0 z-10 bg-gradient-to-t from-cream from-60% to-transparent pb-4 pt-8 transition-[opacity,translate] duration-250 ease-standard"
+        :class="showSubmitBar ? '' : 'translate-y-4 opacity-0'"
       >
         <div class="pointer-events-auto mx-auto max-w-2xl px-4">
           <UButton
@@ -1209,6 +1292,18 @@ function onSubmit() {
    floral 兩角的內嵌線稿小花與 photo hero 的三段漸層（線稿跟故事頁與喜帖頁的
    真照片語言不合，大面積漸層也不是這套風格的分層方式——分層靠留白與細線）。
    根節點的 rsvp-theme-* 先留著，將來要做主題差異時掛這裡 */
+
+/* 色帶上的金箔字：沿用故事頁的紙白版，但暖光收淡。
+   那一版是疊在深色照片上用的，光再濃字都還是亮的；這裡的底是中明度的色帶，
+   紙白對它本來就只有 1.9:1，光斑照原本的濃度整行會掉成米色、跟底色糊在一起（實測 1.4:1）。
+   選擇器多帶一層 .mark：元件自己的 .is-paper .orb-* 同樣是三個 class，不多一層會變成比載入順序 */
+.band-mark :deep(.mark .orb-a) {
+  opacity: 0.32;
+}
+
+.band-mark :deep(.mark .orb-c) {
+  opacity: 0.2;
+}
 
 /* hero 進場：這一頁唯一的一段編排動效（creative-direction §4「一頁最多一個主動效」）。
    一套語彙從頭用到尾——桌上的東西從各自的邊緣就位，卡片上的字依序浮上來——所以算一個。
