@@ -33,7 +33,7 @@ const content = useGalleryContent()
 const route = useRoute()
 
 /** 選單裡每個連結都帶著網址上的婚禮簽章（?sig=），換頁不會掉；錨點連結不帶（見 useSignedLink） */
-const { withSig } = useSignedLink()
+const { withSig, rsvpPath } = useSignedLink()
 
 const rows = computed<MenuRow[]>(() => {
   const list: MenuRow[] = content.series.map(series => ({
@@ -52,17 +52,18 @@ const rows = computed<MenuRow[]>(() => {
   const rowsForPage = route.path === `/story/${props.weddingId}`
     ? [
         { label: '婚宴資訊', word: 'Wedding Day', to: '#wedding-info', image: '/images/story/venue-hall.webp' },
-        { label: '出席回覆', word: 'RSVP', to: `/rsvp/public/${props.weddingId}`, image: content.inviteThumb },
+        { label: '出席回覆', word: 'RSVP', to: rsvpPath(props.weddingId), image: content.inviteThumb },
         ...list.filter(row => ['Gallery', 'Invitation'].includes(row.word)),
       ]
     // 出席回覆頁：只列三個公開頁（故事、相簿、喜帖），相簿的系列頁不列——那是相簿裡面的分頁，從回覆表單直接跳過去太跳
-    : route.path === `/rsvp/public/${props.weddingId}`
+    // 公開表單（/rsvp/public/<weddingId>）與賓客專屬表單（/rsvp/<guestId>）同一組
+    : route.path.startsWith('/rsvp/')
       ? list.filter(row => ['Our Story', 'Gallery', 'Invitation'].includes(row.word))
       // 喜帖頁：就是桌上那三個出口（故事、相簿、出席回覆），相簿的系列頁同樣不列
       : route.path === `/invite/${props.weddingId}`
         ? [
             ...list.filter(row => ['Our Story', 'Gallery'].includes(row.word)),
-            { label: '出席回覆', word: 'RSVP', to: `/rsvp/public/${props.weddingId}`, image: content.inviteThumb },
+            { label: '出席回覆', word: 'RSVP', to: rsvpPath(props.weddingId), image: content.inviteThumb },
           ]
       // 不連到自己所在的那一頁
         : list.filter(row => row.to !== route.path)

@@ -1,9 +1,13 @@
-<!-- app/pages/rsvp/[guestId].vue -->
+<!-- app/pages/rsvp/[guestId].vue — 賓客專屬 RSVP（後台「專屬連結」發出，回覆寫回該賓客那一筆）
+     版面跟公開表單（rsvp/public/[weddingId].vue）同一套：layout story ＋ 右上角 PublicMenu，
+     不用 guest 版面的 GuestNav——GuestNav 會列出當日流程、祝福留言、祝福花田、感謝卡、LINE 通知，
+     那幾頁新人還沒定案、先不開（新人 09-17；專屬頁 09-19 跟上）。
+     PublicMenu 回到「出席回覆」時認得賓客級簽章、會回到這一頁，不會掉去公開表單（見 useSignedLink 的 rsvpPath） -->
 <script setup lang="ts">
 import type { SubmitRsvpBody } from '~/types/api/rsvp'
 import { getLineOa, getRsvpFormConfig, getWedding, submitRsvp as submitRsvpApi } from '~/api'
 
-definePageMeta({ layout: 'guest' })
+definePageMeta({ layout: 'story' })
 
 const route = useRoute()
 const guestId = computed(() => String(route.params.guestId))
@@ -46,17 +50,26 @@ async function handleSubmit(body: SubmitRsvpBody) {
 </script>
 
 <template>
-  <RsvpForm
-    v-if="formConfig"
-    :config="formConfig"
-    :groom-name="groomName"
-    :bride-name="brideName"
-    :wedding-date="wedding?.date"
-    :venue="wedding?.venue"
-    :line-add-url="lineAddUrl"
-    :submitting="isSubmitting"
-    :submitted="isSubmitted"
-    :error-message="submitError"
-    @submit="handleSubmit"
-  />
+  <!-- 外殼的每個數值都跟公開表單同值（overflow-x-clip、pt-20、--bleed-top），理由見 rsvp/public/[weddingId].vue -->
+  <div class="flex min-h-screen flex-col overflow-x-clip bg-cream">
+    <main class="flex flex-1 flex-col items-center px-4 pb-6 pt-20 [--bleed-top:5rem]">
+      <div class="w-full max-w-2xl">
+        <RsvpForm
+          v-if="formConfig"
+          :config="formConfig"
+          :groom-name="groomName"
+          :bride-name="brideName"
+          :wedding-date="wedding?.date"
+          :venue="wedding?.venue"
+          :line-add-url="lineAddUrl"
+          :submitting="isSubmitting"
+          :submitted="isSubmitted"
+          :error-message="submitError"
+          @submit="handleSubmit"
+        />
+      </div>
+    </main>
+    <!-- 底是奶油色、沒有區塊回報深色，開關維持墨色 -->
+    <PublicMenu :wedding-id="weddingId" :blend="false" />
+  </div>
 </template>

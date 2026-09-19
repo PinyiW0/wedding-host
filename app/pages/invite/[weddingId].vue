@@ -13,8 +13,8 @@ const weddingId = computed(() => String(route.params.weddingId))
 usePublicWeddingGuard(weddingId.value)
 
 // 出口（愛心卡、拍立得）帶著網址上的婚禮簽章，從喜帖點到故事再回出席回覆才不會掉
-const { withSig } = useSignedLink()
-const scene = computed(() => useInviteScene(weddingId.value, withSig))
+const { withSig, rsvpPath } = useSignedLink()
+const scene = computed(() => useInviteScene(weddingId.value, withSig, rsvpPath(weddingId.value)))
 /** 信封離場、桌面開始演了沒：選單開關等這一刻才出現 */
 const inScene = ref(false)
 
