@@ -58,7 +58,7 @@ export {
   updateGuest,
 } from './guests.api'
 export { connectLineOa, getLineOa } from './line.api'
-export { getSignedLink } from './links.api'
+export { getShortLink, getSignedLink } from './links.api'
 export {
   confirmPendingGuest,
   listPendingGuests,

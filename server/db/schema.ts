@@ -1,5 +1,6 @@
 import type { BlessingStatus, BlessingWallStatus } from '../../app/types/api/blessings'
 import type { GuestSource, GuestStatus } from '../../app/types/api/guests'
+import type { ShortLinkKind } from '../../app/types/api/links'
 import type { ProjectionMediaType } from '../../app/types/api/projection'
 import type { AttendingStatus, InvitationPreference } from '../../app/types/api/rsvp'
 import type { RsvpBanner, RsvpQuestion, RsvpTheme } from '../../app/types/api/rsvp-config'
@@ -292,6 +293,17 @@ export const thankYouBatchSends = pgTable('thank_you_batch_sends', {
   sentAt: text().notNull(),
   sentBy: text().notNull(),
 }, t => [index().on(t.weddingId)])
+
+// 公開連結短網址（issue #170）：後台複製的三種公開連結各配一個短碼。
+// 只存「短碼 → 哪一場婚禮的哪一種連結」，簽章不落檔、由 /s/<code> 轉址時現算，
+// 所以輪換 NUXT_GUEST_LINK_SECRET 不會讓已發出去的短連結失效。
+// (weddingId, kind) 唯一：同一種連結重複索取永遠拿回同一個短碼
+export const shortLinks = pgTable('short_links', {
+  code: text().primaryKey(),
+  weddingId: text().notNull(),
+  kind: text().$type<ShortLinkKind>().notNull(),
+  createdAt: text().notNull(),
+}, t => [uniqueIndex().on(t.weddingId, t.kind)])
 
 export const projectionSettings = pgTable('projection_settings', {
   weddingId: text().primaryKey(),
