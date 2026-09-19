@@ -17,9 +17,10 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }
-  if (guest.rsvpAttending) {
-    throw createError({ statusCode: 409, statusMessage: '已提交過 RSVP' })
-  }
+  // 回覆過的賓客可以重新送出，新的蓋掉舊的（新人 2026-09-19 決定）。
+  // 原本回 409「已提交過 RSVP」，但成功畫面寫的是「有任何變動，回到這一頁重新送出就好」，
+  // 賓客照做卻整筆被擋、錯誤訊息又在畫面外——實際發生過：第一次誤送只有預設值，第二次認真填的全部沒落地。
+  // 選填欄位維持「有填才動」：表單不會帶出上一次的內容，重送時沒填的祝福與手繪小花要留著，不能被空白洗掉
   const patch: Partial<typeof guests.$inferInsert> = {
     rsvpAttending: body.attending,
     diet: body.diet,
