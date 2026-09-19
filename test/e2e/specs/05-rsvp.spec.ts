@@ -162,27 +162,45 @@ test.describe('賓客提交 RSVP（Guest 端）', () => {
     })
   })
 
-  test.describe('規則：重複提交 RSVP', () => {
-    test('已提交過 RSVP', async ({ page }) => {
-      // 性質：API 邊界保護（UI 正常顯示已回覆狀態，不再開放重複提交）
-      // Given：先讓 guest-001 提交 RSVP（seed 為未提交）
+  test.describe('規則：重新提交 RSVP', () => {
+    // 2026-09-19 新人改規則：原為「已提交過 RSVP → 409 不可重複提交」。
+    // 成功畫面請賓客「回到這一頁重新送出」，伺服器卻整筆擋下，賓客第二次認真填的內容全部遺失（實際發生）。
+    // 現行規則：回覆過可以重新提交，新的蓋掉舊的；這次沒填的選填欄位保留上一次的內容
+    test('重新提交以新的回覆為準', async ({ page }) => {
+      // 性質：API 邊界驗證
+      // Given：先讓 guest-001 提交 RSVP（seed 為未提交），並留下祝福
       const first = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-001/rsvp',
         {
-          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
+          data: { attending: 'attending', diet: 'meat', plusOneCount: 0, childChairCount: 0, blessing: '新婚快樂' },
         },
       )
       expect(first.ok()).toBeTruthy()
 
-      // When：再次提交已提交的 guest-001
+      // When：同一位賓客重新提交，改了餐點、人數與電話，這次沒有填祝福
       const res = await page.request.post(
         '/api/v1/weddings/wedding-001/guests/guest-001/rsvp',
         {
-          data: { attending: 'declined', diet: 'meat', plusOneCount: 0, childChairCount: 0 },
+          data: { attending: 'attending', diet: 'vegetarian', plusOneCount: 1, childChairCount: 1, phone: '0987654321' },
         },
       )
-      expect(res.status()).toBe(409)
-      expect(JSON.stringify(await res.json())).toContain('已提交過 RSVP')
+
+      // Then：重新提交成功
+      expect(res.status()).toBe(201)
+
+      // And：後台讀到的是新的回覆；沒重填的祝福沒有被洗掉
+      const guestsRes = await page.request.get('/api/v1/weddings/wedding-001/guests?fields=full')
+      expect(guestsRes.ok()).toBeTruthy()
+      const guests: Array<Record<string, unknown>> = await guestsRes.json()
+      const guest = guests.find(g => g.guestId === 'guest-001')
+      expect(guest).toMatchObject({
+        rsvpAttending: 'attending',
+        diet: 'vegetarian',
+        partySize: 3,
+        childChairCount: 1,
+        contact: '0987654321',
+        blessing: '新婚快樂',
+      })
     })
   })
 })
