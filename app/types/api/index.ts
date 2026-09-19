@@ -61,6 +61,9 @@ export type {
   LineOaConnectedEvent,
 } from './line'
 export type {
+  CreateShortLinkBody,
+  ShortLinkKind,
+  ShortLinkResponse,
   SignedLinkResponse,
 } from './links'
 export type {
