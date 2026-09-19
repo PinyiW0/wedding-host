@@ -420,6 +420,25 @@ function buildCustomAnswers(): Record<string, string | string[]> | undefined {
   return Object.keys(result).length ? result : undefined
 }
 
+// 單行欄位按 Enter 不送出表單。瀏覽器的預設行為是「表單裡有送出鈕，在任何單行欄位按 Enter 就送出」；
+// 姓名是第一個欄位，手機鍵盤的「前往／完成」、注音選字的 Enter 都算——賓客打完名字表單就送出去了，
+// 後面的餐點、人數、電話、地址一個都還沒填，落地的全是預設值（2026-09-19 實際發生）。
+// 只擋 input：textarea 的 Enter 是換行、按鈕的 Enter 是按下去，都要留著
+function blockImplicitSubmit(event: KeyboardEvent) {
+  if (event.target instanceof HTMLInputElement)
+    event.preventDefault()
+}
+
+// 送出失敗時把錯誤訊息捲進畫面：訊息排在表單最上面，而賓客人在最底下按固定送出列，
+// 不捲的話畫面上什麼都沒變，她會以為送出了
+const errorRef = ref<{ $el?: HTMLElement } | null>(null)
+watch(() => props.errorMessage, async (message) => {
+  if (!message || props.preview)
+    return
+  await nextTick()
+  errorRef.value?.$el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+})
+
 function onSubmit() {
   if (props.preview || props.submitting || props.submitted)
     return
@@ -648,6 +667,7 @@ function onSubmit() {
 
     <UAlert
       v-if="errorMessage && !preview"
+      ref="errorRef"
       data-testid="rsvp-submit-error"
       icon="i-heroicons-exclamation-triangle"
       color="error"
@@ -691,6 +711,7 @@ function onSubmit() {
       class="mt-8 space-y-10"
       :class="[preview ? '' : 'pb-36', heroOnBand ? 'xl:mt-24' : '']"
       @submit.prevent="onSubmit"
+      @keydown.enter="blockImplicitSubmit"
     >
       <!-- 基本資料（身分識別，常駐） -->
       <section class="space-y-5">
@@ -1258,8 +1279,9 @@ function onSubmit() {
            hover 只能往深走（secondary-700 對紙 7.7:1），往淺走白字會掉到 2.4:1。
            箭頭包 aria-hidden：主 spec 用 /送出|提交|確定/ 抓這顆鈕，可及名稱要維持乾淨 -->
       <!-- 大圖模板在色帶還看得到的時候整條收起來（showSubmitBar）。
-           收起來用 inert 不用 v-if／invisible：按鈕要一直留在 DOM 裡，在欄位按 Enter 才送得出去；
-           inert 同時擋掉滑鼠與 Tab，不會有人聚焦到一顆看不見的按鈕。只動 opacity 與 translate -->
+           收起來用 inert 不用 v-if／invisible：進出場只動 opacity 與 translate，元素要留在 DOM 裡才有過場；
+           inert 同時擋掉滑鼠與 Tab，不會有人聚焦到一顆看不見的按鈕。
+           （09-19 起在欄位按 Enter 不再送出表單，見 blockImplicitSubmit——送出只剩按這顆鈕一條路） -->
       <div
         v-if="!preview"
         :inert="!showSubmitBar"

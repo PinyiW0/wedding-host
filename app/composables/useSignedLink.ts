@@ -23,5 +23,20 @@ export function useSignedLink() {
     return `${base}${base.includes('?') ? '&' : '?'}sig=${encodeURIComponent(sig.value)}${hash}`
   }
 
-  return { sig, withSig }
+  /**
+   * 出席回覆該去哪一頁（裸路徑，簽章由呼叫端的 withSig 接上）。
+   *  賓客級簽章（g.<guestId>.<digest>）代表這個人是拿專屬連結進來的，回覆要寫回她自己那一筆，
+   *  所以回到 /rsvp/<guestId>；其餘走公開表單。
+   *  少了這個判斷，她從專屬頁點去故事或喜帖、再點「出席回覆」，填到的會是公開表單：
+   *  後台多出一筆待確認賓客，她原本那一筆仍停在未回覆
+   */
+  function rsvpPath(weddingId: string): string {
+    const parts = sig.value.split('.')
+    const guestId = parts[0] === 'g' && parts.length === 3 ? parts[1] : ''
+    return guestId
+      ? `/rsvp/${guestId}?weddingId=${encodeURIComponent(weddingId)}`
+      : `/rsvp/public/${weddingId}`
+  }
+
+  return { sig, withSig, rsvpPath }
 }

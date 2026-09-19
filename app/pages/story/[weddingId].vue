@@ -24,7 +24,7 @@ const { data: guestFlowers } = await listFlowers(weddingId, { server: false, def
 
 /** 分享連結上的婚禮簽章（後台「故事頁連結」附的 ?sig=）：往 RSVP 與其他公開頁的連結都要帶下去，
  *  賓客點「回覆我們的邀請」才過得了正式站的 enforced 模式（見 useSignedLink） */
-const { withSig } = useSignedLink()
+const { withSig, rsvpPath } = useSignedLink()
 
 // 出口只剩婚紗照：「留下你的祝福」與「看完整流程表」新人 09-15 拿掉（祝福有花田那區的 RSVP，流程表對賓客是多餘的）
 const entries = computed(() => [
@@ -42,7 +42,7 @@ const entries = computed(() => [
     <StoryFlowers
       :field="content.flowerField"
       :guest-flowers="guestFlowers ?? []"
-      :rsvp-to="withSig(`/rsvp/public/${weddingId}`)"
+      :rsvp-to="withSig(rsvpPath(weddingId))"
       rsvp-label="回覆我們的邀請"
     />
     <StoryCta :date="content.venue.dateTime" :names="content.hero.namesZh" :entries="entries" :photo-drive="content.photoDrive" :trail="content.trail" />

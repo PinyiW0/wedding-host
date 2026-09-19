@@ -24,11 +24,17 @@ function art(name: string): string {
  * @param weddingId 網址上的婚禮 id，用來組故事頁與相簿的出口路徑
  * @param linkFor 出口連結的加工：頁面傳 useSignedLink 的 withSig，把網址上的婚禮簽章帶到故事與相簿，
  *                賓客從喜帖點過去再回出席回覆時簽章才不會掉；不傳就是裸路徑
+ * @param rsvpBase 出席回覆的裸路徑：頁面傳 useSignedLink 的 rsvpPath，拿專屬連結進來的賓客回到她自己那一頁；
+ *                 不傳就是公開表單
  */
-export function useInviteScene(weddingId: string, linkFor: (path: string) => string = path => path): InviteScene {
+export function useInviteScene(
+  weddingId: string,
+  linkFor: (path: string) => string = path => path,
+  rsvpBase = `/rsvp/public/${weddingId}`,
+): InviteScene {
   const storyPath = linkFor(`/story/${weddingId}`)
   const galleryPath = linkFor(`/gallery/${weddingId}`)
-  const rsvpPath = linkFor(`/rsvp/public/${weddingId}`)
+  const rsvpPath = linkFor(rsvpBase)
 
   const items: SceneItem[] = [
     // ── 遠景：貓掌印。三個腳印各對應一隻貓，點下去跳出招呼卡（見下方 cats）──

@@ -15,7 +15,8 @@
 1. 管理員能透過指定管道（如 LINE）發送 RSVP 邀請連結給賓客
 2. 賓客能透過 LIFF 提交出席回覆（出席狀態、飲食、加一人數（同行）、兒童椅嬰兒數）
 3. 管理員能手動覆寫賓客的出席狀態並記錄原因
-4. 各種不存在 / 已提交的操作，使用者能感知失敗原因
+4. 各種不存在的操作，使用者能感知失敗原因
+5. 賓客回覆過可以重新提交，以最新一次為準；重新提交時沒填的選填內容（祝福、手繪小花等）保留上一次的
 
 ---
 
@@ -91,16 +92,24 @@ API 邊界保護。
 
 ---
 
-## Flow: 重複提交 RSVP（condition / already-submitted，賓客端）
+## Flow: 重新提交 RSVP（condition / already-submitted，賓客端）
 
 > 對應 Feature: 提交 RSVP → Scenario: 已提交過 RSVP
+>
+> **與 .feature 的落差（2026-09-19 新人決定）**：`SubmitRsvp.feature` 是上游 codegen 產物，該 Scenario 仍寫「已提交過 RSVP 不可重複提交」。
+> 新人改為「回覆過可以重新提交，以最新一次為準」——原規則下，成功畫面請賓客「回到這一頁重新送出」，伺服器卻回 409 整筆擋下，
+> 賓客第二次認真填的內容全部遺失（實際發生）。上游模型待同步；同步前重跑 `/feature-to-flow` 會把舊規則帶回來，覆寫本段前先確認。
 
 ### 性質
-API 邊界保護（UI 正常會顯示已回覆狀態，不再開放重複提交）。
+API 邊界驗證。
 
 ### 驗證流程
-- guest-001 已提交 RSVP 狀態下，再 `POST .../guests/guest-001/rsvp`
-- 期待：4xx，訊息含「已提交過 RSVP」
+- guest-001 已提交 RSVP（含祝福）狀態下，再 `POST .../guests/guest-001/rsvp`，改餐點、人數、電話，不帶祝福
+- 期待：2xx
+- 期待：`GET .../guests?fields=full` 讀到 guest-001 的餐點、人數、兒童椅、電話為新的回覆；祝福仍是第一次提交的內容
+
+### 不再凍結
+- 回覆頁是否顯示「已回覆過」、是否帶出上一次的內容
 
 ---
 
@@ -146,7 +155,7 @@ API 邊界保護。
 1. role + name regex 找賓客實體：`getByRole('row', { name: /陳大明/ })`
 2. 動作按鈕：`getByRole('button', { name: /提交|送出|覆寫/ })`（發送邀請已無 UI 入口）
 3. 出席狀態文字：`getByText(/出席|缺席|不出席/)`
-4. 反饋 / 錯誤：`getByRole('alert')` 或 `getByText(/賓客不存在|已提交過 RSVP/)`
+4. 反饋 / 錯誤：`getByRole('alert')` 或 `getByText(/賓客不存在/)`
 5. async outcome：`page.waitForRequest`（invitation / rsvp / override 端點）
 6. testid：fallback only
 
@@ -155,6 +164,6 @@ API 邊界保護。
 ## Mock 假設
 - seed：wedding-001、guest-001（陳大明 / 未提交 RSVP）
 - `POST .../rsvp-invitation` 回 200；不存在回 404「賓客不存在」
-- `POST .../rsvp` 回 201；不存在回 404；已提交回 409「已提交過 RSVP」
+- `POST .../rsvp` 回 201；不存在回 404；已提交過再提交同樣回 201（以最新一次為準）
 - `POST .../rsvp-override` 回 200；不存在回 404「賓客不存在」
 - attending 值域：attending / declined / absent
