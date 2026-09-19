@@ -11,6 +11,8 @@ import type {
   UpdateGuestBody,
 } from '~/types/api/guests'
 
+import type { ShortLinkKind } from '~/types/api/links'
+
 import type { MatchConfidence } from '~/utils/guestMatch'
 
 import { z } from 'zod'
@@ -20,7 +22,7 @@ import {
   confirmPendingGuest,
   createGuest,
   deleteGuest,
-  getSignedLink,
+  getShortLink,
   importGuests,
   listGuestCategories,
   listGuests,
@@ -270,29 +272,34 @@ function openLinkCenter(guest: GuestListItem) {
   linkCenterOpen.value = true
 }
 
-// 複製帶婚禮簽名的公開連結：enforced 模式下公開頁的 API 憑這個簽名放行
-async function copySignedLink(path: string, title: string) {
-  const base = `${window.location.origin}${path}`
+// 複製公開連結的短網址（issue #170）：短碼由後端取得或建立，同一種連結永遠拿到同一個碼。
+// 簽名不進網址，改由 /s/<code> 轉址時現算補上——新人發出去的連結短，賓客轉傳也不會把憑證一起貼出去
+async function copyShortLink(kind: ShortLinkKind, title: string) {
   try {
-    const { sig } = await getSignedLink(weddingId.value)
-    const url = `${base}?sig=${sig}`
+    const { code } = await getShortLink(weddingId.value, kind)
+    const url = `${window.location.origin}/s/${code}`
     await navigator.clipboard.writeText(url)
     toast.add({ title, description: url, color: 'success' })
   }
   catch {
-    toast.add({ title: '複製失敗', description: base, color: 'error' })
+    toast.add({ title: '複製失敗', description: '短網址產生失敗，請稍後再試', color: 'error' })
   }
 }
 
 // 複製公開自助回覆連結（供分享給尚未在名單上的賓客）
 function copyPublicLink() {
-  return copySignedLink(`/rsvp/public/${weddingId.value}`, '已複製公開回覆連結')
+  return copyShortLink('rsvp-public', '已複製公開回覆連結')
 }
 
 // 複製故事頁連結（賓客看故事、從裡面按「回覆我們的邀請」進公開回覆）：
-// 故事頁會把網址上的簽名帶給 RSVP 連結，所以分享故事頁要用這一顆，裸網址在正式站點回覆會被擋
+// 故事頁會把網址上的簽名帶給 RSVP 連結，所以分享故事頁要用這一顆
 function copyStoryLink() {
-  return copySignedLink(`/story/${weddingId.value}`, '已複製故事頁連結')
+  return copyShortLink('story', '已複製故事頁連結')
+}
+
+// 複製電子喜帖連結（賓客的入口頁，從喜帖選單可再進故事、相簿與出席回覆）
+function copyInviteLink() {
+  return copyShortLink('invite', '已複製喜帖連結')
 }
 
 // 顯示文字對照
@@ -705,6 +712,15 @@ async function confirmImport() {
             @click="copyStoryLink"
           >
             故事頁連結
+          </UButton>
+          <!-- 喜帖（/invite）是賓客的入口頁，從它的選單可再走到故事、相簿與出席回覆 -->
+          <UButton
+            icon="i-heroicons-envelope"
+            color="neutral"
+            variant="ghost"
+            @click="copyInviteLink"
+          >
+            喜帖連結
           </UButton>
           <!-- 命名避開凍結 strict regex（不可含「新增」「匯入」） -->
           <UButton
