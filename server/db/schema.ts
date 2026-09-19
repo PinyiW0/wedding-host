@@ -2,7 +2,7 @@ import type { BlessingStatus, BlessingWallStatus } from '../../app/types/api/ble
 import type { GuestSource, GuestStatus } from '../../app/types/api/guests'
 import type { ProjectionMediaType } from '../../app/types/api/projection'
 import type { AttendingStatus, InvitationPreference } from '../../app/types/api/rsvp'
-import type { RsvpQuestion, RsvpTheme } from '../../app/types/api/rsvp-config'
+import type { RsvpBanner, RsvpQuestion, RsvpTheme } from '../../app/types/api/rsvp-config'
 import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core'
 
 // Drizzle schema：24 張表，一一對齊 server/mock/data 的 store 形狀（欄位名即 API 合約）
@@ -253,7 +253,10 @@ export const rundownItems = pgTable('rundown_items', {
 export const rsvpFormConfigs = pgTable('rsvp_form_configs', {
   weddingId: text().primaryKey(),
   theme: text().$type<RsvpTheme>().notNull(),
+  // 大圖模板改成可切換的多組照片後留下的單張欄位：不刪，寫入時同步成 banners[0].photos[0]。
+  // 既有 spec 與 feature 檔的 payload 都帶 banner，砍掉會動到凍結區
   banner: text(),
+  banners: jsonb().$type<RsvpBanner[]>(),
   questions: jsonb().$type<RsvpQuestion[]>().notNull(),
 })
 

@@ -53,6 +53,11 @@ npm run db:create-admin  # 建立管理者帳號
 - **本專案是 Nuxt 4** — `nuxt` skill 基於 3.x（整體相容），目錄結構與設定以 Nuxt 4 官方為準
   - data fetching 兩處需注意：`useFetch`/`useAsyncData` 的 `data` 是 `shallowRef`（深層 mutate 不觸發響應、預設值 `undefined`）；`immediate: false` 時初始 `status` 是 `'idle'` 非 `'pending'`
 - **本專案 auth 無 refresh token** — `feature-to-api/references/auth-scaffold.md` 是**新專案 scaffold 用**的範本，教的是 access + refresh 雙 token（`/auth/refresh`、single-flight refresh、401→refresh→retry）。本專案認證是**單一 JWT（7 天）**，`server/api/v1/auth/` 只有 `login.post.ts`，沒有 refresh 端點也不打算加。改既有 auth 時不得照該檔補 refresh 機制——那是憑空造一個不存在的東西。該檔僅在未來 scaffold 全新專案時參考
+- **`frontend-design` skill（Anthropic 官方，裝在 `~/.claude/skills/`）不得改動既定色票** — 該 skill 把「暖奶油底（近 `#F4F1EA`）＋高對比襯線＋陶土色點綴」「拉寬全大寫眉標」「中間點資訊列（`A · B · C`）」「近黑 `#111` 代替純黑」「`→` 附在連結文字後」「每區塊 fade-and-slide-up 進場」列為 AI 生成味。本專案的 Editorial Luxe token（`cream #F4EFE6`、Cormorant、`gold`、`ink #111111`）與公開頁既有寫法**六項全中**，但那是已上線、新人看過的既定方向。裁決：
+  - 色票與字體家族以 `app/assets/css/main.css` 的 `@theme` 為準，該 skill 不得新增或替換 token
+  - 採納範圍限「模板套件感」那一類：眉標、中間點、`→`、每區塊進場動畫、統一圓角卡片格線
+  - 改**既有**公開頁的視覺方向前先問使用者；**新**畫面可自由採用該 skill 的主張
+  - 它主張的「一個畫面只花一次大膽」與 `spec/ui-config/creative-direction.md` §4「一頁最多一個主動效」同向，可直接套用
 
 > 維持與官方同步：
 > - 升級框架 major/minor 時，重跑 `npx skills add antfu/skills --skill=vue --skill=nuxt --skill=pinia` 重抓快照

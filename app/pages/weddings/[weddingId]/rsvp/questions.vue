@@ -311,7 +311,8 @@ async function save() {
           </p>
           <span class="h-px w-10 bg-gold" />
         </div>
-        <div class="mx-auto max-w-md rounded-lg bg-white p-6 shadow dark:bg-neutral-900">
+        <!-- 底色跟賓客頁同為 cream，預覽的淡金選中底才會跟實際畫面一致 -->
+        <div class="mx-auto max-w-md rounded-lg bg-cream p-6 shadow dark:bg-neutral-900">
           <RsvpForm
             :config="draft"
             :groom-name="groomName"

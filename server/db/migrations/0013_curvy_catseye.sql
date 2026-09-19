@@ -1,0 +1,1 @@
+ALTER TABLE "rsvp_form_configs" ADD COLUMN "banners" jsonb;

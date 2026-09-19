@@ -3,6 +3,21 @@
 // 表單外觀模板：極簡白底 / 花卉水彩 / 大圖主視覺
 export type RsvpTheme = 'minimal' | 'floral' | 'photo'
 
+// 大圖模板的一個版本：一組照片＋一個底色，賓客左右滑動時整組換掉（見 RsvpBannerCollage.vue）。
+// 設計者 09-18 指定用海邊與都市兩組婚紗照——兩組色調差得夠遠，底色換了才看得出來
+export interface RsvpBanner {
+  // 這組當前時，照片區塊的底色（#rrggbb）
+  tone: string
+  // 這組的照片：第一張當主圖，其餘兩張是旁邊的小圖。
+  // R2 公開 URL；本機／e2e 未設定 R2 時是 dataURL（同 useImageUpload 的兩種回傳值）
+  photos: string[]
+}
+
+// 一組最多三張：拼貼只有三個槽，第四張起沒有位置可放
+export const RSVP_BANNER_PHOTO_MAX = 3
+// 最多三組：賓客不會左右滑超過三次，再多只是新人多上傳照片
+export const RSVP_BANNER_SET_MAX = 3
+
 // 系統題 key（對應賓客表單既有的可設定題目）
 export type RsvpBuiltinKey
   = | 'attending' // 是否出席
@@ -57,10 +72,13 @@ export interface RsvpCustomQuestion {
 export type RsvpQuestion = RsvpBuiltinQuestion | RsvpCustomQuestion
 
 // 讀回該婚禮的 RSVP 表單設定（未設定過回預設範本，不回 null）
+// banner 與 banners 並存：banner 是改多圖之前的單張欄位，保留下來當向後相容的影子，
+// 永遠等於 banners[0]?.photos[0]。畫面只讀 banners，banner 留給舊版前端與既有 spec 的 payload
 export interface RsvpFormConfigDetail {
   weddingId: string
   theme: RsvpTheme
   banner: string | null
+  banners: RsvpBanner[]
   questions: RsvpQuestion[]
 }
 
@@ -68,6 +86,7 @@ export interface ConfigureRsvpFormBody {
   weddingId: string
   theme: RsvpTheme
   banner?: string | null
+  banners?: RsvpBanner[]
   questions: RsvpQuestion[]
 }
 
@@ -75,5 +94,6 @@ export interface RsvpFormConfiguredEvent {
   weddingId: string
   theme: RsvpTheme
   banner: string | null
+  banners: RsvpBanner[]
   questions: RsvpQuestion[]
 }

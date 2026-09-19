@@ -47,9 +47,14 @@ async function handleSubmit(body: SubmitRsvpBody) {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-cream">
-    <!-- pt-20：右上角的選單開關是 fixed（頂端 14～30px、高 53px），表單的眉標要落在它下面 -->
-    <main class="flex flex-1 flex-col items-center px-4 pb-6 pt-20">
+  <!-- overflow-x-clip：大圖模板的照片區塊用 100vw 掙脫出表單欄位鋪滿螢幕，
+       而 100vw 含捲軸寬，會多出十幾 px 的水平捲動。用 clip 不用 hidden——
+       clip 不會另外生出一個捲動容器，固定送出列也不受影響 -->
+  <div class="flex min-h-screen flex-col overflow-x-clip bg-cream">
+    <!-- pt-20：右上角的選單開關是 fixed（頂端 14～30px、高 53px），表單的眉標要落在它下面。
+         --bleed-top 要跟 pt-20 同值：大圖模板的照片區塊靠它把底色往上補滿到畫面頂端，
+         選單鈕那一條才不會空一塊奶油色出來 -->
+    <main class="flex flex-1 flex-col items-center px-4 pb-6 pt-20 [--bleed-top:5rem]">
       <div class="w-full max-w-2xl">
         <RsvpForm
           v-if="formConfig"
