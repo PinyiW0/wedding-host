@@ -61,8 +61,20 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   await db.update(guests).set(patch).where(eq(guests.guestId, guest.guestId))
 
   // 婉拒者不進排桌次（issue #96）：釋放先前已被安排的座位
-  if (body.attending === 'declined')
+  if (body.attending === 'declined') {
     await db.delete(seats).where(eq(seats.guestId, guest.guestId))
+    await clearSeatReleasedMark(db, guest.guestId)
+  }
+  else {
+    // 人數變動同步座位（issue #174）：變多整組退回待排席、變少就地釋出多餘席位。
+    // 少了這段，多出來的人既不在桌位圖也不在待排席，會整個漏掉。
+    await syncSeatsOnPartyChange(
+      db,
+      guest.guestId,
+      { partySize: guest.partySize, childChairCount: guest.childChairCount },
+      { partySize: 1 + body.plusOneCount + body.childChairCount, childChairCount: body.childChairCount },
+    )
+  }
 
   // 男方親屬預設不發放喜餅（issue #105）：RSVP 可補側別／分類，判定轉換時同步排除列
   if (body.relationship || body.relationCategory?.trim()) {

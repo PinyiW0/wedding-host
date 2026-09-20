@@ -44,6 +44,8 @@ export interface GuestListItem {
   // 名單狀態與來源（混合制：公開自助回覆進待確認區）；省略視為 confirmed / manual
   status?: GuestStatus
   source?: GuestSource
+  // 賓客自行改 RSVP 人數導致整組座位被退回待排席的時間（issue #174）；未被退回為 null
+  seatReleasedAt?: string | null
   deletedAt: string | null
 }
 

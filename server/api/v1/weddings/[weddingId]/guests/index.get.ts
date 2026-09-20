@@ -51,6 +51,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
     invitationSent: g.invitationSent,
     status: g.status ?? 'confirmed',
     source: g.source ?? 'manual',
+    seatReleasedAt: g.seatReleasedAt ?? null,
     deletedAt: g.deletedAt,
   })
   // leftJoin 分類字典取名稱與 tier（必須 leftJoin：無 FK ⇒ 孤兒 categoryId 物理上可能存在，

@@ -22,6 +22,8 @@ export default defineEventHandler(async (event: H3Event): Promise<void> => {
   if (!removed.length) {
     throw createError({ statusCode: 404, statusMessage: '賓客不在此桌' })
   }
+  // 手動取消座位是新人自己的決定，不該再掛著「RSVP 變動被退回」的提示（issue #174）
+  await clearSeatReleasedMark(db, guestId)
 
   setResponseStatus(event, 204)
 })

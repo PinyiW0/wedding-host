@@ -50,6 +50,14 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
     patch.contact = pending.contact
   await db.update(guests).set(patch).where(eq(guests.guestId, target.guestId))
 
+  // 併入的人數與正式賓客不同時同步座位（issue #174）：與賓客自行改 RSVP 同一套規則
+  await syncSeatsOnPartyChange(
+    db,
+    target.guestId,
+    { partySize: target.partySize, childChairCount: target.childChairCount },
+    { partySize: pending.partySize, childChairCount: pending.childChairCount },
+  )
+
   // 待確認筆移除（軟刪除）
   await db.update(guests).set({ deletedAt: new Date().toISOString() }).where(eq(guests.guestId, pending.guestId))
 

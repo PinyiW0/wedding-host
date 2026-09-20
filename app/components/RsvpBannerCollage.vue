@@ -403,6 +403,24 @@ defineExpose({ root })
   .slot-2 { --sx: 145%; --sy: 2%; --ss: 0.36; }
 }
 
+/* 窄版 banner 上方保留 12rem 給 RSVP 與英文標題，照片維持原本的高度。 */
+@media (width < 80rem) {
+  .collage.is-bleed {
+    height: calc(clamp(22rem, 40vw, 44rem) + var(--bleed-top, 0px) + 12rem);
+  }
+
+  .is-bleed .field {
+    top: calc(var(--bleed-top, 0px) + 12rem);
+    bottom: 0;
+  }
+}
+
+@media (width < 40rem) {
+  .collage.is-bleed {
+    height: calc(75vw + var(--bleed-top, 0px) + 12rem);
+  }
+}
+
 /* 裝飾線：舞台被壓扁時線寬不跟著變，永遠是一條細線。
    vector-effect 不會繼承，所以不能只寫在 g 上 */
 .flourish path {

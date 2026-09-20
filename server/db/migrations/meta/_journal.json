@@ -106,6 +106,13 @@
       "when": 1789785106065,
       "tag": "0014_gigantic_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789907901419,
+      "tag": "0015_luxuriant_kang",
+      "breakpoints": true
     }
   ]
 }
