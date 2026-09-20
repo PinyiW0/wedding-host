@@ -11,9 +11,10 @@ export function getSignedLink(weddingId: string, guestId?: string) {
 }
 
 // 取得公開連結的短碼（取得或建立；同一種連結永遠回同一個短碼）
-export function getShortLink(weddingId: string, kind: ShortLinkKind) {
+// 賓客層級四種（rsvp-guest／blessing／checkin／thankyou）要帶 guestId
+export function getShortLink(weddingId: string, kind: ShortLinkKind, guestId?: string) {
   return useHttp().post<ShortLinkResponse>('/api/v1/weddings/{weddingId}/short-links', {
     pathParams: { weddingId },
-    body: { kind },
+    body: guestId ? { kind, guestId } : { kind },
   })
 }
