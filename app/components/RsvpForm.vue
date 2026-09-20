@@ -530,14 +530,31 @@ function onSubmit() {
          原本從 lg（1024）就開始壓：1024 時照片中間的縫只有 163px，姓名、日期、邀請語整排壓到照片上、
          墨字疊在深色沙灘上讀不到（09-19 截圖才發現），所以門檻往上提一級 -->
     <div :class="hasBanner ? 'relative' : ''">
-      <RsvpBannerCollage
-        v-if="hasBanner"
-        ref="bannerRef"
-        v-model:active="activeBanner"
-        data-testid="vibe-rsvp-banner"
-        :banners="banners"
-        :preview="preview"
-      />
+      <div v-if="hasBanner" class="relative">
+        <RsvpBannerCollage
+          ref="bannerRef"
+          v-model:active="activeBanner"
+          data-testid="vibe-rsvp-banner"
+          :banners="banners"
+          :preview="preview"
+        />
+        <!-- 窄版標題排在 banner 內的照片上方，頂端讓開選單按鈕。 -->
+        <div
+          v-if="heroOnBand"
+          class="pointer-events-none absolute inset-x-0 top-[var(--bleed-top,0px)] z-10 flex h-48 flex-col items-center justify-center text-center xl:hidden"
+          :class="onDarkBand ? 'text-paper' : 'text-ink-700'"
+        >
+          <p class="enter font-display text-overline [--enter-step:1]">
+            RSVP<template v-if="heroYear">
+              <span aria-hidden="true" class="mx-3 inline-block w-6 border-t border-current align-middle" />{{ heroYear }}
+            </template>
+          </p>
+          <div aria-hidden="true" class="band-mark enter flex flex-col items-center text-[clamp(2.25rem,12vw,4rem)] [--enter-step:2]">
+            <StoryFoilMark text="Our Day," variant="paper" />
+            <StoryFoilMark text="With You." variant="paper" class="-mt-[0.43em]" />
+          </div>
+        </div>
+      </div>
 
       <!-- 卡片標頭：印花 → RSVP → 新人 → 日期與場地 → 金短線 → 邀請語。
          這是「印在回函卡上」的那幾行，所以置中、正式。版型依設計者 09-18 給的版面圖：
@@ -599,7 +616,10 @@ function onSubmit() {
            連大字的 3:1 都過不了。深色底再整組翻成紙色（onDarkBand） -->
         <p
           class="enter mt-2 font-display text-overline [--enter-step:1]"
-          :class="isPhoto ? (onDarkBand ? 'text-ink-700 xl:text-paper' : 'text-ink-700') : 'text-gold-deep'"
+          :class="[
+            heroOnBand ? 'hidden xl:block' : '',
+            isPhoto ? (onDarkBand ? 'text-ink-700 xl:text-paper' : 'text-ink-700') : 'text-gold-deep',
+          ]"
         >
           <template v-if="isPhoto && heroYear">
             RSVP<span aria-hidden="true" class="mx-3 inline-block w-6 border-t border-current align-middle" />{{ heroYear }}
@@ -610,7 +630,7 @@ function onSubmit() {
         </p>
 
         <!-- 英文大字：設計者 09-18 的版面圖指定它當主視覺，中文姓名退成第二層。
-             只在桌機的色帶上出現——手機沒有色帶可以襯，96px 的字也擺不下。
+             桌機壓在色帶中央；手機標題由上方 banner 內的獨立區塊呈現。
              紙色壓在中明度底色上約 2:1，過不了 3:1；這一行是氣氛字，
              姓名／日期／場地／邀請語那幾行才是資訊，它們走墨色、對比是夠的。
 
