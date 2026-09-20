@@ -130,18 +130,21 @@ test.describe('規則：軟刪除不存在的婚禮', () => {
 
 test.describe('規則：成功恢復婚禮', () => {
   test('成功恢復婚禮', async ({ page }) => {
+    // 性質：API 層資料修復途徑（恢復不對管理員 UI 曝光，僅端點保留，issue #174）
     // Given：wedding-001 已建立且已軟刪除
     await page.request.delete('/api/v1/weddings/wedding-001')
+
+    // 已刪除婚禮不顯示於畫面
     await page.goto('/weddings', { waitUntil: 'networkidle' })
+    await expect(findEntity(page, /王小明與李小美的婚禮/)).not.toBeVisible()
 
-    // When：在已軟刪除的 wedding-001 範圍觸發恢復
-    const apiCall = waitForApiCall(page, /\/weddings\/wedding-001\/restore(\?|$)/, 'POST')
-    await findEntity(page, /王小明與李小美的婚禮/).getByRole('button', { name: /恢復/ }).click()
-    await maybeConfirm(page)
+    // When：經 API 恢復 wedding-001
+    const res = await page.request.post('/api/v1/weddings/wedding-001/restore')
+    expect(res.ok()).toBeTruthy()
 
-    // Then：restore 端點被呼叫
-    await apiCall
-    await expect(getFeedbackElement(page)).toBeVisible()
+    // Then：軟刪資料未被硬刪，婚禮重新出現於清單
+    await page.goto('/weddings', { waitUntil: 'networkidle' })
+    await expect(findEntity(page, /王小明與李小美的婚禮/)).toBeVisible()
   })
 })
 

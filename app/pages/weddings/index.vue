@@ -8,31 +8,19 @@ import type {
 } from '~/types/api/weddings'
 
 import { z } from 'zod'
-import { createWedding, deleteWedding, listWeddings, restoreWedding } from '~/api'
+import { createWedding, deleteWedding, listWeddings } from '~/api'
 
 definePageMeta({ layout: 'default' })
 
 const toast = useToast()
 
-// 婚禮列表（含已軟刪除，UI 以 deletedAt 分區呈現）
+// 婚禮列表（端點仍回傳已軟刪除者，畫面一律濾掉：無回收區、無恢復入口，issue #174）
 const { data: weddings, refresh } = await listWeddings({
   default: () => [],
 })
 
 // 搜尋：依名稱 / 場地過濾
 const search = ref('')
-
-// 狀態篩選：全部 / 進行中 / 已刪除
-type StatusFilter = 'all' | 'active' | 'deleted'
-const statusFilter = ref<StatusFilter>('all')
-const statusOptions = [
-  { label: '全部', value: 'all' as StatusFilter },
-  { label: '進行中', value: 'active' as StatusFilter },
-  { label: '已刪除', value: 'deleted' as StatusFilter },
-]
-
-const showActive = computed(() => statusFilter.value !== 'deleted')
-const showDeleted = computed(() => statusFilter.value !== 'active')
 
 // 日期排序：true = 由新到舊（預設），false = 由舊到新
 const sortDateDesc = ref(true)
@@ -44,12 +32,6 @@ const activeWeddings = computed(() =>
     .sort((a, b) =>
       sortDateDesc.value ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date),
     ),
-)
-
-const deletedWeddings = computed(() =>
-  (weddings.value ?? [])
-    .filter(w => w.deletedAt)
-    .filter(w => matchSearch(w)),
 )
 
 function matchSearch(w: WeddingListItem) {
@@ -136,36 +118,6 @@ async function confirmDelete() {
     isDeleting.value = false
   }
 }
-
-// === 恢復婚禮 ===
-const isRestoreOpen = ref(false)
-const isRestoring = ref(false)
-const restoreTarget = ref<WeddingListItem | null>(null)
-
-function openRestore(wedding: WeddingListItem) {
-  restoreTarget.value = wedding
-  isRestoreOpen.value = true
-}
-
-async function confirmRestore() {
-  if (!restoreTarget.value || isRestoring.value)
-    return
-  isRestoring.value = true
-  try {
-    await restoreWedding(restoreTarget.value.weddingId)
-    toast.add({ title: '婚禮已恢復', color: 'success' })
-    isRestoreOpen.value = false
-    await refresh()
-  }
-  catch (error: any) {
-    const message
-      = error?.data?.message || error?.statusMessage || '恢復失敗，請稍後再試'
-    toast.add({ title: '恢復失敗', description: message, color: 'error' })
-  }
-  finally {
-    isRestoring.value = false
-  }
-}
 </script>
 
 <template>
@@ -188,18 +140,8 @@ async function confirmRestore() {
       </template>
     </PageHeader>
 
-    <!-- 搜尋 + 狀態篩選 -->
+    <!-- 搜尋 -->
     <div class="mb-6 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-      <USelectMenu
-        v-model="statusFilter"
-        data-testid="wedding-status-filter"
-        :items="statusOptions"
-        value-key="value"
-        :search-input="false"
-        icon="i-heroicons-funnel"
-        placeholder="狀態"
-        class="w-full sm:w-40"
-      />
       <UInput
         v-model="search"
         data-testid="wedding-search"
@@ -210,8 +152,8 @@ async function confirmRestore() {
     </div>
 
     <div class="min-h-0 flex-1 space-y-8 overflow-auto">
-      <!-- 婚禮列表（未刪除）：管理用表格 -->
-      <div v-if="showActive">
+      <!-- 婚禮列表（已刪除者不顯示）：管理用表格 -->
+      <div>
         <div
           v-if="activeWeddings.length > 0"
           class="overflow-hidden rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-900"
@@ -313,65 +255,6 @@ async function confirmRestore() {
           title="目前沒有婚禮"
           description="點擊「建立婚禮」新增第一場婚禮"
         />
-      </div>
-
-      <!-- 回收區（已軟刪除）：管理用表格 -->
-      <div v-if="showDeleted && deletedWeddings.length > 0">
-        <div class="mb-4 flex items-center gap-3">
-          <span class="h-px w-8 bg-line" />
-          <p class="text-overline uppercase text-ink-300">
-            已刪除的婚禮
-          </p>
-        </div>
-        <div class="overflow-hidden rounded-lg border border-dashed border-line bg-paper dark:border-neutral-800 dark:bg-neutral-900">
-          <div class="overflow-x-auto">
-            <table data-testid="wedding-deleted-list" class="w-full min-w-[620px] text-left text-body">
-              <thead>
-                <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
-                  <th scope="col" class="px-5 py-3 font-medium">
-                    婚禮名稱
-                  </th>
-                  <th scope="col" class="px-5 py-3 font-medium">
-                    場地
-                  </th>
-                  <th scope="col" class="px-5 py-3 text-right font-medium">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="wedding in deletedWeddings"
-                  :key="wedding.weddingId"
-                  :aria-label="wedding.title"
-                  class="border-b border-line/60 last:border-0 dark:border-neutral-800"
-                >
-                  <td class="px-5 py-4">
-                    <span class="font-display text-body-l font-medium text-ink-500 line-through dark:text-neutral-400">
-                      {{ wedding.title }}
-                    </span>
-                  </td>
-                  <td class="whitespace-nowrap px-5 py-4 text-ink-300">
-                    {{ wedding.venue }}
-                  </td>
-                  <td class="px-5 py-4 text-right">
-                    <UButton
-                      data-testid="wedding-restore"
-                      icon="i-heroicons-arrow-uturn-left"
-                      color="primary"
-                      variant="ghost"
-                      size="sm"
-                      :aria-label="`恢復 ${wedding.title}`"
-                      @click="openRestore(wedding)"
-                    >
-                      恢復
-                    </UButton>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -477,22 +360,11 @@ async function confirmRestore() {
     <ConfirmModal
       v-model:open="isDeleteOpen"
       title="確認刪除"
-      :description="`確定要刪除「${deleteTarget?.title ?? ''}」嗎？刪除後可從回收區恢復。`"
+      :description="`確定要刪除「${deleteTarget?.title ?? ''}」嗎？刪除後不會顯示在列表上。`"
       confirm-label="刪除"
       confirm-color="error"
       :loading="isDeleting"
       @confirm="confirmDelete"
-    />
-
-    <!-- 恢復確認 -->
-    <ConfirmModal
-      v-model:open="isRestoreOpen"
-      title="確認恢復"
-      :description="`確定要恢復「${restoreTarget?.title ?? ''}」嗎？`"
-      confirm-label="恢復"
-      confirm-color="primary"
-      :loading="isRestoring"
-      @confirm="confirmRestore"
     />
   </div>
 </template>

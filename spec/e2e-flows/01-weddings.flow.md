@@ -1,7 +1,7 @@
 # Flow: 婚禮場次管理
 
 > 對應規格：spec/gherkin-feature/CreateWedding.feature, UpdateWeddingInfo.feature, SoftDeleteWedding.feature, RestoreWedding.feature
-> 涵蓋頁面：/weddings（場次列表 + 建立 + 軟刪 / 恢復）、/weddings/[weddingId]（婚禮詳情 + 編輯資訊）
+> 涵蓋頁面：/weddings（場次列表 + 建立 + 軟刪；恢復不在 UI 曝光，僅 API 層）、/weddings/[weddingId]（婚禮詳情 + 編輯資訊）
 
 ## Background
 - 已登入為管理員（Admin）
@@ -13,7 +13,7 @@
 
 1. 管理員能建立新婚禮（輸入名稱、場地、地址、日期）
 2. 管理員能更新既有婚禮資訊（時間、地點、地圖連結、停車資訊、交通指引）
-3. 管理員能軟刪除婚禮（資料保留、可恢復），且能恢復已軟刪除的婚禮
+3. 管理員能軟刪除婚禮（資料保留、可恢復）；已刪除婚禮不顯示於畫面（無回收區、UI 無恢復入口——恢復僅存在於 API 層作為資料修復途徑）
 4. 婚禮的關鍵識別資訊（title、venue、date）可被使用者讀到
 5. 對不存在 / 狀態不符的婚禮操作時，使用者能感知失敗原因
 
@@ -102,15 +102,14 @@ API 邊界保護。UI 正常不會進入此狀態（編輯入口來自既有列�
 3. 若有 confirm dialog，完成確認
 4. 期待：
    - API spy：`DELETE /api/v1/weddings/wedding-001`（或 `POST .../soft-delete`）被呼叫
-   - wedding-001 從未刪除清單消失，或標示為「已刪除」可恢復狀態
+   - wedding-001 從清單消失
 
 ### Verification 策略（destructive）
 - 主要靠 API spy（method=DELETE 或軟刪端點）
-- UI：執行後 wedding-001 不再出現在預設（未刪除）列表，或進入「已刪除」分區
+- UI：執行後 wedding-001 不再出現在列表
 
 ### 不再凍結
 - confirm 形式（modal / inline / 滑動）
-- 已刪除婚禮的呈現（隱藏 / 灰階 / 移至回收區）
 
 ---
 
@@ -140,27 +139,21 @@ API 邊界保護。
 
 ---
 
-## Flow: 成功恢復婚禮（happy-path）
+## Flow: 成功恢復婚禮（happy-path，API 層）
 
 > 對應 Feature: 恢復婚禮 → Scenario: 成功恢復婚禮
+
+### 性質
+API 層資料修復途徑。恢復為領域命令且端點保留，但**不對管理員 UI 曝光**——
+已刪除婚禮不顯示於畫面，畫面上無恢復入口（使用者決策，2026-09-20，issue #174）。
 
 ### 業務脈絡
 - wedding-001 已建立且已軟刪除
 
-### E2E 驗證流程
-1. 進入 `/weddings`（含已刪除分區 / 篩選）
-2. 在已軟刪除的 wedding-001 範圍內觸發「恢復」
-3. 期待：
-   - API spy：`POST /api/v1/weddings/wedding-001/restore`（或對應端點）被呼叫
-   - wedding-001 回到未刪除清單
-
-### Verification 策略
-- API spy（restore 端點）
-- UI：恢復後 wedding-001 重新出現在預設列表
-
-### 不再凍結
-- 已刪除分區的進入方式（tab / filter / toggle）
-- 恢復觸發形式
+### 驗證流程
+- wedding-001 已軟刪除狀態下，`POST /api/v1/weddings/wedding-001/restore`
+- 期待：2xx，該婚禮回到未刪除狀態
+- UI：恢復後「王小明與李小美的婚禮」重新出現於清單（軟刪資料未被硬刪的佐證）
 
 ---
 

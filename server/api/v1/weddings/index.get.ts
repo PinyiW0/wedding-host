@@ -7,7 +7,7 @@ import { useDb } from '../../../db'
 import { weddings } from '../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<WeddingListItem[]> => {
-  // 新人僅能看到自己擁有的婚禮；管理者／接待員／無 token 看全部（含已軟刪除，UI 以 deletedAt 分區）
+  // 新人僅能看到自己擁有的婚禮；管理者／接待員／無 token 看全部（含已軟刪除；畫面一律濾掉已刪除者，issue #174）
   const user = getRequestUser(event)
   const db = useDb()
   const rows = user.role === '新人'
