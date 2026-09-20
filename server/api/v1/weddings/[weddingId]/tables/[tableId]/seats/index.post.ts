@@ -59,6 +59,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
   if (newSeats.length) {
     await db.insert(seats).values(newSeats)
   }
+  // 重新排進桌次 → 清掉 RSVP 人數變動的退回記號（issue #174）
+  await clearSeatReleasedMark(db, body.guestId)
 
   setResponseStatus(event, 201)
   return { tableId, guestId: body.guestId, seatNumber: body.seatNumber }

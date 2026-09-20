@@ -82,6 +82,9 @@ export const guests = pgTable('guests', {
   customAnswers: jsonb().$type<Record<string, string | string[]>>(),
   status: text().$type<GuestStatus>(),
   source: text().$type<GuestSource>(),
+  // 賓客自行改 RSVP 人數導致整組座位被退回待排席的時間（issue #174）；
+  // 重新入座或手動取消座位時清回 null，側欄靠它標出「這組是被退回的、不是從沒排過」
+  seatReleasedAt: text(),
 }, t => [index().on(t.weddingId), index().on(t.categoryId)])
 
 // 婚禮層級分類字典：id 為 PK、(weddingId, name) 唯一（同場不得同名，DB 兜底併發 find-or-create）。

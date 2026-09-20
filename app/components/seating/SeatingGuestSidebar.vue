@@ -94,25 +94,35 @@ const emit = defineEmits<{
         :key="guest.guestId"
         draggable="true"
         :data-testid="`vibe-seating-guest-${guest.guestId}`"
-        class="group flex cursor-grab items-center gap-2 rounded-md border border-line bg-white px-3 py-2 transition-shadow hover:shadow active:cursor-grabbing dark:border-neutral-800 dark:bg-neutral-900"
+        class="group flex cursor-grab flex-col gap-1 rounded-md border border-line bg-white px-3 py-2 transition-shadow hover:shadow active:cursor-grabbing dark:border-neutral-800 dark:bg-neutral-900"
         :class="pendingGuestId === guest.guestId && 'border-gold ring-2 ring-gold'"
         @click="emit('guestTap', guest.guestId)"
         @dragstart="emit('guestDragStart', $event, guest.guestId)"
         @dragend="emit('guestDragEnd')"
       >
         <!-- 姓名（顏色標示男方／女方／兒童）+ 哪一方·關係·葷素 同一排 -->
-        <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }}</span>
-        <span class="min-w-0 flex-1 truncate text-caption text-ink-500 dark:text-neutral-400">{{ guestMeta(guest) }}</span>
-        <UIcon
-          v-if="guest.childChairCount > 0"
-          name="i-heroicons-sparkles"
-          class="size-4 shrink-0 text-gold-deep"
-          title="需兒童椅"
-        />
-        <UIcon
-          name="i-heroicons-bars-3"
-          class="size-4 shrink-0 text-ink-300 transition-colors group-hover:text-gold-deep"
-        />
+        <div class="flex items-center gap-2">
+          <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }}</span>
+          <span class="min-w-0 flex-1 truncate text-caption text-ink-500 dark:text-neutral-400">{{ guestMeta(guest) }}</span>
+          <UIcon
+            v-if="guest.childChairCount > 0"
+            name="i-heroicons-sparkles"
+            class="size-4 shrink-0 text-gold-deep"
+            title="需兒童椅"
+          />
+          <UIcon
+            name="i-heroicons-bars-3"
+            class="size-4 shrink-0 text-ink-300 transition-colors group-hover:text-gold-deep"
+          />
+        </div>
+        <!-- RSVP 改多人數被退回的組：沒有這行，桌位圖只會安靜地少一組人（issue #174） -->
+        <p
+          v-if="guest.seatReleasedAt"
+          :data-testid="`vibe-seating-released-${guest.guestId}`"
+          class="text-caption text-gold-deep"
+        >
+          RSVP 人數變動，已退回重排
+        </p>
       </div>
 
       <!-- 名單空狀態：小字、不放 icon -->
