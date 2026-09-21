@@ -305,8 +305,11 @@ export const shortLinks = pgTable('short_links', {
   code: text().primaryKey(),
   weddingId: text().notNull(),
   kind: text().$type<ShortLinkKind>().notNull(),
+  // 賓客層級短碼（issue #176）才有值，婚禮層級存空字串——Postgres 唯一索引不把 NULL 當相等，
+  // 用 NULL 會讓婚禮層級的 (weddingId, kind) 失去唯一性，同一種連結每按一次複製就長一個新碼
+  guestId: text().notNull().default(''),
   createdAt: text().notNull(),
-}, t => [uniqueIndex().on(t.weddingId, t.kind)])
+}, t => [uniqueIndex().on(t.weddingId, t.kind, t.guestId)])
 
 export const projectionSettings = pgTable('projection_settings', {
   weddingId: text().primaryKey(),

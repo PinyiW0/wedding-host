@@ -1,10 +1,13 @@
 <!-- app/components/GuestLinkCenter.vue -->
 <script setup lang="ts">
-import QRCode from 'qrcode'
-import { getSignedLink } from '~/api'
+import type { GuestShortLinkKind } from '~/types/api/links'
 
-// 連結中心（issue #15）：單一賓客的四類簽名連結 + QR code
-// 一枚 g.<guestId>.<digest> 簽名通用四類公開頁（sig 只綁 weddingId+guestId，不綁路徑）
+import QRCode from 'qrcode'
+import { getShortLink } from '~/api'
+
+// 連結中心（issue #15）：單一賓客的四類專屬連結 + QR code
+// 四類一律是 /s/<短碼>（issue #176）：簽名不進網址，改由轉址時現算補上，
+// 賓客把連結轉貼出去也不會把自己的存取憑證一起貼出去
 const props = defineProps<{
   weddingId: string
   guest: { guestId: string, name: string } | null
@@ -22,23 +25,19 @@ interface LinkEntry {
   qr: string
 }
 
+// key 是 testid 用的短名，kind 是 API 的連結種類
+const LINK_KINDS: { key: string, kind: GuestShortLinkKind, label: string, description: string }[] = [
+  { key: 'rsvp', kind: 'rsvp-guest', label: 'RSVP 出席回覆', description: '婚禮前：填寫出席意願與人數' },
+  { key: 'blessing', kind: 'blessing', label: '祝福上傳', description: '婚禮前後：留言與上傳祝福照片' },
+  { key: 'checkin', kind: 'checkin', label: '自助報到', description: '婚禮當天：掃碼自助報到' },
+  { key: 'thankyou', kind: 'thankyou', label: '謝卡', description: '婚禮後：專屬感謝卡片' },
+]
+
 const entries = ref<LinkEntry[]>([])
 const isLoading = ref(false)
 const loadError = ref(false)
 
-// 四類公開頁的 URL 組法（與各頁面既有的參數形態一致）
-function buildLinks(guestId: string, sig: string): Omit<LinkEntry, 'qr'>[] {
-  const origin = window.location.origin
-  const wid = props.weddingId
-  return [
-    { key: 'rsvp', label: 'RSVP 出席回覆', description: '婚禮前：填寫出席意願與人數', url: `${origin}/rsvp/${guestId}?weddingId=${wid}&sig=${sig}` },
-    { key: 'blessing', label: '祝福上傳', description: '婚禮前後：留言與上傳祝福照片', url: `${origin}/blessing/${wid}?guestId=${guestId}&sig=${sig}` },
-    { key: 'checkin', label: '自助報到', description: '婚禮當天：掃碼自助報到', url: `${origin}/checkin?weddingId=${wid}&guestId=${guestId}&sig=${sig}` },
-    { key: 'thankyou', label: '謝卡', description: '婚禮後：專屬感謝卡片', url: `${origin}/thankyou/${wid}/${guestId}?sig=${sig}` },
-  ]
-}
-
-// 面板開啟（或開啟中切換賓客）時取簽名並生成 QR；guestId 比對擋住慢回應覆蓋新賓客的結果
+// 面板開啟（或開啟中切換賓客）時取短碼並生成 QR；guestId 比對擋住慢回應覆蓋新賓客的結果
 watch([open, () => props.guest?.guestId], async ([isOpen, guestId]) => {
   if (!isOpen || !guestId)
     return
@@ -46,13 +45,15 @@ watch([open, () => props.guest?.guestId], async ([isOpen, guestId]) => {
   loadError.value = false
   entries.value = []
   try {
-    const { sig } = await getSignedLink(props.weddingId, guestId)
+    const origin = window.location.origin
+    const built = await Promise.all(LINK_KINDS.map(async (link) => {
+      const { code } = await getShortLink(props.weddingId, link.kind, guestId)
+      const url = `${origin}/s/${code}`
+      return { ...link, url, qr: await QRCode.toDataURL(url, { width: 240, margin: 1 }) }
+    }))
     if (props.guest?.guestId !== guestId)
       return
-    entries.value = await Promise.all(buildLinks(guestId, sig).map(async link => ({
-      ...link,
-      qr: await QRCode.toDataURL(link.url, { width: 240, margin: 1 }),
-    })))
+    entries.value = built
   }
   catch {
     loadError.value = true
@@ -85,7 +86,7 @@ async function copyLink(entry: LinkEntry) {
           {{ guest?.name }} 的專屬連結
         </h3>
         <p class="mb-6 mt-1 text-caption text-ink-300">
-          四類連結共用同一組簽名，複製傳送或出示 QR code 供賓客掃描
+          四類連結都是短網址，複製傳送或出示 QR code 供賓客掃描
         </p>
 
         <div v-if="isLoading" class="flex flex-1 items-center justify-center text-ink-300">
@@ -94,7 +95,7 @@ async function copyLink(entry: LinkEntry) {
 
         <div v-else-if="loadError" class="space-y-3 text-center">
           <p class="text-caption text-ink-500 dark:text-neutral-300">
-            連結簽名載入失敗，請稍後再試
+            短網址產生失敗，請稍後再試
           </p>
         </div>
 
