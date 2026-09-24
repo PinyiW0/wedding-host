@@ -17,6 +17,7 @@ function seatDots(page: import('@playwright/test').Page) {
 }
 
 // 等桌次更新完成（等 response，避免斷言早於寫入）
+// 必須在送出「之前」呼叫：production build 回應快，送出後才開始等會錯過回應而超時（issue #178 CI 實測）
 function waitTablePatch(page: import('@playwright/test').Page, ok: boolean) {
   return page.waitForResponse(res =>
     /\/tables\/table-001(?:\?|$)/.test(res.url())
@@ -56,8 +57,9 @@ test.describe('座位數調降守門（有人入座時）', () => {
     await page.goto(SEATING_PATH, { waitUntil: 'networkidle' })
 
     // When：把座位數調降到已排席人數以下
+    const patched = waitTablePatch(page, false)
     await submitCapacity(page, seated - 1)
-    await waitTablePatch(page, false)
+    await patched
 
     // Then：使用者看到具體原因（含人數），容量未被改動
     await expect(page.getByTestId('table-error')).toContainText(`座位數不可小於此桌已排席人數（${seated} 人）`)
@@ -72,8 +74,9 @@ test.describe('座位數調降守門（有人入座時）', () => {
     await expect(seatDots(page)).toHaveCount(12)
 
     // When：把座位數調降到剛好等於已排席人數
+    const patched = waitTablePatch(page, true)
     await submitCapacity(page, seated)
-    await waitTablePatch(page, true)
+    await patched
 
     // Then：座位環跟著縮小到新容量（減少有反應，不再被最大座號撐住）
     await expect(seatDots(page)).toHaveCount(seated)
@@ -83,8 +86,9 @@ test.describe('座位數調降守門（有人入座時）', () => {
     await fillMainTable(page)
     await page.goto(SEATING_PATH, { waitUntil: 'networkidle' })
 
+    const patched = waitTablePatch(page, true)
     await submitCapacity(page, 16)
-    await waitTablePatch(page, true)
+    await patched
 
     await expect(seatDots(page)).toHaveCount(16)
   })
