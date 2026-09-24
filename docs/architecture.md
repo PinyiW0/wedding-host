@@ -226,14 +226,15 @@ setResponseStatus(201) / 回傳 XxxEvent
 | config | testDir | 用途 |
 |--------|---------|------|
 | `playwright.config.ts` | `test/e2e/specs` | base：worktree 路徑 hash 出確定性 port（3100–3499，多 worktree 不互撞）、`workers: 1`、`NUXT_AUTH_MODE=open` 起 dev server；設 `E2E_BASE_URL` 時改打外部 container |
-| `playwright.gate.config.ts` | specs＋vibe（排除 unstable） | **守門唯一入口**：`/vibe-check`、pre-push、未來 CI 都跑這份 |
+| `playwright.gate.config.ts` | specs＋vibe（排除 unstable） | **守門唯一入口**：`/vibe-check`、pre-push（只跑煙霧）、CI 都跑這份 |
 | `playwright.vibe.config.ts` | 只跑 vibe | vibe 迭代用 |
 
 ### 6.3 守門機制
 
-- **pre-push hook**（`.husky/pre-push`）：只動文件類檔案則跳過；Docker 可用時走 `scripts/docker-gate.sh`——build production image → 起 ephemeral Postgres → migrate → 起 app container（open 模式）→ 打 gate config；不可用則 fallback 本機 dev server。紅燈依路徑分流：`specs/` 紅 = 破壞 invariant（不可改 spec），`vibe/` 紅 = 修 UI 或由使用者決定改 spec。
+- **測試分級**（issue #178，判準見 `.claude/skills/vibe-check/SKILL.md`）：pre-push 只跑煙霧、`/vibe-check` 預設定向、`/vibe-check --full` 跑 dev 全量、CI 跑 production 全量。
+- **pre-push hook**（`.husky/pre-push`）：只動文件類檔案則跳過；否則以本機 dev server 跑 `SMOKE_PATTERN` 命中的煙霧 spec（`00-auth`、`00-hydration`），會 reset 本機 5433。`scripts/docker-gate.sh`（production image → ephemeral Postgres → migrate → app container（open 模式）→ gate 全量）改為本機選配。紅燈依路徑分流：`specs/` 紅 = 破壞 invariant（不可改 spec），`vibe/` 紅 = 修 UI 或由使用者決定改 spec。
 - **commit-msg**：commitlint（Conventional Commits）。
-- **GitHub Actions**：`pull_request.yml` / `push.yml` 跑 `generate` + `eslint`（e2e 目前只在本機 gate 跑）；`sdd-review.yml` 在 PR 動到 `app/**`、`server/**` 時用 claude-code-action 跑 `/sdd-review` 留言。`blob_storage_website*.yml` 是模板遺留的 Azure 靜態部署，與本專案 SSR 部署無關，可忽略或移除。
+- **GitHub Actions**：`pull_request.yml` 跑 unit test + build + eslint，再以 `build-e2e`（build 一次上傳 `.output`）＋ `e2e` 4 shard（各起一個 Postgres service → drizzle-kit migrate → production server（open 模式）→ gate 全量）＋ `merge-e2e-report`（合併 HTML 報告 artifact `playwright-report-gate`）跑 production 全量；`sdd-review.yml` 在 PR 動到 `app/**`、`server/**` 時用 claude-code-action 跑 `/sdd-review` 留言。`blob_storage_website*.yml` 是模板遺留的 Azure 靜態部署，與本專案 SSR 部署無關，可忽略或移除。
 - **e2e 專用端點**：`server/api/__test__/reset.post.ts`（truncate＋seed，僅 open 模式）。
 
 ---

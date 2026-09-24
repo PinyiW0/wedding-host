@@ -89,7 +89,7 @@ gh issue view <N> --json body -q .body
 
 1. 挑本輪要修的 Fail 條目，說明打算怎麼修
 2. 改檔（授權邊界見下）
-3. 跑驗證：`npm run eslint` + `npm run typelint`；動到 `app/`／`server/` 另跑 gate（`npx playwright test --config playwright.gate.config.ts`）
+3. 跑驗證：`npm run eslint` + `npm run typelint`；動到 `app/`／`server/` 另跑**煙霧＋該條 AC 對應的 spec**（一條指令、位置參數聯集、加 `--reporter=line`，例：`npx playwright test --config playwright.gate.config.ts --reporter=line 'specs/(00-auth|00-hydration)' test/e2e/specs/07-xxx.spec.ts`；spec 怎麼挑見 `.claude/skills/vibe-check/SKILL.md`「定向查法」）。全量不在這裡跑：由發 PR 前的 `/vibe-check --full`（dev 全量）與 push 後 CI 的 production 全量承接
 4. 重驗該條，更新判定
 
 **授權邊界**（超出就停下來問，不自行擴權）：

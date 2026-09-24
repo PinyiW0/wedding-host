@@ -60,14 +60,16 @@
 | 層 | 驗什麼 | 工具 | 不可省略的情況 |
 |----|--------|------|----------------|
 | 1 語法/型別 | 寫的東西合法 | `npm run eslint` + `npm run typelint` | 任何程式碼改動 |
-| 2 行為 | 做的事符合合約 | Playwright specs / gate config | 動到 app/、server/ |
+| 2 行為 | 做的事符合合約 | 修正輪：煙霧＋定向目標（`--reporter=line`）；`/vibe-check`：白名單內定向、白名單外 dev 全量；發 PR 前 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
 | 3 語意 | 框架慣例、邏輯安全 | `/sdd-review` | 動到 .vue/store/server 且改動非純格式 |
 | 4 制度 | 規範有消費點、路徑有效 | read-back（fresh subagent） | 動到 .claude/、spec/ui-config/ |
 | 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定） | `/code-review` | 動到 app/、server/ 且改動非純格式，`/verify-ac` 或發 PR 前 |
 
 **通過的定義是綠燈，不是「應該會過」**。沒跑就是沒驗。
 
-- 正例：改了 3 個 .vue 檔 → 跑 eslint + typelint + gate config，全綠後回報「已驗證」並附輸出摘要
+**定向綠不得寫成 gate 已驗**——只有 dev 全量（`/vibe-check --full`）與 CI production 全量的綠燈算層 2 已驗。分級判準的單一來源是 `.claude/skills/vibe-check/SKILL.md`，此處不重列。
+
+- 正例：改了 3 個 .vue 檔 → 跑 eslint + typelint + `/vibe-check`（白名單內定向、白名單外 dev 全量），全綠後回報「已驗證」並附輸出摘要，且寫明是定向綠還是全量綠
 - 反例：「改動很小，照理不影響測試」→ 跳過 gate 直接 commit。「照理」不是驗證
 
 **綠燈只在「探針真的驗到那件事」時才算數**——寫進文件／程式碼的行為宣稱，支撐它的探針必須先綠，且探針要能**分離變因**，否則綠燈證明的是別的事。

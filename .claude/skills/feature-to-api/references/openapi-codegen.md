@@ -225,7 +225,7 @@ spec/api/api-spec.yml 變更
 要點：
 - **不要同時放 `/test e2e spec` 與 `/test e2e pipeline`**（pipeline = spec→red→green，會重跑 spec）。
 - **最後的 Gate 不是「vibe 驗證」而是「回歸守門」**：合約變更可能打壞其他 feature 主 spec 與既有 vibe spec，
-  故 commit 前必跑全 gate（與 pre-push 同一份 config，執行環境差異見 vibe-check「目的」段）。
+  故 commit 前必跑 `/vibe-check`——合約改動會動到 `app/types/`／`server/`，落在白名單外，自動升 dev 全量（同一份 gate config；PR 上 CI 再跑一次 production 全量；分級見 `../../vibe-check/SKILL.md`）。
 - **mock 資料形態改變是掃出下游隱藏假設的時機**：新型別、新編碼、新格式（如 SVG data URI 取代 base64 圖片）進 mock 後，型別檢查可能全綠但工具函式的隱藏假設會炸（實例：wedding-host 的 `dataUrlToBytes` 假設 data URL 一律 base64，URL-encoded 形式直接爆）。改完 mock 形態要**實跑受影響功能**（下載、匯出、預覽），不能只看 typelint。
 - **commit 前鐵律**：`npm run eslint && npm run typelint`（語法 / 型別，前者含 visual-hierarchy-check），與 playwright（行為）互補。
 

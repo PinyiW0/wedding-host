@@ -107,7 +107,7 @@ app/pages（為通過 spec 而建）
 **測試守門**：
 
 - 主 spec（`test/e2e/specs/`）是凍結合約不得修改；vibe spec（`test/e2e/vibe/`）保護 UI 迭代
-- pre-push hook 跑守門 config——Docker 可用時 build production image + ephemeral Postgres 全量驗證
+- 測試分四級：pre-push 只跑煙霧（`00-auth`、`00-hydration`）；`/vibe-check` 預設只跑煙霧＋受影響的 spec；發 PR 前 `/vibe-check --full` 跑 dev 全量；PR 上的 CI 以 production build＋一次性 Postgres 跑全量（4 shard 平行）
 - 紅燈依路徑分流：`specs/` 紅 = 破壞業務合約（修程式），`vibe/` 紅 = UI 改動需決策
 - commitlint（Conventional Commits）+ ESLint + 自製視覺層級檢查（一頁一主焦點的設計規範，用腳本守住）
 
@@ -134,7 +134,8 @@ npm run dev   # 自動拉起 Docker Postgres、migrate + seed，零設定
 | `npm run db:create-admin` | 建立正式環境首位管理員 |
 | `npm run eslint` / `npm run typelint` | Lint（含視覺層級檢查）／型別檢查 |
 | `npm run test:unit` / `npm run test:e2e` | Vitest／Playwright 主 spec |
-| `npx playwright test --config playwright.gate.config.ts` | 守門測試（主 spec + vibe spec） |
+| `npx playwright test --config playwright.gate.config.ts` | 守門全量（主 spec + vibe spec；pre-push 只跑其中的煙霧 spec） |
+| `sh scripts/docker-gate.sh` | 本機跑 production build 全量（一次性 Postgres，不碰本機資料） |
 
 ## 專案結構
 
