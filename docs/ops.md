@@ -87,4 +87,4 @@ Vercel 需設定環境變數 `NUXT_DATABASE_URL_MIGRATE`（**限 Production 環�
 | 部署後名單／清單變空、桌次圖只剩 ID | schema 落後程式碼（自動 migrate 上線前的舊部署，或 build log 中 migrate 失敗） | 查 Vercel build log 的 `[deploy-migrate]` 段；必要時從 origin/main 的 worktree 手動 `NUXT_DATABASE_URL='<direct>' npm run db:migrate`，跑完查 `drizzle.__drizzle_migrations` 筆數複驗 |
 | 圖片上傳失敗 | R2 四項環境變數不全 | `NUXT_R2_*` 四項 + `NUXT_PUBLIC_R2_PUBLIC_URL` 全填才啟用 presigned 直傳，否則退回 dataURL |
 | 圖片上傳失敗、Console 報 CORS（`No 'Access-Control-Allow-Origin'`、`net::ERR_FAILED`） | R2 bucket 未設 CORS policy，跨來源 PUT 被 preflight 擋 | 見上節「R2 圖片直傳 CORS」，套用 [`r2-cors.json`](r2-cors.json) |
-| 本機 push 卡 6 分鐘後失敗 | pre-push Docker gate 期間 SSH 閒置被 GitHub 斷線 | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |
+| 本機 push 卡 6 分鐘後失敗 | issue #178 前 pre-push 跑 Docker gate 全量，期間 SSH 閒置被 GitHub 斷線（現在只跑煙霧，較少發生） | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |

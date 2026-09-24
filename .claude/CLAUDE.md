@@ -21,8 +21,8 @@ npm run typelint     # 型別檢查            ← 注意不是 npm run typechec
 npm run test:unit    # Vitest（test/unit/）
 npm run test:e2e     # Playwright 主 spec
 
-npx playwright test --config playwright.gate.config.ts  # 守門：主 spec + vibe spec
-sh scripts/docker-gate.sh                               # 同上，改用 production image + ephemeral DB
+npx playwright test --config playwright.gate.config.ts  # 守門全量：主 spec + vibe spec（分級見 /vibe-check）
+sh scripts/docker-gate.sh                               # 同上，改用 production image + ephemeral DB（本機選配）
 
 npm run db:generate      # 由 schema 產 migration
 npm run db:migrate       # 套用 migration（預設打本機，見下方 gotchas）
@@ -38,10 +38,10 @@ npm run db:create-admin  # 建立管理者帳號
 
 - **開發需要 Docker**：`predev` 會起 `wedding-host-db`（Postgres 17，host port 5433）
 - **容器名固定**：所有 worktree 共用同一個 `wedding-host-db`。在次要 worktree 操作時帶 `COMPOSE_PROJECT_NAME=wedding-host`，避免另建一份容器
-- **跑 E2E 會清空本機 DB**：spec 會打 `server/api/__test__/reset.post.ts`（truncate 全表後回填 seed），手動建的資料會消失。要保留資料就走 `sh scripts/docker-gate.sh`（ephemeral DB，不碰 5433）
+- **跑 E2E 會清空本機 DB**：spec 會打 `server/api/__test__/reset.post.ts`（truncate 全表後回填 seed），手動建的資料會消失。**pre-push 的煙霧 spec 也會**：每次 push 程式碼都會清空本機 5433（issue #178 起 pre-push 改用本機 dev server）。要保留資料就走 `sh scripts/docker-gate.sh`（ephemeral DB，不碰 5433）
 - **`db:migrate` 沒帶 DSN 會靜默跑本機**：`drizzle.config.ts` 預設 `postgresql://wedding:wedding@localhost:5433/wedding`。要打正式站必須帶 `NUXT_DATABASE_URL`，否則會回報成功但正式庫毫無變化
 - **E2E port 依 worktree 路徑 hash 推導**：同 worktree 每次同 port（server 可重用），不同 worktree 不互撞
-- **禁用 `--no-verify`**：唯一例外是 gate 已全綠、push 因 SSH timeout 中斷時重推（`.husky/pre-push` 同此規則）
+- **禁用 `--no-verify`**：唯一例外是煙霧已全綠、push 因 SSH timeout 中斷時重推（`.husky/pre-push` 同此規則）
 
 ---
 
@@ -95,7 +95,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 - **不得破壞 Business Invariants**：實體必須可被使用者識別（用業務語意如 username、playerName、deviceId）、業務狀態文字必須保留語意（「連線中」「已斷線」「進行中」「已結束」「建立成功」「已刪除」等）、業務操作必須可被觸發（不一定要按鈕，但要有可達路徑）
 - **不得修改** `test/e2e/specs/`（主 spec 凍結，SSOT 政策）
 - **不得修改** `spec/gherkin-feature/`、`spec/e2e-flows/`（主 spec 來源凍結）
-- **vibe 完 commit 前必跑** `npx playwright test --config playwright.gate.config.ts`（綠燈 = vibe 安全，pre-push 跑同一份）
+- **vibe 完 commit 前必跑** `/vibe-check`（白名單內定向、其餘 dev 全量；發 PR 前 `--full` 強制 dev 全量；production 全量由 CI 跑；pre-push 只跑煙霧）。分級判準見 `.claude/skills/vibe-check/SKILL.md`
 - vibe spec（`test/e2e/vibe/`）不凍結，但刪改去留是使用者的決定——紅燈時列選項詢問，不可擅自刪改
 
 可以自由改：顏色、間距、字體、icon、layout、按鈕位置與形式（toolbar / icon-only / menu）、modal vs inline form、列表呈現（table / card / list）、折疊、動畫、新增 testid（建議 `vibe-*` 前綴）、新增頁面與互動。字級與按鈕尺寸預設值見 `.claude/rules/visual-hierarchy.md`——使用者未明確指示改動時維持預設。使用者要求「好看一點」「有質感」「換風格」時，先讀 `spec/ui-config/creative-direction.md` 確認風格方向再動手；加動畫時遵守其 §4 動效規範。
@@ -117,7 +117,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | `/feature-to-api` | Feature → 型別定義 + Mock API | `.flow.md` 已放入 `spec/e2e-flows/` |
 | `/feature-to-ui` | Feature → 完整 UI 畫面 | `/feature-to-api` 已完成 |
 | `/test e2e` | E2E 測試開發流程 | `.flow.md` 已放入 `spec/e2e-flows/` |
-| `/vibe-check` | Gate 守門 — 跑 `playwright.gate.config.ts`（主 spec + vibe spec），紅燈依路徑分流解讀 | vibe 完 UI 後、commit 前 |
+| `/vibe-check` | Gate 守門 — 跑 `playwright.gate.config.ts`（預設定向：煙霧＋受影響 spec；`--full` dev 全量），紅燈依路徑分流解讀 | vibe 完 UI 後、commit 前；發 PR 前帶 `--full` |
 | `/vibe-setup` | UI 分層 — 將 vibe diff 分類為 visual / 互動 / 結構，並標記測試 pattern | `/vibe-check` 綠燈 |
 | `/vibe-e2e` | 依 pattern 自動生成 `test/e2e/vibe/*.spec.ts`（keep，進守門）並跑，時序敏感產到 `vibe/unstable/` | `/vibe-check` 綠燈 |
 | `/nuxt-ui` | 載入 NuxtUI 官方文檔 | 無 |

@@ -34,7 +34,7 @@ npx playwright install chromium
 
 模板重點（測試環境隔離）：
 - **per-worktree 確定性 port**：由 config 所在目錄 hash 出 3100–3499 的 port——同 worktree 每次同 port（`reuseExistingServer` 可安全重用），不同 worktree 不同 port（多 session 並行不互撞）。**不要寫死 port**
-- **`E2E_BASE_URL` 外部 server 模式**：存在時整個不掛 webServer（Docker gate 等外部環境直接打該 URL）
+- **`E2E_BASE_URL` 外部 server 模式**：存在時整個不掛 webServer（CI 的 e2e job、`scripts/docker-gate.sh` 等外部起好的 production server 直接打該 URL）
 - **webServer.env 強制 `NUXT_PUBLIC_API_BASE=/api`**：避免 `.env` 的絕對 URL 讓瀏覽器打錯 port
 
 ```typescript
@@ -126,6 +126,9 @@ export default defineEventHandler(async (_event: H3Event) => {
 
 > 若 `server/mock/data/index.ts` 尚無 `resetMockData()`，需新增。
 > 此函式將所有 mock store 重設為初始值（深拷貝原始資料）。
+>
+> 本專案 reset 端點由 `server/middleware/auth.ts` 把關：只在 `authMode=open` 放行，enforced 一律 404。
+> production build 跑 gate 時（CI e2e job、`scripts/docker-gate.sh`）靠 `NUXT_AUTH_MODE=open` 開門，部署環境不得設。
 
 ### Step 5：建立 helpers
 
@@ -254,6 +257,10 @@ export { expect, test } from './hydration'
 ```
 
 ### Step 6：建立 hydration smoke spec
+
+> **煙霧集合由 `.husky/pre-push` 的 `SMOKE_PATTERN` 一行定義**，本專案是 `specs/(00-auth|00-hydration)`。
+> `.husky/pre-push`（只跑煙霧）與 `/vibe-check` 的定向模式都用 sed 抽同一行，**用完整檔名不用 `00`–`02` 前綴**——feature spec 的編號可以從 `01` 起，前綴會誤收。
+> 之後若依 Step 6.5／6.6 新產出 `01-auth-guard`、`02-authz-scope`，把檔名加進那一行，不要改檔名遷就 pattern。
 
 對每個 route 做**整頁載入**掃描。hydration 只發生在 hard load（`page.goto`）；client-side 導航不會重 hydrate，所以逐 route hard load 即可覆蓋全部 hydration 面。
 

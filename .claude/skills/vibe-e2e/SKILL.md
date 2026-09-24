@@ -11,7 +11,7 @@ description: Vibe E2E 產生與執行 — 依當下 git diff 對互動/結構 hu
 
 不測：純 visual、業務合約（那是 `/vibe-check` 主 spec 的工作）。
 
-**產出的 spec 是 keep 的**：既然判斷值得生成 e2e，就值得長期守。落地後會進 gate 守門（`/vibe-check` 與 pre-push 都跑 `playwright.gate.config.ts`，涵蓋 `test/e2e/vibe/`；執行環境差異見 vibe-check「目的」段）。時序敏感、無法穩定綠的 spec 產到 `test/e2e/vibe/unstable/`，不進守門、手動跑 /vibe-e2e 或 vibe config 時照跑。
+**產出的 spec 是 keep 的**：既然判斷值得生成 e2e，就值得長期守。落地後會進 gate 守門（`/vibe-check --full` 的 dev 全量與 CI 的 production 全量都跑 `playwright.gate.config.ts`，涵蓋 `test/e2e/vibe/`；`/vibe-check` 預設定向時只帶 Source hunk 命中的 vibe spec；pre-push 只跑煙霧 spec、不碰 vibe spec。分級見 `../vibe-check/SKILL.md`「分級」表）。時序敏感、無法穩定綠的 spec 產到 `test/e2e/vibe/unstable/`，不進守門、手動跑 /vibe-e2e 或 vibe config 時照跑。
 
 ## 前置條件（軟性 gate）
 
@@ -99,20 +99,18 @@ vibe spec 預設 **keep**，不做全清重生。只處理「同來源」的覆�
 - 可容忍暫時停滯的輪詢用 stall 計數器，不要一次沒變化就放棄
 - **時序敏感的 pattern**（SSE / 即時推播 / 依賴真實時間差的行為）→ 產到 `test/e2e/vibe/unstable/`，並在回報中說明「此 spec 不進守門」
 
-### Step 4：跑 vibe spec + 穩定性驗證
+### Step 4：跑本次新生成／重生的 vibe spec ＋ 穩定性驗證
+
+**只跑本次新生成／覆蓋的檔，不跑整個 vibe 套件**——舊 vibe spec 由 gate 守（`/vibe-check --full` 的 dev 全量、CI 的 production 全量）；
+下游專案的 vibe 套件動輒數十檔，每次全跑是本 skill 最大的時間與輸出開銷（分級判準見 `../vibe-check/SKILL.md`）。
 
 ```bash
-# 全量 vibe spec（含 unstable/，手動跑時照跑）
-npx playwright test --config playwright.vibe.config.ts
-```
-
-**本次新生成/覆蓋的 spec 必須連跑驗證穩定**才算完成（一次綠可能只是運氣）：
-
-```bash
-npx playwright test --config playwright.vibe.config.ts {新檔名} --repeat-each=3
+# 本次新檔一律連跑 3 次驗證穩定（一次綠可能只是運氣）；--reporter=line 只印失敗
+npx playwright test --config playwright.vibe.config.ts --reporter=line {新檔名 1} {新檔名 2} --repeat-each=3
 ```
 
 連跑不穩的不准落地進守門區：修等待邏輯，修不動就搬 `unstable/` 並在回報中說明。
+產到 `unstable/` 的檔在這裡照跑（vibe config 刻意不排除 unstable），只是不進 gate。
 
 `--dry-run` 模式跳過此步。
 

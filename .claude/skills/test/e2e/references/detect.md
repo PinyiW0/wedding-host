@@ -300,13 +300,16 @@ rm test/e2e/specs/{NN}-{name}.spec.ts
 /test e2e green <feature>
 ```
 
-### 4. 全量煙霧測試（跨 feature 連鎖檢查）
+### 4. 本批煙霧測試（本批 feature 的 spec ＋ 煙霧 spec）
 
-> 個別 feature 的 green 完成後，執行**全部 spec** 的煙霧測試，捕捉跨 feature 連鎖影響。
-> 例如：修復 feature 08 的 mock data 可能影響 feature 07 的列表筆數斷言。
+> 個別 feature 的 green 完成後，把**本批處理過的 feature spec**與**煙霧 spec**（由 `.husky/pre-push` 的 `SMOKE_PATTERN` 定義，本專案是 `00-auth`、`00-hydration`）
+> 接成一條指令再跑一次，捕捉本批內的連鎖影響（例：修 feature 08 的 mock data 影響同批 feature 07 的列表筆數斷言）。
+> **不跑全量**：跨到本批以外的連鎖影響由發 PR 前的 `/vibe-check --full`（dev 全量）與 CI（production 全量）承接，這裡不重複。
+> 位置參數之間是聯集；**不用 `--last-failed`**（它與檔名篩選是 AND，缺 `.last-run.json` 時會靜默跑全量）。
 
 ```bash
-npx playwright test test/e2e/specs/ 2>&1
+# 本批 feature 07、08 ＋ 煙霧；--reporter=line 只印失敗，通過的不刷版
+npx playwright test --config playwright.gate.config.ts --reporter=line 'specs/(00-auth|00-hydration)' test/e2e/specs/07-xxx.spec.ts test/e2e/specs/08-xxx.spec.ts 2>&1
 ```
 
 | 結果 | 動作 |
@@ -329,7 +332,7 @@ E2E 執行完成
 | 27-匯出訓練報告 | spec → green | ✅ 通過（迭代 2 次） |
 | 03-查詢觀測點列表 | red → green | ✅ 通過 |
 
-全量煙霧測試：✅ 全部通過（25 specs）
+本批煙霧測試：✅ 全部通過（本批 4 支 ＋ 煙霧 2 支；不含全量——dev 全量由 /vibe-check --full 跑、production 全量由 CI 跑）
 
 下一步：有 vibe 改動先跑 /vibe-check，否則 /commit
 ```

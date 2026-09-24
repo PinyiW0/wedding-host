@@ -1,11 +1,21 @@
 #!/usr/bin/env sh
 # Docker gate（issue #12，自 Nuxt4-template-SDD 搬移＋DB 適配）：
-# 以 production build（既有 Dockerfile → .output）跑 gate spec，
-# 與本機 dev server 完全隔離 —— 多 session 同時 push 也不互撞。
+# 以 production build（既有 Dockerfile → .output）跑 gate spec 全量，
+# 與本機 dev server 完全隔離，也不碰本機 5433 的資料。
+# 定位（issue #178 測試分級後）：本機選配。pre-push 不再呼叫它（只跑煙霧），
+# production 全量的常規入口是 CI 的 e2e job（.github/workflows/pull_request.yml）。
 # 流程：build image → 起 ephemeral Postgres → host 端跑 migration
 #       → run app container（NUXT_AUTH_MODE=open，e2e 的 reset 端點負責 seed）
 #       → 等 ready → host 端 Playwright 以 E2E_BASE_URL 打進 container → 清理。
 set -eu
+
+# 前置檢查與 .husky/pre-push、/vibe-check、CI e2e job 同一套：gate 範圍沒有 spec 檔就放行，
+# 否則 Playwright 對「No tests found」回非 0。刻意不用 --pass-with-no-tests。
+gate_specs=$(find test/e2e/specs test/e2e/vibe -name '*.spec.ts' -not -path '*/vibe/unstable/*' 2>/dev/null || true)
+if [ -z "$gate_specs" ]; then
+  echo "⚠️  尚無 gate 測試檔（test/e2e/specs｜vibe/*.spec.ts）→ 跳過 Docker gate。"
+  exit 0
+fi
 
 # 名稱唯一性：worktree 目錄 slug（不同 worktree 必不同）+ PID（同 worktree 並發 push 也不撞）
 # BuildKit layer cache 是 content-addressable、與 image tag 解耦 —— 結尾 rmi 掉暫時 tag
@@ -58,8 +68,11 @@ NUXT_DATABASE_URL="postgresql://wedding:wedding@127.0.0.1:${db_port}/wedding" np
 echo "🐳 [4/6] Run app container（ephemeral port，僅綁 127.0.0.1）…"
 # NUXT_AUTH_MODE=open：production build 預設 enforced 會擋掉凍結 spec 的
 # 裸 URL／無 token 直打與 reset 端點（middleware 404），gate 需 open 相容模式
+# NUXT_PUBLIC_API_BASE 空字串＝同源：E2E_BASE_URL 模式下 playwright.config.ts 不掛 webServer，
+# 那裡 webServer.env 鎖同源的保險套不到 container。與 CI e2e job 同一組值。
 docker run -d --rm --name "$container" --network "$network" \
   -e NUXT_AUTH_MODE=open \
+  -e NUXT_PUBLIC_API_BASE= \
   -e NUXT_DATABASE_URL="postgresql://wedding:wedding@${db_container}:5432/wedding" \
   -p 127.0.0.1::3000 "$image" >/dev/null
 
@@ -72,14 +85,20 @@ fi
 base_url="http://127.0.0.1:${port}"
 
 echo "🐳 [5/6] 等待 server ready（${base_url}，最長 60 秒）…"
-i=0
+# 上限是「絕對期限 60 秒」，不是迴圈次數：container 接了連線卻不回應時每次 curl 會等到 --max-time，
+# 用次數當上限會被乘成好幾分鐘。單次探測只給剩餘秒數（最多 5 秒），到期就停。與 CI e2e job 同一寫法。
+# 不用 curl -f：回任何 HTTP 狀態就算 ready。
+start=$(date +%s); deadline=$(( start + 60 ))
 ready=0
-while [ "$i" -lt 60 ]; do
-  if curl -fs -o /dev/null "$base_url/" 2>/dev/null; then
+while :; do
+  now=$(date +%s); rem=$(( deadline - now ))
+  [ "$rem" -gt 0 ] || break
+  [ "$rem" -gt 5 ] && rem=5
+  if curl -s --max-time "$rem" -o /dev/null "$base_url/" 2>/dev/null; then
     ready=1
     break
   fi
-  i=$((i + 1))
+  [ "$(date +%s)" -lt "$deadline" ] || break
   sleep 1
 done
 if [ "$ready" -ne 1 ]; then

@@ -171,7 +171,7 @@ npx playwright test test/e2e/specs/{NN}-{name}.spec.ts 2>&1
 
 > **最大迭代次數**：5 次（單一 feature 的修復循環）。超過 5 次仍無法全部通過，輸出剩餘失敗報告並停止。
 >
-> 注意：此限制與 `/test e2e detect` 的全量煙霧測試循環（3 次）不同。煙霧測試是所有 feature 修完後的跨 feature 連鎖影響檢查，範圍更大所以限制更嚴。
+> 注意：此限制與 `/test e2e detect` 的本批煙霧測試循環（3 次）不同。那一步是本批 feature 修完後的本批 spec＋煙霧連鎖影響檢查，跨 feature 所以限制更嚴。
 
 ### Step 6：輸出綠燈報告
 
