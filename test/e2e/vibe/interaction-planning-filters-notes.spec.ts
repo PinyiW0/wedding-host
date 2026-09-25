@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
   await login(page, TestUsers.admin.account, TestUsers.admin.password)
 })
 
-test('回覆總覽四種條件交集，未回覆／未填及無結果可辨識', async ({ page }) => {
+test('回覆總覽四種條件交集，未回覆／未填及無結果可辨識', async ({ page }, testInfo) => {
   await createReply(page.request, '符合全部', 'bride', 'vegetarian', 'attending', 'physical')
   await createReply(page.request, '不同男女方', 'groom', 'vegetarian', 'attending', 'physical')
   await createReply(page.request, '不同飲食', 'bride', 'meat', 'attending', 'physical')
@@ -46,7 +46,7 @@ test('回覆總覽四種條件交集，未回覆／未填及無結果可辨識',
   const rows = page.getByTestId('rsvp-list').locator('tbody tr')
   await expect(rows).toHaveCount(1)
   await expect(rows).toContainText('符合全部')
-  await page.screenshot({ path: '/private/tmp/wedding-rsvp-filters.png' })
+  await page.screenshot({ path: testInfo.outputPath('wedding-rsvp-filters.png') })
   await selectOption(page, 'rsvp-attending-filter', '未回覆')
   await expect(rows).toContainText('目前沒有賓客符合這組篩選條件')
   await selectOption(page, 'rsvp-invitation-filter', '未填')
@@ -67,7 +67,7 @@ test('喜餅分類、禮盒款式與發放狀態獨立組合', async ({ page }) 
   await expect(page.getByTestId('cake-guest-row-guest-001')).toHaveCount(0)
 })
 
-test('款式點擊預覽組合內容，長名稱在選單及表格完整呈現', async ({ page }) => {
+test('款式點擊預覽組合內容，長名稱在選單及表格完整呈現', async ({ page }, testInfo) => {
   const imageUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
   await page.request.patch(`${base}/cake-box-types/cakeboxtype-001`, { data: { name: longName, description: '手工餅乾、鳳梨酥與茶點', imageUrl } })
   await page.request.patch(`${base}/cake-box-types/cakeboxtype-002`, { data: { componentTypeIds: ['cakeboxtype-001', 'cakeboxtype-003'] } })
@@ -82,7 +82,7 @@ test('款式點擊預覽組合內容，長名稱在選單及表格完整呈現',
   await expect(preview).toContainText('組合內容')
   await expect(preview).toContainText(longName)
   await expect(preview.getByRole('img', { name: longName })).toBeVisible()
-  await page.getByRole('dialog').screenshot({ path: '/private/tmp/wedding-cake-preview.png' })
+  await page.getByRole('dialog').screenshot({ path: testInfo.outputPath('wedding-cake-preview.png') })
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('vibe-row-style-guest-001')).toHaveAttribute('title', longName)
   await page.getByRole('button', { name: '設定指派', exact: true }).click()
@@ -91,10 +91,10 @@ test('款式點擊預覽組合內容，長名稱在選單及表格完整呈現',
   await expect(page.getByTestId('assignment-type-select')).toContainText(longName)
 })
 
-test('喜餅備註儲存、重新整理、改款及不發放後保留，跨婚禮不可寫入', async ({ page }) => {
+test('喜餅備註儲存、重新整理、改款及不發放後保留，跨婚禮不可寫入', async ({ page }, testInfo) => {
   await openCake(page)
   const row = page.getByTestId('cake-guest-row-guest-001')
-  await page.screenshot({ path: '/private/tmp/wedding-cake-layout.png' })
+  await page.screenshot({ path: testInfo.outputPath('wedding-cake-layout.png') })
   await row.getByTestId('cake-note-edit').click()
   await row.getByTestId('cake-note-input').fill('請由媽媽代領\n提前一天取貨')
   await row.getByTestId('cake-note-save').click()
