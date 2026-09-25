@@ -44,7 +44,7 @@ export interface SeatListItem {
   guestId: string
   tableId: string
   seatNumber: number
-  // 席位類型：normal = 正常席（佔 capacity 人頭）；childChair = 兒童椅（額外加位、不佔 capacity）
+  // 席位類型：normal = 正常席（混合桌素食不計 capacity；全素桌計席）；childChair = 兒童椅（額外加位、不佔 capacity）
   seatType: 'normal' | 'childChair'
   // 該賓客組內第幾位（同類型內 1-indexed），供座位標籤如「名字2」「名字-兒童1」
   partyIndex: number

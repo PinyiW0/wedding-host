@@ -30,10 +30,14 @@ async function submitCapacity(page: import('@playwright/test').Page, value: numb
   await page.getByTestId('table-submit').click()
 }
 
-// 把主桌排滿到 10 個正常席（賓客組會依人數展開多席位）
+// 使用葷食且無兒童椅的組驗證一般容量；素食例外另由 #180 測試涵蓋
 async function fillMainTable(page: import('@playwright/test').Page) {
   const guests = await (await page.request.get('/api/v1/weddings/wedding-001/guests')).json()
   for (const g of guests.filter((x: any) => !x.deletedAt)) {
+    const updated = await page.request.patch(`/api/v1/weddings/wedding-001/guests/${g.guestId}`, {
+      data: { diet: 'meat', childChairCount: 0 },
+    })
+    expect(updated.ok()).toBeTruthy()
     const res = await page.request.post('/api/v1/weddings/wedding-001/tables/table-001/seats', {
       data: { guestId: g.guestId, seatNumber: 1 },
     })

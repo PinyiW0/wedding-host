@@ -7,6 +7,8 @@ defineProps<{
   /** 待排席賓客（已依男女方→尊卑→分類排序） */
   guests: GuestListItem[]
   seatedCount: number
+  unseatedCount: number
+  pendingCount: (guestId: string) => number
   /** 可排席賓客數（不含 RSVP 婉拒者，決定空狀態文案） */
   activeCount: number
   isAutoSeating: boolean
@@ -34,7 +36,7 @@ const emit = defineEmits<{
           賓客名單
         </h2>
         <p class="mt-1.5 text-caption text-ink-500 dark:text-neutral-400">
-          待排席 {{ guests.length }} 位 · 已排席 {{ seatedCount }} 位
+          待排席 {{ unseatedCount }} 位 · 已排席 {{ seatedCount }} 位
         </p>
       </div>
       <div class="flex shrink-0 flex-col items-end gap-2">
@@ -80,6 +82,10 @@ const emit = defineEmits<{
       點「推薦排序」依「主桌帶入新人與雙親、男左女右、長輩近主桌」自動帶位，或直接拖曳賓客到圓桌座位；座位上的賓客可互相拖曳交換位置。平板／觸控可點選賓客後再點桌上空位入座
     </p>
 
+    <p class="mb-3 text-caption text-ink-500">
+      混合桌素食與兒童椅額外加位；全素桌的素食正常席計入席次。
+    </p>
+
     <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
     <div data-testid="vibe-seating-guest-list" class="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto pr-1">
       <EmptyState
@@ -102,12 +108,12 @@ const emit = defineEmits<{
       >
         <!-- 姓名（顏色標示男方／女方／兒童）+ 哪一方·關係·葷素 同一排 -->
         <div class="flex items-center gap-2">
-          <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }}</span>
+          <span class="shrink-0 text-body font-medium" :class="nameColorClass(guest)">{{ guest.name }} <span class="text-caption">待排 {{ pendingCount(guest.guestId) }} 人</span></span>
           <span class="min-w-0 flex-1 truncate text-caption text-ink-500 dark:text-neutral-400">{{ guestMeta(guest) }}</span>
           <UIcon
             v-if="guest.childChairCount > 0"
             name="i-heroicons-sparkles"
-            class="size-4 shrink-0 text-gold-deep"
+            class="size-4 shrink-0 text-error-600"
             title="需兒童椅"
           />
           <UIcon

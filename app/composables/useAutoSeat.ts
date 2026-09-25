@@ -7,19 +7,21 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { SeatingMath } from '~/composables/useSeatingMath'
 import type { GuestListItem } from '~/types/api/guests'
 import type { TableListItem } from '~/types/api/seating'
+import type { PartyMember } from '~/utils/seatingRules'
 import { seatGuest } from '~/api'
 import { DIET_ORDER, isMainTableGuest, seniorityTier, SIDE_ORDER } from '~/composables/useSeatingMath'
+import { seatingHeads } from '~/utils/seatingRules'
 
 interface AutoSeatDeps {
   weddingId: MaybeRefOrGetter<string>
   tables: MaybeRefOrGetter<TableListItem[] | null | undefined>
-  math: Pick<SeatingMath, 'unseatedGuests' | 'mainTable' | 'isMainTable' | 'tableSeats' | 'guestNormalHeads' | 'tableCenterX'>
+  math: Pick<SeatingMath, 'unseatedGuests' | 'mainTable' | 'isMainTable' | 'tableSeats' | 'pendingMembers' | 'guestById' | 'tableCenterX'>
   refreshAll: () => Promise<void>
 }
 
 export function useAutoSeat(deps: AutoSeatDeps) {
   const toast = useToast()
-  const { unseatedGuests, mainTable, isMainTable, tableSeats, guestNormalHeads, tableCenterX } = deps.math
+  const { unseatedGuests, mainTable, isMainTable, tableSeats, pendingMembers, guestById, tableCenterX } = deps.math
 
   const isAutoSeating = ref(false)
 
@@ -42,14 +44,14 @@ export function useAutoSeat(deps: AutoSeatDeps) {
     isAutoSeating.value = true
     try {
       // 各桌目前已用正常席人頭（推薦排序在既有座位上接續安排，兒童椅額外不計）
-      const usedNormal: Record<string, number> = {}
+      const plannedSeats: Record<string, PartyMember[]> = {}
       for (const t of allTables)
-        usedNormal[t.tableId] = tableSeats(t.tableId).filter(s => s.seatType === 'normal').length
+        plannedSeats[t.tableId] = [...tableSeats(t.tableId)]
       const canFit = (table: TableListItem, guestId: string): boolean =>
-        usedNormal[table.tableId]! + guestNormalHeads(guestId) <= table.capacity
+        seatingHeads([...plannedSeats[table.tableId]!, ...pendingMembers(guestId)], id => guestById(id)?.diet) <= table.capacity
       const plan: { tableId: string, guestId: string }[] = []
       const assign = (table: TableListItem, guest: GuestListItem) => {
-        usedNormal[table.tableId]! += guestNormalHeads(guest.guestId)
+        plannedSeats[table.tableId]!.push(...pendingMembers(guest.guestId))
         plan.push({ tableId: table.tableId, guestId: guest.guestId })
       }
 

@@ -141,3 +141,8 @@ export interface CakeBoxExtraOrderUpdatedEvent {
   recipientContact: string | null
   note: string | null
 }
+
+export interface CakeBoxNote {
+  guestId: string
+  note: string
+}

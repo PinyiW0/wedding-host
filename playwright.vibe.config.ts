@@ -8,4 +8,11 @@ export default defineConfig({
   ...baseConfig,
   testDir: './test/e2e/vibe',
   outputDir: 'test/e2e/test-results-vibe',
+  ...(baseConfig.webServer && !Array.isArray(baseConfig.webServer)
+    ? { webServer: { ...baseConfig.webServer, env: {
+        ...baseConfig.webServer.env,
+        NUXT_BUILD_DIR: '.nuxt-e2e',
+        NUXT_VITE_CACHE_DIR: 'node_modules/.cache/vite-e2e',
+      } } }
+    : {}),
 })

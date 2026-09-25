@@ -25,10 +25,12 @@ import {
   listCakeBoxAssignments,
   listCakeBoxExclusions,
   listCakeBoxExtraOrders,
+  listCakeBoxNotes,
   listCakeBoxTypes,
   listGuestCategories,
   listGuests,
   removeCakeBoxExclusion,
+  saveCakeBoxNote,
   updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from '~/api'
@@ -80,6 +82,27 @@ const { data: extraOrders, refresh: refreshExtra } = await listCakeBoxExtraOrder
   weddingId,
   { default: () => [] },
 )
+
+// 獨立規劃備註，改款與不發放不會刪掉。
+const { data: cakeNotes, error: cakeNotesError, refresh: refreshCakeNotes } = await listCakeBoxNotes(weddingId, { default: () => [] })
+const notesByGuest = computed(() => new Map((cakeNotes.value ?? []).map(n => [n.guestId, n.note])))
+async function saveGuestNote(guestId: string, note: string) {
+  await saveCakeBoxNote(weddingId.value, guestId, note)
+  await refreshCakeNotes()
+  if (cakeNotesError.value)
+    throw cakeNotesError.value
+}
+async function saveExtraNote(extraOrderId: string, note: string) {
+  await updateCakeBoxExtraOrder(weddingId.value, extraOrderId, { note: note.trim() || null })
+  await refreshExtra()
+}
+const previewType = ref<CakeBoxTypeListItem | null>(null)
+const isPreviewOpen = ref(false)
+function previewCakeBox(type: CakeBoxTypeListItem) {
+  previewType.value = type
+  isPreviewOpen.value = true
+}
+const typeSelectUi = { value: 'whitespace-normal break-words text-left', itemLabel: 'whitespace-normal break-words' }
 
 // 已發放狀態（後台檢視 + 取消發放）：來源同接待台 reception-status，cakeBoxTypeId != null = 已領喜餅
 const { data: receptionStatus, refresh: refreshReceptionStatus } = await getReceptionStatus(
@@ -713,6 +736,23 @@ const ALL_CATEGORIES = '__all__'
 const EXTRA_CATEGORY = '__extra__'
 const nameQuery = ref('')
 const categoryFilter = ref(ALL_CATEGORIES)
+const styleFilter = ref('__all__')
+const distributionFilter = ref('__all__')
+const styleFilterOptions = computed(() => [
+  { label: '全部禮盒款式', value: '__all__' },
+  ...typeOptions.value,
+  { label: '未設定款式', value: '__unset__' },
+])
+const distributionFilterOptions = [
+  { label: '全部發放狀態', value: '__all__' },
+  { label: '已發放', value: 'distributed' },
+  { label: '未發放', value: 'pending' },
+  { label: '不發放', value: 'excluded' },
+  { label: '不經接待發放', value: 'extra' },
+]
+function matchesStyle(typeId: string, excluded = false) {
+  return styleFilter.value === '__all__' || (!excluded && (styleFilter.value === '__unset__' ? !typeId : typeId === styleFilter.value))
+}
 const categoryFilterOptions = computed(() => [
   { label: '全部分類', value: ALL_CATEGORIES },
   ...distinctCategories.value.map(c => ({ label: c, value: c })),
@@ -728,6 +768,7 @@ interface ExtraPickupRow {
   cakeBoxTypeName: string
   quantity: number
   detail: string
+  note: string
 }
 const extraPickupRows = computed<ExtraPickupRow[]>(() =>
   (extraOrders.value ?? []).map(o => ({
@@ -737,7 +778,8 @@ const extraPickupRows = computed<ExtraPickupRow[]>(() =>
     cakeBoxTypeId: o.cakeBoxTypeId,
     cakeBoxTypeName: o.cakeBoxTypeName,
     quantity: o.quantity,
-    detail: [o.recipientContact, o.note].filter(Boolean).join(' · '),
+    detail: o.recipientContact ?? '',
+    note: o.note ?? '',
   })),
 )
 
@@ -747,13 +789,16 @@ const filteredPickup = computed(() => {
     .filter((r) => {
       const matchName = !q || r.name.toLowerCase().includes(q)
       const matchCat = categoryFilter.value === ALL_CATEGORIES || r.category === categoryFilter.value
-      return matchName && matchCat
+      const state = distributedByGuest.value[r.guestId] ? 'distributed' : r.excluded ? 'excluded' : 'pending'
+      return matchName && matchCat && matchesStyle(r.cakeBoxTypeId, r.excluded)
+        && (distributionFilter.value === '__all__' || distributionFilter.value === state)
     })
     .map(r => ({ ...r, kind: 'guest' as const }))
   const extraRows = extraPickupRows.value.filter((r) => {
     const matchName = !q || r.name.toLowerCase().includes(q)
     const matchCat = categoryFilter.value === ALL_CATEGORIES || categoryFilter.value === EXTRA_CATEGORY
-    return matchName && matchCat
+    return matchName && matchCat && matchesStyle(r.cakeBoxTypeId)
+      && (distributionFilter.value === '__all__' || distributionFilter.value === 'extra')
   })
   // 額外配發列固定附在賓客列之後
   return [...guestRows, ...extraRows]
@@ -767,7 +812,7 @@ const pagedPickupList = computed(() => {
   return filteredPickup.value.slice(start, start + pickupPageSize)
 })
 // 篩選結果筆數變動時回到第 1 頁，避免停留在已不存在的頁
-watch(() => filteredPickup.value.length, () => {
+watch([nameQuery, categoryFilter, styleFilter, distributionFilter, () => filteredPickup.value.length], () => {
   pickupPage.value = 1
 })
 
@@ -785,11 +830,12 @@ function downloadPickupCsv() {
   const escape = (s: string) => `"${String(s).replaceAll('"', '""')}"`
   // 第一段：逐位領取明細（排除不發放者）
   const rows: string[][] = [
-    ['姓名', '分類', '禮盒款式'],
+    ['姓名', '分類', '禮盒款式', '備註'],
     ...includedPickup.value.map(r => [
       r.name,
       r.category,
       r.isFallback ? `${r.cakeBoxTypeName}（預設）` : r.cakeBoxTypeName,
+      notesByGuest.value.get(r.guestId) ?? '',
     ]),
   ]
   // 第二段：額外配發明細（公關用）
@@ -950,7 +996,7 @@ async function removeExtraOrder(extraOrderId: string) {
       </template>
     </PageHeader>
 
-    <!-- lg 以上左右兩欄各自獨立捲動（issue #107）：外層停止捲動、grid 撐滿高度，欄內自捲；< lg 維持整頁單捲 -->
+    <!-- 桌面維持原本左右兩欄與各自捲動；小螢幕依原本順序顯示款式設定與賓客分配。 -->
     <div class="min-h-0 flex-1 overflow-auto pr-4 lg:overflow-hidden">
       <div class="grid items-stretch gap-6 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)]">
         <!-- 右欄（設定型內容）：source 在前以滿足 findEntity 順序，視覺用 grid 擺右並常駐 -->
@@ -992,7 +1038,9 @@ async function removeExtraOrder(extraOrderId: string) {
                 class="flex items-center gap-3 px-2 py-3 transition-colors hover:bg-cream dark:hover:bg-neutral-800/40"
               >
                 <!-- 小縮圖：組合款並排內含各單款的圖，無圖以禮盒 icon 佔位（issue #140） -->
-                <CakeBoxThumb :items="thumbItems(type)" />
+                <button type="button" :aria-label="`預覽 ${type.name}`" :title="type.name" @click="previewCakeBox(type)">
+                  <CakeBoxThumb :items="thumbItems(type)" />
+                </button>
 
                 <!-- 主資訊 -->
                 <div class="min-w-0 flex-1">
@@ -1003,8 +1051,10 @@ async function removeExtraOrder(extraOrderId: string) {
                       class="size-4 shrink-0 text-gold"
                     />
                     <span v-if="type.isDefault" class="sr-only">預設款</span>
-                    <h3 class="truncate font-display text-body-l font-medium text-ink dark:text-paper">
-                      {{ type.name }}
+                    <h3 class="min-w-0 font-display text-body-l font-medium text-ink dark:text-paper">
+                      <button type="button" :title="type.name" class="text-left break-words hover:underline" @click="previewCakeBox(type)">
+                        {{ type.name }}
+                      </button>
                     </h3>
                     <span v-if="type.price != null" class="font-medium text-gold-deep">
                       {{ formatPrice(type.price) }}
@@ -1095,7 +1145,9 @@ async function removeExtraOrder(extraOrderId: string) {
                   <USelectMenu
                     v-model="extraTypeId"
                     data-testid="cake-box-extra-type"
+                    :title="typeNameOf(extraTypeId)"
                     :items="typeOptions"
+                    :ui="typeSelectUi"
                     value-key="value"
                     placeholder="選擇款式"
                     class="w-full"
@@ -1245,7 +1297,7 @@ async function removeExtraOrder(extraOrderId: string) {
               </div>
 
               <!-- 工具列：指派動作（左）+ 表格搜尋/分類篩選/匯出（右） -->
-              <div class="mb-3 flex flex-wrap items-center gap-2">
+              <div class="mb-3 flex flex-wrap items-end gap-2">
                 <UButton
                   data-testid="cake-box-auto-assign"
                   icon="i-heroicons-sparkles"
@@ -1275,15 +1327,23 @@ async function removeExtraOrder(extraOrderId: string) {
                   size="sm"
                   class="w-full sm:w-44"
                 />
-                <USelectMenu
-                  v-model="categoryFilter"
-                  data-testid="vibe-category-filter"
-                  :items="categoryFilterOptions"
-                  value-key="value"
-                  placeholder="全部分類"
-                  size="sm"
-                  class="w-full sm:w-36"
-                />
+                <UFormField label="分類">
+                  <USelectMenu
+                    v-model="categoryFilter"
+                    data-testid="vibe-category-filter"
+                    :items="categoryFilterOptions"
+                    value-key="value"
+                    placeholder="全部分類"
+                    size="sm"
+                    class="w-full sm:w-36"
+                  />
+                </UFormField>
+                <UFormField label="禮盒款式">
+                  <USelectMenu v-model="styleFilter" data-testid="cake-style-filter" :items="styleFilterOptions" value-key="value" :ui="typeSelectUi" :title="typeNameOf(styleFilter)" class="w-52" size="sm" />
+                </UFormField>
+                <UFormField label="發放狀態">
+                  <USelectMenu v-model="distributionFilter" data-testid="cake-distribution-filter" :items="distributionFilterOptions" value-key="value" class="w-40" size="sm" />
+                </UFormField>
                 <UButton
                   data-testid="cake-box-export-csv"
                   icon="i-heroicons-arrow-down-tray"
@@ -1304,34 +1364,37 @@ async function removeExtraOrder(extraOrderId: string) {
               </p>
 
               <!-- 全賓客表（姓名 / 分類 / 禮盒款式：款式欄就地下拉改款）；固定高度、表頭 sticky，只有列在表格內捲 -->
-              <div class="max-h-[58vh] overflow-auto rounded-lg border border-line lg:max-h-none lg:min-h-0 lg:flex-1 dark:border-neutral-800">
-                <table class="w-full text-left text-body">
+              <div class="stable-scroll max-h-[58vh] overflow-x-scroll overflow-y-auto rounded-lg border border-line lg:max-h-none lg:min-h-0 lg:flex-1 dark:border-neutral-800">
+                <table class="w-full min-w-[52rem] text-left text-body">
                   <thead class="sticky top-0 z-10 bg-white dark:bg-neutral-900">
                     <tr class="border-b border-line text-overline uppercase text-ink-300 dark:border-neutral-800">
-                      <th scope="col" class="px-4 py-2.5 font-medium">
+                      <th scope="col" class="whitespace-nowrap px-4 py-2.5 font-medium">
                         姓名
                       </th>
-                      <th scope="col" class="px-4 py-2.5 font-medium">
+                      <th scope="col" class="whitespace-nowrap px-4 py-2.5 font-medium">
                         分類
                       </th>
-                      <th scope="col" class="px-4 py-2.5 font-medium">
+                      <th scope="col" class="whitespace-nowrap px-4 py-2.5 font-medium">
                         禮盒款式
                       </th>
-                      <th scope="col" class="px-4 py-2.5 font-medium">
+                      <th scope="col" class="whitespace-nowrap px-4 py-2.5 font-medium">
                         發放狀態
+                      </th>
+                      <th scope="col" class="whitespace-nowrap px-4 py-2.5 font-medium">
+                        備註
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-if="filteredPickup.length === 0">
-                      <td colspan="4" class="px-4 py-8 text-center text-caption text-ink-400 dark:text-neutral-500">
+                      <td colspan="5" class="px-4 py-8 text-center text-caption text-ink-400 dark:text-neutral-500">
                         查無符合的賓客
                       </td>
                     </tr>
                     <tr
                       v-for="r in pagedPickupList"
                       :key="r.kind === 'extra' ? r.extraOrderId : r.guestId"
-                      :data-testid="r.kind === 'extra' ? `vibe-extra-row-${r.extraOrderId}` : undefined"
+                      :data-testid="r.kind === 'extra' ? `vibe-extra-row-${r.extraOrderId}` : `cake-guest-row-${r.guestId}`"
                       class="border-b border-line/60 transition-colors last:border-0 dark:border-neutral-800"
                       :class="r.kind === 'extra' && r.extraOrderId === editingExtraId ? 'bg-cream dark:bg-neutral-800/40' : ''"
                     >
@@ -1350,7 +1413,7 @@ async function removeExtraOrder(extraOrderId: string) {
                         </td>
                         <!-- pl-2.5 對齊賓客列下拉框的文字起點（USelectMenu sm 內距），欄位左緣視覺一致 -->
                         <td class="whitespace-nowrap px-4 py-2.5 text-ink-500 dark:text-neutral-400">
-                          <span class="pl-2.5">{{ r.cakeBoxTypeName }}<span class="ml-1 text-caption font-medium text-gold-deep">×{{ r.quantity }} 盒</span></span>
+                          <span :title="r.cakeBoxTypeName" class="inline-block max-w-64 whitespace-normal break-words pl-2.5">{{ r.cakeBoxTypeName }}<span class="ml-1 text-caption font-medium text-gold-deep">×{{ r.quantity }} 盒</span></span>
                         </td>
                         <td class="px-4 py-2.5">
                           <div class="flex items-center gap-1">
@@ -1369,10 +1432,10 @@ async function removeExtraOrder(extraOrderId: string) {
                         </td>
                       </template>
                       <template v-else>
-                        <td class="px-4 py-2.5 font-medium text-ink dark:text-paper">
+                        <td class="whitespace-nowrap px-4 py-2.5 font-medium text-ink dark:text-paper">
                           {{ r.name }}
                         </td>
-                        <td class="px-4 py-2.5 text-ink-500 dark:text-neutral-400">
+                        <td class="whitespace-nowrap px-4 py-2.5 text-ink-500 dark:text-neutral-400">
                           {{ r.category }}
                         </td>
                         <td class="px-4 py-2.5">
@@ -1384,7 +1447,9 @@ async function removeExtraOrder(extraOrderId: string) {
                               :data-testid="`vibe-row-style-${r.guestId}`"
                               :loading="inlineSavingId === r.guestId"
                               size="sm"
-                              class="w-40"
+                              class="w-56"
+                              :ui="typeSelectUi"
+                              :title="r.excluded ? '不發放' : r.cakeBoxTypeName"
                               @update:model-value="(v: string) => onRowStyleChange(r, v)"
                             />
                             <span v-if="r.excluded" class="text-caption text-ink-300">不計入訂購</span>
@@ -1416,9 +1481,16 @@ async function removeExtraOrder(extraOrderId: string) {
                               取消發放
                             </UButton>
                           </div>
-                          <span v-else class="text-caption text-ink-300">未發放</span>
+                          <span v-else class="text-caption text-ink-300">{{ r.excluded ? '不發放' : '未發放' }}</span>
                         </td>
                       </template>
+                      <td class="px-4 py-2.5 align-top">
+                        <CakeBoxNoteEditor v-if="r.kind === 'extra'" :note="r.note" :recipient="r.name" :save-note="note => saveExtraNote(r.extraOrderId, note)" />
+                        <CakeBoxNoteEditor v-else-if="!cakeNotesError" :note="notesByGuest.get(r.guestId) ?? ''" :recipient="r.name" :save-note="note => saveGuestNote(r.guestId, note)" />
+                        <UButton v-else color="error" variant="ghost" size="xs" @click="refreshCakeNotes()">
+                          備註載入失敗，重試
+                        </UButton>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -1441,6 +1513,8 @@ async function removeExtraOrder(extraOrderId: string) {
         </div>
       </div>
     </div>
+
+    <CakeBoxPreviewModal v-model:open="isPreviewOpen" :type="previewType" :types="cakeBoxTypes ?? []" />
 
     <!-- 新增 / 編輯喜餅款式 Modal -->
     <!-- 攔 focusOutside：點縮圖上傳開啟系統檔案視窗會搶走焦點，預設會被當成「點外面」而關閉 modal；
@@ -1483,6 +1557,7 @@ async function removeExtraOrder(extraOrderId: string) {
                   v-model="state.name"
                   data-testid="cake-box-name"
                   placeholder="請輸入款式名稱"
+                  :title="state.name"
                   class="w-full"
                 />
               </UFormField>
@@ -1576,6 +1651,7 @@ async function removeExtraOrder(extraOrderId: string) {
                   v-model="componentTypeIds"
                   data-testid="vibe-cake-box-components"
                   :items="componentOptions"
+                  :ui="typeSelectUi"
                   value-key="value"
                   multiple
                   :placeholder="componentOptions.length ? '選擇內含單款（可複選，選填）' : '尚無可選的單款'"
@@ -1670,7 +1746,9 @@ async function removeExtraOrder(extraOrderId: string) {
               <USelectMenu
                 v-model="assignState.cakeBoxTypeId"
                 data-testid="assignment-type-select"
+                :title="typeNameOf(assignState.cakeBoxTypeId)"
                 :items="typeOptions"
+                :ui="typeSelectUi"
                 value-key="value"
                 placeholder="選擇喜餅款式"
                 class="w-full"
@@ -1770,6 +1848,7 @@ async function removeExtraOrder(extraOrderId: string) {
                 v-model="categoryRule[cat]"
                 :data-testid="`cake-box-auto-rule-${cat}`"
                 :items="typeOptions"
+                :ui="typeSelectUi"
                 value-key="value"
                 placeholder="選擇款式"
                 class="flex-1"

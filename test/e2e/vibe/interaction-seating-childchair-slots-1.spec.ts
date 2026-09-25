@@ -18,13 +18,13 @@ function emptyDots(page: import('@playwright/test').Page) {
   return page.locator(`[data-testid^="${TABLE}-empty-"]`)
 }
 
-// 造 n 組「1 大人 + 1 兒童椅」並排入該桌
+// 造 n 組葷食「1 大人 + 1 兒童椅」，單獨驗證兒童加位；混合素食另由 #180 測試涵蓋
 async function seatGroupsWithChildChair(page: import('@playwright/test').Page, n: number) {
   const guests = await (await page.request.get('/api/v1/weddings/wedding-001/guests')).json()
   const picked = guests.filter((g: any) => !g.deletedAt).slice(0, n)
   for (const g of picked) {
     await page.request.patch(`/api/v1/weddings/wedding-001/guests/${g.guestId}`, {
-      data: { partySize: 2, childChairCount: 1 },
+      data: { partySize: 2, childChairCount: 1, diet: 'meat' },
     })
     const res = await page.request.post(`/api/v1/weddings/wedding-001/tables/${TABLE}/seats`, {
       data: { guestId: g.guestId, seatNumber: 1 },
