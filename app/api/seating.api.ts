@@ -71,10 +71,10 @@ export function seatGuest(weddingId: string, tableId: string, body: SeatGuestBod
   )
 }
 
-export function unseatGuest(weddingId: string, tableId: string, guestId: string) {
+export function unseatGuest(weddingId: string, tableId: string, guestId: string, seatNumber?: number) {
   return useHttp().delete<void>(
     '/api/v1/weddings/{weddingId}/tables/{tableId}/seats/{guestId}',
-    { pathParams: { weddingId, tableId, guestId } },
+    { pathParams: { weddingId, tableId, guestId }, query: seatNumber === undefined ? undefined : { seatNumber } },
   )
 }
 

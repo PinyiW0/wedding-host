@@ -3,6 +3,9 @@ import process from 'node:process'
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
+  // 同一工作目錄的 E2E 與日常 dev 分開產物，避免 HMR／依賴版本互相覆寫。
+  buildDir: process.env.NUXT_BUILD_DIR || '.nuxt',
+  vite: { cacheDir: process.env.NUXT_VITE_CACHE_DIR || 'node_modules/.cache/vite' },
   devtools: { enabled: false },
   runtimeConfig: {
     // 認證模式（NUXT_AUTH_MODE 覆蓋）：

@@ -318,3 +318,10 @@ export const projectionSettings = pgTable('projection_settings', {
   videoUrl: text(),
   customFlowers: jsonb().$type<string[]>().notNull(),
 })
+
+// 喜餅規劃備註獨立於賓客一般備註與指派，改款／不發放時仍保留。
+export const cakeBoxNotes = pgTable('cake_box_notes', {
+  weddingId: text().notNull(),
+  guestId: text().notNull(),
+  note: text().notNull(),
+}, t => [primaryKey({ columns: [t.weddingId, t.guestId] })])

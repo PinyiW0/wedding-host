@@ -17,6 +17,7 @@ const CHART = {
   line: '#DCD4C7', // 舞台框（line）
   empty: { fill: '#FAF7F1', stroke: '#DCD4C7', text: '#A8A096' }, // paper / line / ink-300
   veg: { fill: '#E0E8E1', stroke: '#3D4E41', text: '#323F35' }, // success 100 / 600 / 700
+  child: { text: '#552222' },
   meat: { fill: '#DCE3EC', stroke: '#344358', text: '#2B3748' }, // info 100 / 600 / 700
   mixed: { fill: '#F4EAD3', stroke: '#B8965A', text: '#9A7B43' }, // primary 100 / 500(gold) / 600(gold-deep)
 } as const
@@ -119,9 +120,15 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
   })
 
   // 座位 → 顯示姓名（兒童椅加「(童)」標記）；同組多席各佔一格、重覆列出對齊實際座位數
-  function occupantName(seat: SeatListItem): string {
-    const name = guestById(seat.guestId)?.name ?? seat.guestId
-    return seat.seatType === 'childChair' ? `${name}(童)` : name
+  function occupantName(seat: SeatListItem) {
+    const guest = guestById(seat.guestId)
+    const name = guest?.name ?? seat.guestId
+    const veg = guest?.diet === 'vegetarian'
+    const child = seat.seatType === 'childChair'
+    return {
+      label: `${name}${seat.partyIndex}${veg ? '(素)' : ''}${child ? '(童)' : ''}`,
+      color: child ? CHART.child.text : veg ? CHART.veg.text : CHART.ink,
+    }
   }
 
   // === 共用版面：直接沿用畫布座標（後台拖曳出來的擺位），整場等比縮放塞進一頁 A4 ===
@@ -278,7 +285,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
         ctx.fillStyle = cat.text
         ctx.fillText(cat.label, cx, cy + (child > 0 ? subFont * 0.2 : subFont), r * 1.85)
         if (child > 0) {
-          ctx.fillStyle = CHART.veg.stroke
+          ctx.fillStyle = CHART.child.text
           ctx.fillText(`兒童椅 ${child}`, cx, cy + subFont * 1.6, r * 1.85)
         }
       },
@@ -286,7 +293,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
   }
 
   // 圈內列賓客姓名：桌名置頂、姓名依人數 1～2 欄排列，字級隨圓半徑縮放
-  function drawNamesInCircle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, names: string[]) {
+  function drawNamesInCircle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, names: ReturnType<typeof occupantName>[]) {
     if (names.length === 0) {
       ctx.fillStyle = CHART.inkFaint
       ctx.font = `${Math.max(7, r * 0.28)}px ${FONT}`
@@ -311,7 +318,8 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
       const nx = cols === 1 ? cx : (col === 0 ? cx - colGap / 2 : cx + colGap / 2)
       const ny = top + lineH * (row + 0.5)
       const maxW = cols === 1 ? r * 1.5 : r * 0.72
-      ctx.fillText(names[i]!, nx, ny, maxW)
+      ctx.fillStyle = names[i]!.color
+      ctx.fillText(names[i]!.label, nx, ny, maxW)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -325,7 +333,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
         ctx.fillText('桌次圖 · 賓客名單', M, 24)
         ctx.font = `9px ${FONT}`
         ctx.fillStyle = CHART.inkSoft
-        ctx.fillText(`已入座 ${totalSeated.value} 人 · 共 ${tables.value.length} 桌`, M, 40)
+        ctx.fillText(`已入座 ${totalSeated.value} 人 · 共 ${tables.value.length} 桌 · 素食綠色／兒童椅紅色`, M, 40)
       },
       (ctx, it, layout) => {
         const cx = layout.baseX + it.cx * layout.scale

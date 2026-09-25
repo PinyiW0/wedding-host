@@ -42,6 +42,7 @@ interface SeedJob {
 }
 
 const SEED_JOBS: SeedJob[] = [
+  { table: schema.cakeBoxNotes, rows: [], insert: async () => {} },
   { table: schema.users, rows: mockUsers, insert: tx => tx.insert(schema.users).values(mockUsers) },
   { table: schema.receptionAccounts, rows: mockReceptionAccounts, insert: tx => tx.insert(schema.receptionAccounts).values(mockReceptionAccounts) },
   { table: schema.weddings, rows: mockWeddings, insert: tx => tx.insert(schema.weddings).values(mockWeddings) },

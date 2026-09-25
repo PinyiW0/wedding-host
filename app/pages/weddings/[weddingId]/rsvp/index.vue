@@ -239,14 +239,32 @@ const invitationFilterOptions = [
   { label: '不需要', value: 'none' },
   { label: '未填', value: INVITATION_FILTER_UNFILLED },
 ]
-const filteredGuests = computed(() => {
-  const filter = invitationFilter.value
-  if (filter === INVITATION_FILTER_ALL)
-    return activeGuests.value
-  if (filter === INVITATION_FILTER_UNFILLED)
-    return activeGuests.value.filter(g => !g.invitationPreference)
-  return activeGuests.value.filter(g => g.invitationPreference === filter)
-})
+const sideFilter = ref('__all__')
+const attendingFilter = ref('__all__')
+const dietFilter = ref('__all__')
+const sideFilterOptions = [
+  { label: '全部男女方', value: '__all__' },
+  { label: '男方', value: 'groom' },
+  { label: '女方', value: 'bride' },
+]
+const attendingFilterOptions = [
+  { label: '全部出席狀態', value: '__all__' },
+  { label: '出席', value: 'attending' },
+  { label: '婉拒', value: 'declined' },
+  { label: '未出席', value: 'absent' },
+  { label: '未回覆', value: '__unfilled__' },
+]
+const dietFilterOptions = [
+  { label: '全部葷素', value: '__all__' },
+  { label: '葷食', value: 'meat' },
+  { label: '素食', value: 'vegetarian' },
+]
+const filteredGuests = computed(() => activeGuests.value.filter(g =>
+  (sideFilter.value === '__all__' || g.side === sideFilter.value)
+  && (dietFilter.value === '__all__' || g.diet === dietFilter.value)
+  && (attendingFilter.value === '__all__' || (attendingFilter.value === '__unfilled__' ? !g.rsvpAttending : g.rsvpAttending === attendingFilter.value))
+  && (invitationFilter.value === INVITATION_FILTER_ALL || (invitationFilter.value === INVITATION_FILTER_UNFILLED ? !g.invitationPreference : g.invitationPreference === invitationFilter.value)),
+))
 
 // === 標記喜帖已寄送（逐列 checkbox；PUT 冪等設值） ===
 // checkbox 為 controlled（綁 guest.invitationSent、不就地 mutate）：
@@ -575,18 +593,21 @@ async function confirmRemove() {
 
       <!-- 賓客回覆清單 — 編輯式表格（表格為主捲動區，表頭 sticky） -->
       <section class="flex min-h-0 flex-1 flex-col">
-        <div class="mb-3 flex shrink-0 items-center gap-3">
-          <span class="text-overline uppercase text-gold-deep">賓客回覆</span>
+        <div class="mb-3 flex shrink-0 flex-wrap items-end gap-3">
+          <span class="text-overline uppercase text-gold-deep">賓客回覆 · {{ filteredGuests.length }} 組</span>
           <span class="h-px flex-1 bg-line" />
-          <!-- 依喜帖需求篩選回覆清單 -->
-          <USelectMenu
-            v-model="invitationFilter"
-            data-testid="rsvp-invitation-filter"
-            :items="invitationFilterOptions"
-            value-key="value"
-            aria-label="依喜帖需求篩選"
-            class="w-40"
-          />
+          <UFormField label="男女方">
+            <USelectMenu v-model="sideFilter" data-testid="rsvp-side-filter" :items="sideFilterOptions" value-key="value" aria-label="依男女方篩選" class="w-36" />
+          </UFormField>
+          <UFormField label="出席狀態">
+            <USelectMenu v-model="attendingFilter" data-testid="rsvp-attending-filter" :items="attendingFilterOptions" value-key="value" aria-label="依出席狀態篩選" class="w-40" />
+          </UFormField>
+          <UFormField label="葷素">
+            <USelectMenu v-model="dietFilter" data-testid="rsvp-diet-filter" :items="dietFilterOptions" value-key="value" aria-label="依葷素篩選" class="w-36" />
+          </UFormField>
+          <UFormField label="喜帖選擇">
+            <USelectMenu v-model="invitationFilter" data-testid="rsvp-invitation-filter" :items="invitationFilterOptions" value-key="value" aria-label="依喜帖需求篩選" class="w-40" />
+          </UFormField>
         </div>
         <div class="min-h-0 flex-1 overflow-auto">
           <table
@@ -734,7 +755,7 @@ async function confirmRemove() {
                 <td colspan="11">
                   <EmptyState
                     title="沒有符合的賓客"
-                    description="目前沒有賓客符合此喜帖需求篩選"
+                    description="目前沒有賓客符合這組篩選條件"
                   />
                 </td>
               </tr>

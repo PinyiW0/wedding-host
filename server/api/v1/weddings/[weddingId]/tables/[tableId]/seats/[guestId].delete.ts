@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../../db'
 import { seatingTables, seats } from '../../../../../../../db/schema'
+import { assertSeatingCapacity, seatingDietLookup } from '../../../../../../../utils/seating-capacity'
 
 export default defineEventHandler(async (event: H3Event): Promise<void> => {
   const tableId = getRouterParam(event, 'tableId')!
@@ -15,14 +16,22 @@ export default defineEventHandler(async (event: H3Event): Promise<void> => {
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
-  // 一組賓客可能佔多筆座位（本人＋同行＋兒童椅），取消時一次清除該桌該賓客所有座位
-  const removed = await db.delete(seats)
-    .where(and(eq(seats.tableId, tableId), eq(seats.guestId, guestId)))
-    .returning()
-  if (!removed.length) {
+  // 指定 seatNumber 只取消該成員；未指定時保留整組取消（供整桌重置）。
+  const querySeat = getQuery(event).seatNumber
+  const seatNumber = querySeat === undefined ? undefined : Number(querySeat)
+  if (seatNumber !== undefined && (!Number.isSafeInteger(seatNumber) || seatNumber < 1))
+    throw createError({ statusCode: 400, statusMessage: '座位號須為正整數' })
+  const tableSeats = await db.select().from(seats).where(eq(seats.tableId, tableId))
+  const matches = (s: typeof seats.$inferSelect) => s.guestId === guestId && (seatNumber === undefined || s.seatNumber === seatNumber)
+  if (!tableSeats.some(matches))
     throw createError({ statusCode: 404, statusMessage: '賓客不在此桌' })
-  }
-  // 手動取消座位是新人自己的決定，不該再掛著「RSVP 變動被退回」的提示（issue #174）
+  const dietOf = await seatingDietLookup(db, weddingId)
+  assertSeatingCapacity(tableSeats.filter(s => !matches(s)), table.capacity, dietOf)
+  await db.delete(seats).where(and(
+    eq(seats.tableId, tableId),
+    eq(seats.guestId, guestId),
+    seatNumber === undefined ? undefined : eq(seats.seatNumber, seatNumber),
+  ))
   await clearSeatReleasedMark(db, guestId)
 
   setResponseStatus(event, 204)

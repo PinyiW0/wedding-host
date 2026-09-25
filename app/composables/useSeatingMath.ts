@@ -4,22 +4,25 @@
 import type { MaybeRefOrGetter } from 'vue'
 import type { GuestDiet, GuestListItem, GuestSide } from '~/types/api/guests'
 import type { SeatListItem, TableListItem } from '~/types/api/seating'
+import { remainingPartyMembers, seatingHeads } from '~/utils/seatingRules'
 
 export const sideLabel = (s: GuestSide) => (s === 'groom' ? '男方' : '女方')
 export const dietLabel = (d: GuestDiet) => (d === 'meat' ? '葷食' : '素食')
 
-// 座位顏色：兒童椅席綠色，否則依男方／女方區分（非性別、是家屬方）
-export function occupantColorClass(o: { side: GuestSide | null, seatType: 'normal' | 'childChair' }): string {
+// 座位顏色：兒童椅紅、素食綠，其他依男方／女方區分。
+export function occupantColorClass(o: { side: GuestSide | null, seatType: 'normal' | 'childChair', diet?: GuestDiet }): string {
   if (o.seatType === 'childChair')
+    return 'border-error-600 bg-error-100 text-error-700 dark:bg-error-900/40'
+  if (o.diet === 'vegetarian')
     return 'border-success-600 bg-success-100 text-success-700 dark:bg-success-900/40'
   if (o.side === 'bride')
     return 'border-gold bg-gold-light/50 text-gold-deep'
   return 'border-info-600 bg-info-100 text-info-700 dark:bg-info-900/40'
 }
 
-// 名單姓名顏色：有兒童椅嬰兒者標綠，否則女方金 / 男方藍
+// 名單素食姓名標綠；兒童椅以獨立紅色圖示標記。
 export function nameColorClass(g: GuestListItem): string {
-  if (g.childChairCount > 0)
+  if (g.diet === 'vegetarian')
     return 'text-success-700'
   return g.side === 'bride' ? 'text-gold-deep' : 'text-info-700'
 }
@@ -134,6 +137,7 @@ export function useSeatingMath(deps: SeatingMathDeps) {
       name,
       label: seat.seatType === 'childChair' ? `${name}-兒童${seat.partyIndex}` : `${name}${seat.partyIndex}`,
       side: guestSide(seat.guestId),
+      diet: guestById(seat.guestId)?.diet,
       seatType: seat.seatType,
       seatNumber: seat.seatNumber,
     }
@@ -145,32 +149,29 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     return seat ? buildOccupant(seat) : null
   }
 
-  // 圓桌要畫幾個座位 = capacity（正常席）+ 該桌兒童椅張數（額外加位、不佔正常席）。
-  // 兒童椅與正常席共用座號池，若只畫 capacity 格，兒童椅會吃掉正常席格子，
-  // 使「空位」少於實際可坐的大人數（畫面謊報客滿）。加上兒童椅張數後，
-  // 空位數 =（capacity + 兒椅）−（大人 + 兒椅）= capacity − 大人 = 剩餘正常席，與容量規則一致。
-  // maxSeat 作為保底：資料若因故超出（如舊資料座號膨脹），仍全部畫出、不讓座位憑空消失。
-  // 前提：假設場地桌面夠大、兒童椅可外加（台灣婚宴常見 10+1／10+2）。桌面小的場地
-  // 會要求兒童椅佔一個大人位，此式屆時會高估容量——變通是把該桌 capacity 直接調低。
+  // 正常容量＋不計席成員；舊超額資料仍完整呈現，但稀疏座號不增加空位。
   function slotCount(table: TableListItem): number {
     const seats = tableSeats(table.tableId)
-    const childChairs = seats.filter(s => s.seatType === 'childChair').length
-    const maxSeat = seats.reduce((m, s) => Math.max(m, s.seatNumber), 0)
-    return Math.max(table.capacity + childChairs, maxSeat)
+    const extra = seats.length - tableNormalHeads(table.tableId)
+    return Math.max(table.capacity + extra, seats.length)
   }
 
-  // 該桌已用正常席人頭（兒童椅不計）
   function tableNormalHeads(tableId: string): number {
-    return tableSeats(tableId).filter(s => s.seatType === 'normal').length
+    return seatingHeads(tableSeats(tableId), id => guestById(id)?.diet)
   }
-  // 此賓客組的正常席人頭 = partySize − 兒童椅嬰兒數（至少 1）
+
+  function pendingMembers(guestId: string) {
+    const guest = guestById(guestId)
+    return guest ? remainingPartyMembers(guest, allSeats.value) : []
+  }
+
   function guestNormalHeads(guestId: string): number {
-    const g = guestById(guestId)
-    return Math.max(1, (g?.partySize ?? 1) - (g?.childChairCount ?? 0))
+    return pendingMembers(guestId).filter(s => s.seatType === 'normal').length
   }
-  // 此桌容得下此賓客組嗎（正常席人頭不超過 capacity；兒童椅額外不計）
+
   function canSeatGuest(table: TableListItem, guestId: string): boolean {
-    return tableNormalHeads(table.tableId) + guestNormalHeads(guestId) <= table.capacity
+    const pending = pendingMembers(guestId)
+    return pending.length > 0 && seatingHeads([...tableSeats(table.tableId), ...pending], id => guestById(id)?.diet) <= table.capacity
   }
 
   // 下一個空號（該桌最小未占用座號；後端亦以此起點往上填空號）
@@ -240,6 +241,11 @@ export function useSeatingMath(deps: SeatingMathDeps) {
         if (s.seatNumber >= 1 && s.seatNumber <= n)
           occupants[s.seatNumber - 1] = buildOccupant(s)
       }
+      for (const s of seats.filter(s => s.seatNumber > n)) {
+        const slot = occupants.findIndex(o => o == null)
+        if (slot >= 0)
+          occupants[slot] = buildOccupant(s)
+      }
     }
 
     return positions.map((pos, idx) => ({
@@ -269,9 +275,10 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     return ids
   })
   const unseatedGuests = computed(() =>
-    seatableGuests.value.filter(g => !seatedGuestIds.value.has(g.guestId)),
+    seatableGuests.value.filter(g => pendingMembers(g.guestId).length > 0),
   )
-  const seatedCount = computed(() => seatableGuests.value.length - unseatedGuests.value.length)
+  const unseatedCount = computed(() => unseatedGuests.value.reduce((n, g) => n + pendingMembers(g.guestId).length, 0))
+  const seatedCount = computed(() => allSeats.value.filter(s => seatableGuests.value.some(g => g.guestId === s.guestId)).length)
 
   // 側欄固定依男女方→分類分群顯示，方便辨識
   const sidebarGuests = computed(() => [...unseatedGuests.value].sort(bySeatingPriority))
@@ -292,6 +299,8 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     slotCount,
     tableNormalHeads,
     guestNormalHeads,
+    pendingMembers,
+    unseatedCount,
     canSeatGuest,
     nextFreeSeat,
     nextSeatFor,

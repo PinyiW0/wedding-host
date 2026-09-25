@@ -23,8 +23,10 @@ export {
   listCakeBoxAssignments,
   listCakeBoxExclusions,
   listCakeBoxExtraOrders,
+  listCakeBoxNotes,
   listCakeBoxTypes,
   removeCakeBoxExclusion,
+  saveCakeBoxNote,
   updateCakeBoxExtraOrder,
   updateCakeBoxType,
 } from './cakebox.api'

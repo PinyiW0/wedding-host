@@ -3,8 +3,10 @@ import type { TableUpdatedEvent, UpdateTableBody } from '../../../../../../../ap
 
 import { and, eq } from 'drizzle-orm'
 
+import { seatingHeads } from '../../../../../../../app/utils/seatingRules'
 import { useDb } from '../../../../../../db'
 import { seatingTables, seats } from '../../../../../../db/schema'
+import { seatingDietLookup } from '../../../../../../utils/seating-capacity'
 
 export default defineEventHandler(async (event: H3Event): Promise<TableUpdatedEvent> => {
   const tableId = getRouterParam(event, 'tableId')!
@@ -23,11 +25,11 @@ export default defineEventHandler(async (event: H3Event): Promise<TableUpdatedEv
   if (body.capacity !== undefined) {
     // 比照新增桌次驗證（浮點／負值／溢位會污染座位環與容量計算）
     assertPositiveInt(body.capacity, '桌次容量', 999)
-    // Invariant「正常席人頭不可超過 capacity」：入座端點已守，調降容量是另一條破壞路徑。
-    // 放行的話後端存新值、座位環仍以最大座號撐開，畫面與資料會不一致（使用者只看到「減少沒反應」）。
-    const seatedNormal = await db.select().from(seats).where(and(eq(seats.tableId, tableId), eq(seats.seatType, 'normal')))
-    if (seatedNormal.length > body.capacity) {
-      throw createError({ statusCode: 409, statusMessage: `座位數不可小於此桌已排席人數（${seatedNormal.length} 人），請先移除座位` })
+    const tableSeats = await db.select().from(seats).where(eq(seats.tableId, tableId))
+    const dietOf = await seatingDietLookup(db, weddingId)
+    const heads = seatingHeads(tableSeats, dietOf)
+    if (heads > body.capacity) {
+      throw createError({ statusCode: 409, statusMessage: `座位數不可小於此桌已排席人數（${heads} 人），請先移除座位` })
     }
     patch.capacity = body.capacity
   }

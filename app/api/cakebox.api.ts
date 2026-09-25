@@ -8,6 +8,7 @@ import type {
   CakeBoxExtraOrderListItem,
   CakeBoxExtraOrderUpdatedEvent,
   CakeBoxGuestExcludedEvent,
+  CakeBoxNote,
   CakeBoxTypeCreatedEvent,
   CakeBoxTypeListItem,
   CakeBoxTypeUpdatedEvent,
@@ -127,4 +128,15 @@ export function deleteCakeBoxExtraOrder(weddingId: string, extraOrderId: string)
     '/api/v1/weddings/{weddingId}/cake-box-extra-orders/{extraOrderId}',
     { pathParams: { weddingId, extraOrderId } },
   )
+}
+
+export function listCakeBoxNotes(weddingId: MaybeRefOrGetter<string>, options?: HttpGetOptions<CakeBoxNote[]>) {
+  return useHttp().get<CakeBoxNote[]>(() => `/api/v1/weddings/${toValue(weddingId)}/cake-box-notes`, options)
+}
+
+export function saveCakeBoxNote(weddingId: string, guestId: string, note: string) {
+  return useHttp().put<CakeBoxNote>('/api/v1/weddings/{weddingId}/cake-box-notes/{guestId}', {
+    pathParams: { weddingId, guestId },
+    body: { note },
+  })
 }

@@ -65,7 +65,9 @@ const {
   isMainTable,
   tableCenterX,
   occupantAt,
-  guestNormalHeads,
+  pendingMembers,
+  unseatedCount,
+  tableNormalHeads,
   nextFreeSeat,
   nextSeatFor,
   seatSlots,
@@ -146,7 +148,7 @@ const { downloadItems } = useSeatingChartExport({
 const { isAutoSeating, autoSeat } = useAutoSeat({
   weddingId,
   tables,
-  math: { unseatedGuests, mainTable, isMainTable, tableSeats, guestNormalHeads, tableCenterX },
+  math: { unseatedGuests, mainTable, isMainTable, tableSeats, pendingMembers, guestById, tableCenterX },
   refreshAll,
 })
 
@@ -180,6 +182,8 @@ async function confirmClearAll() {
         all.push({ tableId, guestId: s.guestId })
       }
     }
+    // 先移除素食，避免重置過程暫時形成超額全素桌。
+    all.sort((a, b) => Number(guestById(b.guestId)?.diet === 'vegetarian') - Number(guestById(a.guestId)?.diet === 'vegetarian'))
     for (const a of all)
       await unseatGuest(weddingId.value, a.tableId, a.guestId)
     await refreshAll()
@@ -218,6 +222,7 @@ async function confirmResetTable() {
   try {
     // 取消端點一次清掉該賓客在該桌的所有席位，同一賓客只送一次
     const guestIds = [...new Set(tableSeats(table.tableId).map(s => s.guestId))]
+    guestIds.sort((a, b) => Number(guestById(b)?.diet === 'vegetarian') - Number(guestById(a)?.diet === 'vegetarian'))
     for (const guestId of guestIds)
       await unseatGuest(weddingId.value, table.tableId, guestId)
     await refreshAll()
@@ -314,7 +319,7 @@ async function confirmRemoveTable() {
 
 // === 安排座位（表單 Modal，與拖曳並存：保留可達路徑） ===
 const guestOptions = computed(() =>
-  seatableGuests.value.map(g => ({ label: g.name, value: g.guestId })),
+  seatableGuests.value.map(g => ({ label: `${g.name}（待排 ${pendingMembers(g.guestId).length} 人）`, value: g.guestId })),
 )
 const tableOptions = computed(() =>
   (tables.value ?? []).map(t => ({ label: t.tableName, value: t.tableId })),
@@ -355,6 +360,7 @@ async function confirmUnseat() {
       weddingId.value,
       unseatTarget.value.tableId,
       unseatTarget.value.guestId,
+      unseatTarget.value.seatNumber,
     )
     toast.add({ title: '已取消座位', color: 'success' })
     isUnseatOpen.value = false
@@ -430,7 +436,10 @@ onMounted(async () => {
               <span class="size-2.5 rounded-full bg-gold" />女方
             </span>
             <span class="flex items-center gap-1.5">
-              <span class="size-2.5 rounded-full bg-success-600" />兒童椅
+              <span class="size-2.5 rounded-full bg-success-600" />素食
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="size-2.5 rounded-full bg-error-600" />兒童椅
             </span>
           </div>
           <!-- 下載桌次圖：備餐地圖（餐點分類）/ 賓客名單（桌位示意圖），各含 JPEG / PDF -->
@@ -753,12 +762,13 @@ onMounted(async () => {
                     class="line-clamp-2 font-display font-semibold leading-tight text-ink dark:text-paper"
                     :class="isMainTable(table) ? 'text-lg' : 'text-base'"
                   >{{ table.tableName }}</span>
-                  <span class="mt-0.5 text-caption text-ink-300">{{ table.capacity }} 席</span>
+                  <span class="mt-0.5 text-caption text-ink-300">{{ tableNormalHeads(table.tableId) }} / {{ table.capacity }} 席</span>
+                  <span class="text-caption text-ink-500">實際 {{ tableSeats(table.tableId).length }} 人</span>
                 </div>
 
                 <!-- 座位環（座位數含兒童加位；主桌新人並排、雙方家屬各自外擴） -->
                 <template v-for="slot in seatSlots(table)" :key="slot.idx">
-                  <!-- 已入座：點擊取消座位、可拖曳互換 / 移動座位（兒童綠 / 女方金 / 男方藍） -->
+                  <!-- 已入座：點擊取消座位、可拖曳互換 / 移動座位（兒童紅 / 素食綠 / 女方金 / 男方藍） -->
                   <button
                     v-if="slot.occupant"
                     type="button"
@@ -775,6 +785,7 @@ onMounted(async () => {
                     @drop="onDropToSeat($event, table, slot.seatNumber)"
                   >
                     <span class="line-clamp-2 px-0.5">{{ slot.occupant.label }}</span>
+                    <span v-if="slot.occupant.diet === 'vegetarian' && slot.occupant.seatType === 'childChair'" class="absolute -right-1 -top-1 rounded border border-success-600 bg-success-100 px-1 text-success-700">素</span>
                     <!-- hover 提示：哪一方 · 關係 · 葷素（即時可見，取代不穩定的原生 title） -->
                     <span
                       class="pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1.5 text-caption font-normal leading-none text-paper shadow-lg group-hover/seat:block dark:bg-neutral-700"
@@ -848,6 +859,8 @@ onMounted(async () => {
       <SeatingGuestSidebar
         :guests="sidebarGuests"
         :seated-count="seatedCount"
+        :unseated-count="unseatedCount"
+        :pending-count="id => pendingMembers(id).length"
         :active-count="seatableGuests.length"
         :is-auto-seating="isAutoSeating"
         :is-clearing="isClearing"
