@@ -39,6 +39,7 @@ export {
   deleteGiftItem,
   listGiftCategories,
   listGiftItems,
+  reorderGiftCategories,
   updateGiftCategory,
   updateGiftItem,
 } from './gifts.api'

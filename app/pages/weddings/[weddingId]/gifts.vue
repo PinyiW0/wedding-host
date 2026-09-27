@@ -18,6 +18,7 @@ import {
   listGiftItems,
   listGuests,
   listTables,
+  reorderGiftCategories,
   updateGiftCategory,
   updateGiftItem,
 } from '~/api'
@@ -338,6 +339,27 @@ async function runCategoryAction(action: () => Promise<unknown>): Promise<boolea
   finally {
     isCategorySubmitting.value = false
   }
+}
+
+const draggingCategory = ref<string | null>(null)
+async function moveCategory(fromId: string, toId: string) {
+  if (isCategorySubmitting.value || renamingId.value || fromId === toId)
+    return
+  const original = [...(giftCategoriesData.value ?? [])]
+  const from = original.findIndex(c => c.categoryId === fromId)
+  const to = original.findIndex(c => c.categoryId === toId)
+  if (from < 0 || to < 0)
+    return
+  const ordered = [...original]
+  ordered.splice(to, 0, ordered.splice(from, 1)[0]!)
+  giftCategoriesData.value = ordered
+  draggingCategory.value = null
+  if (!await runCategoryAction(() => reorderGiftCategories(weddingId.value, ordered.map(c => c.categoryId))))
+    giftCategoriesData.value = original
+}
+function dropCategory(categoryId: string) {
+  if (draggingCategory.value)
+    void moveCategory(draggingCategory.value, categoryId)
 }
 
 async function addCategory() {
@@ -831,7 +853,7 @@ async function removeCategory(categoryId: string) {
             管理類別
           </h3>
           <p class="mb-4 text-caption text-ink-400 dark:text-neutral-500">
-            改名不影響既有品項；仍有品項的類別無法刪除
+            拖曳類別或使用上下按鈕排序，頁面會同步更新並自動儲存。改名不影響既有品項；仍有品項的類別無法刪除
           </p>
 
           <UAlert
@@ -846,9 +868,15 @@ async function removeCategory(categoryId: string) {
 
           <ul v-if="categories.length" class="space-y-2">
             <li
-              v-for="cat in categories"
+              v-for="(cat, index) in categories"
               :key="cat.value"
+              :data-testid="`gift-category-order-${cat.value}`"
+              :draggable="!isCategorySubmitting && !renamingId"
               class="flex items-center gap-2 rounded-lg border border-line px-3 py-2 dark:border-neutral-800"
+              @dragstart="draggingCategory = cat.value"
+              @dragend="draggingCategory = null"
+              @dragover.prevent
+              @drop.prevent="dropCategory(cat.value)"
             >
               <template v-if="renamingId === cat.value">
                 <UInput
@@ -878,6 +906,17 @@ async function removeCategory(categoryId: string) {
                 </UButton>
               </template>
               <template v-else>
+                <UIcon name="i-heroicons-bars-3" class="size-4 shrink-0 cursor-grab text-ink-400" />
+                <UButton
+                  icon="i-heroicons-chevron-up" size="xs" color="neutral" variant="ghost"
+                  :aria-label="`上移 ${cat.label}`" :disabled="isCategorySubmitting || index === 0"
+                  @click="moveCategory(cat.value, categories[index - 1]!.value)"
+                />
+                <UButton
+                  icon="i-heroicons-chevron-down" size="xs" color="neutral" variant="ghost"
+                  :aria-label="`下移 ${cat.label}`" :disabled="isCategorySubmitting || index === categories.length - 1"
+                  @click="moveCategory(cat.value, categories[index + 1]!.value)"
+                />
                 <span class="flex-1 text-body text-ink dark:text-paper">{{ cat.label }}</span>
                 <span class="text-caption text-ink-400 dark:text-neutral-500">{{ categoryItems(cat.value).length }} 項</span>
                 <UButton

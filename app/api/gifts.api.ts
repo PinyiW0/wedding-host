@@ -75,3 +75,10 @@ export function deleteGiftItem(weddingId: string, giftItemId: string) {
     { pathParams: { weddingId, giftItemId } },
   )
 }
+
+export function reorderGiftCategories(weddingId: string, categoryIds: string[]) {
+  return useHttp().put<{ categoryIds: string[] }>(
+    '/api/v1/weddings/{weddingId}/gift-categories/reorder',
+    { pathParams: { weddingId }, body: { categoryIds } },
+  )
+}

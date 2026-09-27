@@ -1,0 +1,1 @@
+ALTER TABLE "guests" ADD COLUMN "invited_party_size" integer;

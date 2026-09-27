@@ -36,6 +36,8 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
     assertEnum(body.diet, ['meat', 'vegetarian'], '飲食偏好')
 
   const patch: Partial<typeof guests.$inferInsert> = {}
+  if (existingGuest.invitedPartySize == null && existingGuest.rsvpAttending === null)
+    patch.invitedPartySize = existingGuest.partySize
   if (body.name !== undefined)
     patch.name = body.name
   if (body.side !== undefined)
