@@ -71,6 +71,7 @@ export const guests = pgTable('guests', {
   cakeBoxDistributedTypeId: text(),
   invitationSent: boolean().notNull(),
   partySize: integer().notNull(),
+  invitedPartySize: integer(),
   tableName: text(),
   deletedAt: text(),
   invitationPreference: text().$type<InvitationPreference>(),

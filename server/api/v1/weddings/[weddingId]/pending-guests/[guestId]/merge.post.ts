@@ -35,6 +35,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
   // 套用待確認回覆到正式賓客（保留正式賓客的身分資料，覆寫 RSVP 相關欄位）
   const patch: Partial<typeof guests.$inferInsert> = {
     rsvpAttending: pending.rsvpAttending,
+    invitedPartySize: target.invitedPartySize ?? (target.rsvpAttending === null ? target.partySize : null),
     diet: pending.diet,
     partySize: pending.partySize,
     childChairCount: pending.childChairCount,
@@ -57,6 +58,8 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
     { partySize: target.partySize, childChairCount: target.childChairCount },
     { partySize: pending.partySize, childChairCount: pending.childChairCount },
   )
+
+  await defaultDeclinedNoBox(db, weddingId, target.guestId, target.rsvpAttending, pending.rsvpAttending)
 
   // 待確認筆移除（軟刪除）
   await db.update(guests).set({ deletedAt: new Date().toISOString() }).where(eq(guests.guestId, pending.guestId))

@@ -61,6 +61,8 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
   // 男方親屬預設不發放喜餅（issue #105）；審核通過進正式名單後即生效
   await syncGroomRelativeNoBox(db, weddingId, guestId, false, isGroomRelative(side, resolvedCategory?.tier))
 
+  await defaultDeclinedNoBox(db, weddingId, guestId, null, body.attending)
+
   setResponseStatus(event, 201)
   return { guestId, weddingId, status: 'pending_review' }
 })

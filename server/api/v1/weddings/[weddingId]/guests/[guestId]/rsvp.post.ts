@@ -23,6 +23,7 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   // 選填欄位維持「有填才動」：表單不會帶出上一次的內容，重送時沒填的祝福與手繪小花要留著，不能被空白洗掉
   const patch: Partial<typeof guests.$inferInsert> = {
     rsvpAttending: body.attending,
+    invitedPartySize: guest.invitedPartySize ?? (guest.rsvpAttending === null ? guest.partySize : null),
     diet: body.diet,
     childChairCount: body.childChairCount,
     // 同步總人數：本人 + 同行（plusOneCount）+ 兒童椅嬰兒
@@ -90,6 +91,8 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpSubmittedE
   }
 
   setResponseStatus(event, 201)
+  await defaultDeclinedNoBox(db, weddingId, guest.guestId, guest.rsvpAttending, body.attending)
+
   return {
     guestId: guest.guestId,
     attending: body.attending,

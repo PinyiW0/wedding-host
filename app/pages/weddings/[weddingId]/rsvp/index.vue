@@ -80,6 +80,14 @@ function relationshipText(guest: GuestListItem) {
 function isAttending(guest: GuestListItem) {
   return guest.rsvpAttending === 'attending'
 }
+function invitedCount(guest: GuestListItem) {
+  return guest.invitedPartySize ?? (guest.rsvpAttending === null ? guest.partySize : '未留存')
+}
+function confirmedCount(guest: GuestListItem) {
+  if (guest.rsvpAttending === null)
+    return '待確認'
+  return isAttending(guest) ? guest.partySize : 0
+}
 function sideLabel(side: GuestListItem['side']) {
   return side === 'groom' ? '男方' : '女方'
 }
@@ -158,7 +166,8 @@ function exportCsv() {
     '男女方',
     '分類',
     '出席狀態',
-    '出席人數',
+    '預計邀請人數',
+    '確認出席人數',
     '葷素',
     '兒童椅',
     '接駁人數',
@@ -172,7 +181,8 @@ function exportCsv() {
     sideLabel(g.side),
     g.category,
     rsvpBadge(g.rsvpAttending).label,
-    isAttending(g) ? g.partySize : '-',
+    invitedCount(g),
+    confirmedCount(g),
     dietLabel(g),
     isAttending(g) ? g.childChairCount : '-',
     shuttleLabel(g),
@@ -609,6 +619,9 @@ async function confirmRemove() {
             <USelectMenu v-model="invitationFilter" data-testid="rsvp-invitation-filter" :items="invitationFilterOptions" value-key="value" aria-label="依喜帖需求篩選" class="w-40" />
           </UFormField>
         </div>
+        <p class="mb-2 text-caption text-ink-500">
+          預計邀請為建立名單時的人數；未回覆的確認出席顯示「待確認」，不列入出席統計。歷史資料未保留預計人數時顯示「未留存」。
+        </p>
         <div class="min-h-0 flex-1 overflow-auto">
           <table
             data-testid="rsvp-list"
@@ -629,7 +642,10 @@ async function confirmRemove() {
                   出席
                 </th>
                 <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
-                  人數
+                  預計邀請
+                </th>
+                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
+                  確認出席
                 </th>
                 <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   葷素
@@ -680,7 +696,10 @@ async function confirmRemove() {
                   </UBadge>
                 </td>
                 <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
-                  {{ isAttending(guest) ? guest.partySize : '-' }}
+                  {{ invitedCount(guest) }}
+                </td>
+                <td data-testid="rsvp-confirmed-count" class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
+                  {{ confirmedCount(guest) }}
                 </td>
                 <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ dietLabel(guest) }}
@@ -744,7 +763,7 @@ async function confirmRemove() {
                 </td>
               </tr>
               <tr v-if="activeGuests.length === 0">
-                <td colspan="11">
+                <td colspan="12">
                   <EmptyState
                     title="目前沒有賓客"
                     description="請先於賓客名單新增賓客後再管理 RSVP"
@@ -752,7 +771,7 @@ async function confirmRemove() {
                 </td>
               </tr>
               <tr v-else-if="filteredGuests.length === 0">
-                <td colspan="11">
+                <td colspan="12">
                   <EmptyState
                     title="沒有符合的賓客"
                     description="目前沒有賓客符合這組篩選條件"

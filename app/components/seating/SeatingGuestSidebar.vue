@@ -29,7 +29,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <aside class="flex min-h-0 flex-col lg:w-[320px] lg:shrink-0">
+  <aside data-testid="seating-guest-sidebar" class="flex shrink-0 flex-col lg:min-h-0 lg:w-[320px]">
     <div class="mb-3 flex shrink-0 items-end justify-between gap-3">
       <div>
         <h2 class="font-display text-body-l font-semibold leading-none text-ink dark:text-paper">
@@ -87,7 +87,7 @@ const emit = defineEmits<{
     </p>
 
     <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
-    <div data-testid="vibe-seating-guest-list" class="flex min-h-0 flex-1 flex-col space-y-2 overflow-auto pr-1">
+    <div data-testid="vibe-seating-guest-list" class="flex flex-col space-y-2 pr-1 lg:min-h-0 lg:flex-1 lg:overflow-auto">
       <EmptyState
         v-if="guests.length === 0"
         bordered

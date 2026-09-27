@@ -42,6 +42,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
     lineUserId: g.lineUserId,
     rsvpAttending: g.rsvpAttending,
     partySize: g.partySize,
+    invitedPartySize: g.invitedPartySize ?? (g.rsvpAttending === null ? g.partySize : null),
     tableName: g.tableName,
     invitationPreference: g.invitationPreference ?? null,
     mailingAddress: g.mailingAddress ?? null,

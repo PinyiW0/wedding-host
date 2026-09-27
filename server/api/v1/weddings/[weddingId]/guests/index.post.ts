@@ -42,6 +42,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestCreatedEv
     checkedInAt: null,
     giftAmount: null,
     cakeBoxDistributedTypeId: null,
+    invitedPartySize: partySize,
     partySize,
     tableName: null,
     deletedAt: null,

@@ -77,6 +77,22 @@ const {
   sidebarGuests,
 } = useSeatingMath({ tables, guests, allSeats })
 
+// 窄螢幕開啟畫布時先顯示主桌；後續手動捲動或排席不重設視角。
+const floorPlan = ref<HTMLElement | null>(null)
+watch(floorPlan, async (element) => {
+  if (!element || !window.matchMedia('(max-width: 1023px)').matches)
+    return
+  await nextTick()
+  const tableId = mainTable.value?.tableId ?? tables.value?.[0]?.tableId
+  const target = Array.from(element.querySelectorAll<HTMLElement>('article')).find(el => el.dataset.testid === `table-row-${tableId}`)
+  if (!target)
+    return
+  const container = element.getBoundingClientRect()
+  const table = target.getBoundingClientRect()
+  element.scrollLeft += table.left - container.left + table.width / 2 - element.clientWidth / 2
+  element.scrollTop += table.top - container.top + table.height / 2 - element.clientHeight / 2
+}, { flush: 'post' })
+
 // === 場地參考圖底圖（上傳、對位拖曳、縮放；結果持久化於 venue-layout）===
 const {
   refImageUrl,
@@ -419,7 +435,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div data-testid="seating-page" class="flex h-full flex-col">
+  <div data-testid="seating-page" class="flex flex-col lg:h-full">
     <PageHeader
       title="桌次規劃"
       eyebrow="宴會廳 · 現場座位"
@@ -493,9 +509,9 @@ onMounted(async () => {
     </div>
 
     <!-- 兩欄：左 圓桌平面（寬） / 右 賓客名單（窄） -->
-    <div v-else class="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row">
+    <div v-else class="flex shrink-0 flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row">
       <!-- 左欄：圓桌現場平面圖（min-w-0 讓寬畫布於內部捲動，不把右側名單推出邊界） -->
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div class="flex min-w-0 shrink-0 flex-col lg:min-h-0 lg:flex-1">
         <!-- 畫布工具列：操控下方桌次圖的工具（舞台、參考圖、標記）；主要動作（新增桌子、下載）留在頁首 -->
         <!-- 命名避開凍結 strict regex（不可含「新增」「佈局」；「舞台」保留給 spec 對應按鈕） -->
         <div class="mb-2 flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-950">
@@ -565,7 +581,7 @@ onMounted(async () => {
         <div
           v-if="(tables ?? []).length === 0"
           data-testid="table-list-empty"
-          class="flex min-h-0 flex-1 flex-col"
+          class="flex min-h-80 flex-col lg:min-h-0 lg:flex-1"
         >
           <EmptyState
             bordered
@@ -577,8 +593,9 @@ onMounted(async () => {
 
         <div
           v-else
+          ref="floorPlan"
           data-testid="seating-floor-plan"
-          class="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-paper p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
+          class="h-[60svh] min-h-80 shrink-0 overflow-auto rounded-lg border border-line bg-paper p-6 shadow-sm lg:h-auto lg:min-h-0 lg:flex-1 dark:border-neutral-800 dark:bg-neutral-950"
           :style="{ backgroundImage: 'radial-gradient(var(--color-line) 1px, transparent 1px)', backgroundSize: '26px 26px' }"
         >
           <!-- 底圖調整列：拖曳對位、按鈕縮放；sticky 讓長畫布捲動時仍可操作 -->

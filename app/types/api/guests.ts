@@ -27,6 +27,8 @@ export interface GuestListItem {
   // RSVP 出席狀態：未提交為 null（重整後仍可讀回）
   rsvpAttending: AttendingStatus | null
   // 這組總人數（本人＋同行＋兒童椅嬰兒）；正常席人頭 = partySize − childChairCount
+  // 建立名單時的預計人數；歷史已回覆資料可能未留存
+  invitedPartySize?: number | null
   partySize: number
   // 桌次名稱（display 用，真實後端應由座位安排推導）；未排桌為 null
   tableName?: string | null
