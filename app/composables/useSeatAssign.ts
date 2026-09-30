@@ -32,7 +32,7 @@ export function useSeatAssign(deps: SeatAssignDeps) {
   // 拖曳操作成功不彈 toast（結果畫面直接可見），僅失敗提示
   async function assignSeat(tableId: string, guestId: string, seatNumber: number) {
     try {
-      const body: SeatGuestBody = { guestId, seatNumber }
+      const body: SeatGuestBody = { guestId, seatNumber, allowPartial: true }
       await seatGuest(toValue(deps.weddingId), tableId, body)
       await deps.refreshAll()
     }
@@ -87,7 +87,7 @@ export function useSeatAssign(deps: SeatAssignDeps) {
       dragOverTableId.value = null
   }
 
-  // 拖到整桌：座位上的席位→單席移到該桌下一個空號；側欄賓客→整組帶入（含兒童加位）
+  // 拖到整桌：座位上的席位→單席移動；側欄賓客→填入可容納成員，餘數留待排。
   async function onDropToTable(event: DragEvent, table: TableListItem) {
     event.preventDefault()
     const src = dragSource.value
@@ -108,7 +108,7 @@ export function useSeatAssign(deps: SeatAssignDeps) {
     await assignSeat(table.tableId, src.guestId, seat)
   }
 
-  // 拖到某座位：席位來源→單席移動（目標有人＝互換）；側欄賓客→整組帶入（已佔位改放下一個空位）
+  // 拖到某座位：席位來源→單席移動（目標有人＝互換）；側欄賓客→部分入座（已佔位改放下一個空位）
   async function onDropToSeat(event: DragEvent, table: TableListItem, seatNumber: number) {
     event.preventDefault()
     event.stopPropagation()

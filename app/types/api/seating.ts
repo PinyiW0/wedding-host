@@ -53,6 +53,8 @@ export interface SeatListItem {
 export interface SeatGuestBody {
   guestId: string
   seatNumber: number
+  // 拖曳／點選入座：可先填滿桌上空位，其餘成員保留待排。
+  allowPartial?: boolean
 }
 
 export interface GuestSeatedEvent {

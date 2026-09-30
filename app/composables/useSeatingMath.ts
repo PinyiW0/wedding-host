@@ -4,7 +4,7 @@
 import type { MaybeRefOrGetter } from 'vue'
 import type { GuestDiet, GuestListItem, GuestSide } from '~/types/api/guests'
 import type { SeatListItem, TableListItem } from '~/types/api/seating'
-import { remainingPartyMembers, seatingHeads } from '~/utils/seatingRules'
+import { fittingPartyMembers, remainingPartyMembers, seatingHeads } from '~/utils/seatingRules'
 
 export const sideLabel = (s: GuestSide) => (s === 'groom' ? '男方' : '女方')
 export const dietLabel = (d: GuestDiet) => (d === 'meat' ? '葷食' : '素食')
@@ -183,9 +183,10 @@ export function useSeatingMath(deps: SeatingMathDeps) {
     return n
   }
 
-  // 該賓客可入座則回起始座號；正常席不足回 null。
+  // 拖曳／點選可先排部分成員；連一位都放不下才回 null。
   function nextSeatFor(table: TableListItem, guestId: string): number | null {
-    return canSeatGuest(table, guestId) ? nextFreeSeat(table) : null
+    const fitting = fittingPartyMembers(pendingMembers(guestId), tableSeats(table.tableId), table.capacity, id => guestById(id)?.diet)
+    return fitting.length > 0 ? nextFreeSeat(table) : null
   }
 
   // 主桌入座者的角色排序：新人(0) → 雙親(1) → 其他家屬(2)

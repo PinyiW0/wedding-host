@@ -3,7 +3,7 @@ import type { SeatListItem, TableListItem } from '../../app/types/api/seating'
 import { describe, expect, it } from 'vitest'
 import { ref } from 'vue'
 import { occupantColorClass, useSeatingMath } from '../../app/composables/useSeatingMath'
-import { remainingPartyMembers, seatingHeads } from '../../app/utils/seatingRules'
+import { fittingPartyMembers, remainingPartyMembers, seatingHeads } from '../../app/utils/seatingRules'
 
 function guest(guestId = 'family', diet: 'meat' | 'vegetarian' = 'meat', partySize = 5, childChairCount = 0): GuestListItem {
   return {
@@ -93,5 +93,44 @@ describe('葷素混合桌容量 #180', () => {
   it('素食綠色、兒童椅紅色優先', () => {
     expect(occupantColorClass({ side: 'groom', seatType: 'normal', diet: 'vegetarian' })).toContain('border-success-600')
     expect(occupantColorClass({ side: 'bride', seatType: 'childChair', diet: 'vegetarian' })).toContain('border-error-600')
+  })
+})
+
+describe('超額組別部分入座', () => {
+  const dietOf = (id: string) => id === 'veg' ? 'vegetarian' : 'meat'
+  it('12 人可先排 10 人，側欄保留 2 人且能繼續排第二桌', () => {
+    const g = guest('family', 'meat', 12)
+    const allSeats = ref<SeatListItem[]>([])
+    const math = useSeatingMath({ tables: [table], guests: [g], allSeats })
+    expect(math.nextSeatFor(table, g.guestId)).toBe(1)
+    const first = fittingPartyMembers(math.pendingMembers(g.guestId), [], 10, dietOf)
+    expect(first).toHaveLength(10)
+    allSeats.value = first.map((s, i) => ({ ...s, tableId: 'main', seatNumber: i + 1 }))
+    expect(math.unseatedCount.value).toBe(2)
+    expect(math.sidebarGuests.value).toHaveLength(1)
+    expect(math.pendingMembers(g.guestId).map(s => s.partyIndex)).toEqual([11, 12])
+    expect(math.nextSeatFor(table, g.guestId)).toBeNull()
+    const second = fittingPartyMembers(math.pendingMembers(g.guestId), [], 10, dietOf)
+    allSeats.value.push(...second.map((s, i) => ({ ...s, tableId: 'other', seatNumber: i + 1 })))
+    expect(math.unseatedCount.value).toBe(0)
+    expect(math.seatedCount.value).toBe(12)
+  })
+  it('已有 8 人只補 2 人，兒童椅隨剩餘正常席留待下一桌', () => {
+    const seated = seatsFor(guest('existing', 'meat', 8))
+    const family = guest('family', 'meat', 6, 1)
+    const pending = remainingPartyMembers(family, [])
+    const fitting = fittingPartyMembers(pending, seated, 10, dietOf)
+    expect(fitting.map(s => s.partyIndex)).toEqual([1, 2])
+    const remaining = remainingPartyMembers(family, fitting)
+    expect(remaining).toHaveLength(4)
+    expect(fittingPartyMembers(remaining, [], 10, dietOf)).toEqual(remaining)
+    expect(remaining.at(-1)?.seatType).toBe('childChair')
+  })
+  it('全素桌拆分，混合桌仍可額外安排素食與兒童椅', () => {
+    const veg = remainingPartyMembers(guest('veg', 'vegetarian', 13, 1), [])
+    expect(fittingPartyMembers(veg, [], 10, dietOf)).toHaveLength(10)
+    const meat = seatsFor(guest('meat', 'meat', 10))
+    expect(fittingPartyMembers(veg, meat, 10, dietOf)).toHaveLength(13)
+    expect(fittingPartyMembers(remainingPartyMembers(guest('extra'), []), meat, 10, dietOf)).toHaveLength(0)
   })
 })

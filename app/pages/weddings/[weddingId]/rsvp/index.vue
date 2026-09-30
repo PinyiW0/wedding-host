@@ -213,12 +213,14 @@ const stats = computed(() => {
   const absent = list.filter(g => g.rsvpAttending === 'absent').length
   const pending = list.filter(g => g.rsvpAttending === null).length
   // 葷素與兒童椅僅計入確認出席者
-  const meat = attending.filter(g => g.diet === 'meat').length
-  const vegetarian = attending.filter(g => g.diet === 'vegetarian').length
+  const normalCount = (g: GuestListItem) => Math.max(0, g.partySize - g.childChairCount)
+  const meat = attending.filter(g => g.diet === 'meat').reduce((sum, g) => sum + normalCount(g), 0)
+  const vegetarian = attending.filter(g => g.diet === 'vegetarian').reduce((sum, g) => sum + normalCount(g), 0)
   const childChairs = attending.reduce((sum, g) => sum + g.childChairCount, 0)
   return {
     total: list.length,
-    attending: attending.length,
+    attending: meat + vegetarian,
+    attendingGroups: attending.length,
     declined,
     absent,
     pending,
@@ -274,7 +276,7 @@ const filteredGuests = computed(() => activeGuests.value.filter(g =>
   && (dietFilter.value === '__all__' || g.diet === dietFilter.value)
   && (attendingFilter.value === '__all__' || (attendingFilter.value === '__unfilled__' ? !g.rsvpAttending : g.rsvpAttending === attendingFilter.value))
   && (invitationFilter.value === INVITATION_FILTER_ALL || (invitationFilter.value === INVITATION_FILTER_UNFILLED ? !g.invitationPreference : g.invitationPreference === invitationFilter.value)),
-))
+).sort((a, b) => Number(a.rsvpAttending === 'declined') - Number(b.rsvpAttending === 'declined')))
 
 // === 標記喜帖已寄送（逐列 checkbox；PUT 冪等設值） ===
 // checkbox 為 controlled（綁 guest.invitationSent、不就地 mutate）：
@@ -305,7 +307,7 @@ const attendBar = computed(() => {
   const total = stats.value.total || 1
   const notAttending = stats.value.declined + stats.value.absent
   return {
-    attending: (stats.value.attending / total) * 100,
+    attending: (stats.value.attendingGroups / total) * 100,
     notAttending: (notAttending / total) * 100,
     pending: (stats.value.pending / total) * 100,
   }
@@ -503,11 +505,19 @@ async function confirmRemove() {
         <StatCard
           eyebrow="確認出席"
           :value="stats.attending"
+          unit="位"
+          data-testid="rsvp-stat-attending"
           feature
-          :caption="`共 ${stats.total} 位賓客`"
+          :caption="`名單共 ${stats.total} 組`"
         >
+          <p class="mt-2 text-caption text-ink-300">
+            確認出席與葷素人數含本人及同行，不含兒童椅人數。
+          </p>
+          <p class="mt-2 text-caption text-ink-300">
+            出席比例（按名單組數）
+          </p>
           <!-- 出席組成：出席（金）/ 不出席+缺席（暗紅）/ 待回覆（底色餘量） -->
-          <div class="mt-3 flex h-2 overflow-hidden rounded-full bg-ink-500/40">
+          <div data-testid="rsvp-attend-bar" class="mt-3 flex h-2 overflow-hidden rounded-full bg-ink-500/40">
             <div class="bg-gold" :style="{ width: `${attendBar.attending}%` }" />
             <div class="bg-error-400/80" :style="{ width: `${attendBar.notAttending}%` }" />
           </div>
@@ -519,40 +529,40 @@ async function confirmRemove() {
               <p class="text-overline uppercase text-gold-deep">
                 不出席
               </p>
-              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-                {{ stats.declined }}
+              <p data-testid="rsvp-stat-declined" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.declined }} <span class="text-caption font-normal text-ink-500">組</span>
               </p>
             </div>
             <div class="min-w-24 flex-1 px-4">
               <p class="text-overline uppercase text-gold-deep">
                 缺席
               </p>
-              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-                {{ stats.absent }}
+              <p data-testid="rsvp-stat-absent" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.absent }} <span class="text-caption font-normal text-ink-500">組</span>
               </p>
             </div>
             <div class="min-w-24 flex-1 px-4">
               <p class="text-overline uppercase text-gold-deep">
                 待回覆
               </p>
-              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-                {{ stats.pending }}
+              <p data-testid="rsvp-stat-pending" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.pending }} <span class="text-caption font-normal text-ink-500">組</span>
               </p>
             </div>
             <div class="min-w-24 flex-1 px-4">
               <p class="text-overline uppercase text-gold-deep">
                 葷食
               </p>
-              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-                {{ stats.meat }}
+              <p data-testid="rsvp-stat-meat" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.meat }} <span class="text-caption font-normal text-ink-500">位</span>
               </p>
             </div>
             <div class="min-w-24 flex-1 px-4">
               <p class="text-overline uppercase text-gold-deep">
                 素食
               </p>
-              <p class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
-                {{ stats.vegetarian }}
+              <p data-testid="rsvp-stat-vegetarian" class="mt-1 font-display text-h2 font-semibold text-ink dark:text-paper">
+                {{ stats.vegetarian }} <span class="text-caption font-normal text-ink-500">位</span>
               </p>
             </div>
             <div class="min-w-24 flex-1 px-4">
@@ -560,7 +570,7 @@ async function confirmRemove() {
                 兒童椅
               </p>
               <p class="mt-1 flex items-baseline gap-1">
-                <span class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ stats.childChairs }}</span>
+                <span data-testid="rsvp-stat-child-chairs" class="font-display text-h2 font-semibold text-ink dark:text-paper">{{ stats.childChairs }}</span>
                 <span class="text-caption text-ink-300">張</span>
               </p>
             </div>
@@ -620,7 +630,7 @@ async function confirmRemove() {
           </UFormField>
         </div>
         <p class="mb-2 text-caption text-ink-500">
-          預計邀請為建立名單時的人數；未回覆的確認出席顯示「待確認」，不列入出席統計。歷史資料未保留預計人數時顯示「未留存」。
+          下方確認出席為每組總人數（含兒童椅）；未回覆顯示「待確認」，不列入出席統計。
         </p>
         <div class="min-h-0 flex-1 overflow-auto">
           <table
@@ -642,10 +652,7 @@ async function confirmRemove() {
                   出席
                 </th>
                 <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
-                  預計邀請
-                </th>
-                <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
-                  確認出席
+                  確認出席（含兒童椅）
                 </th>
                 <th class="sticky top-0 z-10 border-b border-line bg-cream px-3 py-3.5 dark:bg-neutral-950 text-center font-medium">
                   葷素
@@ -694,9 +701,6 @@ async function confirmRemove() {
                   >
                     {{ rsvpBadge(guest.rsvpAttending).label }}
                   </UBadge>
-                </td>
-                <td class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
-                  {{ invitedCount(guest) }}
                 </td>
                 <td data-testid="rsvp-confirmed-count" class="border-b border-line px-3 py-3 text-center dark:border-neutral-800">
                   {{ confirmedCount(guest) }}
@@ -763,7 +767,7 @@ async function confirmRemove() {
                 </td>
               </tr>
               <tr v-if="activeGuests.length === 0">
-                <td colspan="12">
+                <td colspan="11">
                   <EmptyState
                     title="目前沒有賓客"
                     description="請先於賓客名單新增賓客後再管理 RSVP"
@@ -771,7 +775,7 @@ async function confirmRemove() {
                 </td>
               </tr>
               <tr v-else-if="filteredGuests.length === 0">
-                <td colspan="12">
+                <td colspan="11">
                   <EmptyState
                     title="沒有符合的賓客"
                     description="目前沒有賓客符合這組篩選條件"

@@ -30,3 +30,20 @@ export function seatingHeads(
   const allVegetarian = members.length > 0 && members.every(s => dietOf(s.guestId) === 'vegetarian')
   return members.filter(s => s.seatType === 'normal' && (allVegetarian || dietOf(s.guestId) !== 'vegetarian')).length
 }
+
+// 按同一組待排成員的順序填入可容納的部分；遇到正常席不足就停止，
+// 後續成員（含兒童椅）留待下一桌，避免只把兒童椅單獨排進滿桌。
+export function fittingPartyMembers(
+  pending: readonly PartyMember[],
+  seated: readonly PartyMember[],
+  capacity: number,
+  dietOf: (guestId: string) => string | undefined,
+): PartyMember[] {
+  const fitting: PartyMember[] = []
+  for (const member of pending) {
+    if (seatingHeads([...seated, ...fitting, member], dietOf) > capacity)
+      break
+    fitting.push(member)
+  }
+  return fitting
+}
