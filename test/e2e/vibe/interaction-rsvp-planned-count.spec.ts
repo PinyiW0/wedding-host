@@ -4,7 +4,7 @@ import { login, resetMockData, TestUsers } from '../helpers'
 
 const base = '/api/v1/weddings/wedding-001'
 
-test('預計邀請與確認出席分開，回覆及覆寫不抹除預計人數', async ({ page }) => {
+test('畫面移除預計邀請，回覆及覆寫仍保留 CSV 預計人數', async ({ page }) => {
   await resetMockData(page)
   await login(page, TestUsers.admin.account, TestUsers.admin.password)
   const created = await page.request.post(`${base}/guests`, {
@@ -14,7 +14,7 @@ test('預計邀請與確認出席分開，回覆及覆寫不抹除預計人數',
   const { guestId } = await created.json()
   await page.goto('/weddings/wedding-001/rsvp', { waitUntil: 'networkidle' })
   const row = page.getByTestId(`rsvp-row-${guestId}`)
-  await expect(row.locator('td').nth(4)).toHaveText('5')
+  await expect(page.getByRole('columnheader', { name: '預計邀請' })).toHaveCount(0)
   await expect(row.getByTestId('rsvp-confirmed-count')).toHaveText('待確認')
   // 訪客只確認三位；原本預計五位仍保留。
   const replied = await page.request.post(`${base}/guests/${guestId}/rsvp`, {
@@ -22,16 +22,16 @@ test('預計邀請與確認出席分開，回覆及覆寫不抹除預計人數',
   })
   expect(replied.ok()).toBeTruthy()
   await page.reload({ waitUntil: 'networkidle' })
-  await expect(row.locator('td').nth(4)).toHaveText('5')
+  await expect(page.getByRole('columnheader', { name: '預計邀請' })).toHaveCount(0)
   await expect(row.getByTestId('rsvp-confirmed-count')).toHaveText('3')
   const declined = await page.request.post(`${base}/guests/${guestId}/rsvp-override`, {
     data: { attending: 'declined', reason: '電話告知無法出席' },
   })
   expect(declined.ok()).toBeTruthy()
   await page.reload({ waitUntil: 'networkidle' })
-  await expect(row.locator('td').nth(4)).toHaveText('5')
+  await expect(page.getByRole('columnheader', { name: '預計邀請' })).toHaveCount(0)
   await expect(row.getByTestId('rsvp-confirmed-count')).toHaveText('0')
-  // CSV 與表格採用同樣兩欄。
+  // CSV 保留原有兩欄，僅移除畫面欄位。
   const download = page.waitForEvent('download')
   await page.getByTestId('rsvp-export-csv').click()
   const file = await download

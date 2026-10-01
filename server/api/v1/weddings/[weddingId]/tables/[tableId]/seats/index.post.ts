@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 import type { GuestSeatedEvent, SeatGuestBody } from '../../../../../../../../app/types/api/seating'
 
 import { and, eq } from 'drizzle-orm'
-import { remainingPartyMembers } from '../../../../../../../../app/utils/seatingRules'
+import { fittingPartyMembers, remainingPartyMembers } from '../../../../../../../../app/utils/seatingRules'
 import { useDb } from '../../../../../../../db'
 
 import { guests, seatingTables, seats } from '../../../../../../../db/schema'
@@ -32,7 +32,12 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
     throw createError({ statusCode: 409, statusMessage: '賓客已有座位' })
   const tableSeats = await db.select().from(seats).where(eq(seats.tableId, tableId))
   const dietOf = await seatingDietLookup(db, weddingId)
-  assertSeatingCapacity([...tableSeats, ...pending], table.capacity, dietOf)
+  const members = body.allowPartial === true
+    ? fittingPartyMembers(pending, tableSeats, table.capacity, dietOf)
+    : pending
+  if (!members.length)
+    throw createError({ statusCode: 409, statusMessage: '桌次已滿，無法再安排座位' })
+  assertSeatingCapacity([...tableSeats, ...members], table.capacity, dietOf)
 
   if (!Number.isSafeInteger(body.seatNumber) || body.seatNumber < 1)
     throw createError({ statusCode: 400, statusMessage: '座位號須為正整數' })
@@ -44,7 +49,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
     occupied.add(seatNo)
     return seatNo
   }
-  const newSeats = pending.map(member => ({ ...member, tableId, seatNumber: nextFreeSeatNo() }))
+  const newSeats = members.map(member => ({ ...member, tableId, seatNumber: nextFreeSeatNo() }))
   await db.insert(seats).values(newSeats)
   await clearSeatReleasedMark(db, body.guestId)
 

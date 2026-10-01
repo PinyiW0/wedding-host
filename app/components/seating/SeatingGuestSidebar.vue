@@ -83,7 +83,7 @@ const emit = defineEmits<{
     </p>
 
     <p class="mb-3 text-caption text-ink-500">
-      混合桌素食與兒童椅額外加位；全素桌的素食正常席計入席次。
+      桌上空位不足時先安排可容納人數，其餘留在此處待排。混合桌素食與兒童椅額外加位；全素桌的素食正常席計入席次。
     </p>
 
     <!-- 待排席賓客（純 div，避免 list/article role 與桌次實體定位衝突） -->
