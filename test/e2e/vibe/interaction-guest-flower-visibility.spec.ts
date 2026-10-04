@@ -51,8 +51,8 @@ test('RSVP 回覆可獨立隱藏指定賓客花朵，保留下載與重新回覆
 for (const width of [375, 1440]) {
   test(`大量花朵不互相遮擋或溢出（${width}px）`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.route('**/api/v1/weddings/wedding-001/flowers*', route => route.fulfill({ json: Array.from({ length: 40 }, (_, i) => ({ guestId: `flower-${i}`, name: `花朵${i}`, flowerDrawing: '/images/invite/flower-single.webp' })) }))
-    await page.goto('/story/wedding-001', { waitUntil: 'networkidle' })
+    await page.route('**/api/v1/weddings/wedding-2cf97d94/flowers*', route => route.fulfill({ json: Array.from({ length: 40 }, (_, i) => ({ guestId: `flower-${i}`, name: `花朵${i}`, flowerDrawing: '/images/invite/flower-single.webp' })) }))
+    await page.goto('/story/wedding-2cf97d94', { waitUntil: 'networkidle' })
     const flowers = page.getByTestId('flower-field').locator('img')
     await expect(flowers).toHaveCount(40)
     // 等待入場動畫完成後，在搖曳期間確認圖片實際外框互不相交。
