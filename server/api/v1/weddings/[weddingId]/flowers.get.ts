@@ -12,6 +12,7 @@ export default defineEventHandler(async (event: H3Event): Promise<FlowerWallItem
   const db = useDb()
   const rows = await db.select().from(guests).where(and(
     eq(guests.weddingId, weddingId),
+    eq(guests.flowerVisible, true),
     isNull(guests.deletedAt),
     // status 為 NULL 視同正式賓客（原 mock 為 undefined !== 'pending_review'）
     or(isNull(guests.status), ne(guests.status, 'pending_review')),

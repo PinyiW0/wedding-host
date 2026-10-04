@@ -78,6 +78,7 @@ export const guests = pgTable('guests', {
   mailingAddress: text(),
   blessing: text(),
   flowerDrawing: text(),
+  flowerVisible: boolean().notNull().default(true),
   needsShuttle: boolean(),
   shuttleCount: integer(),
   customAnswers: jsonb().$type<Record<string, string | string[]>>(),

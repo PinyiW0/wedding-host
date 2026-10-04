@@ -134,6 +134,20 @@
       "when": 1790339507161,
       "tag": "0018_invited_party_size",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791081378782,
+      "tag": "0019_lyrical_inertia",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791081970100,
+      "tag": "0020_shocking_dragon_lord",
+      "breakpoints": true
     }
   ]
 }
