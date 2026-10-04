@@ -29,6 +29,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
   )
   const toItem = (g: SlimRow): GuestListItem => ({
     guestId: g.guestId,
+    flowerVisible: g.flowerVisible,
     weddingId: g.weddingId,
     name: g.name,
     side: g.side,

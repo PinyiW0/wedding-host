@@ -37,6 +37,7 @@ export interface GuestListItem {
   mailingAddress?: string | null
   blessing?: string | null
   flowerDrawing?: string | null
+  flowerVisible?: boolean
   needsShuttle?: boolean | null
   shuttleCount?: number | null
   // 自訂題答案（供後台 RSVP 頁檢視；未填為 null）
@@ -84,6 +85,7 @@ export interface GuestCreatedEvent {
 }
 
 export interface UpdateGuestBody {
+  flowerVisible?: boolean
   name?: string
   side?: GuestSide
   diet?: GuestDiet
@@ -100,6 +102,7 @@ export interface UpdateGuestBody {
 }
 
 export interface GuestUpdatedEvent {
+  flowerVisible?: boolean
   guestId: string
   weddingId: string
   name: string

@@ -67,6 +67,26 @@ function openDetail(guest: GuestListItem) {
   isDetailOpen.value = true
 }
 
+const isSavingFlower = ref(false)
+async function setFlowerVisible(visible: boolean) {
+  const target = detailTarget.value
+  if (!target || isSavingFlower.value)
+    return
+  isSavingFlower.value = true
+  try {
+    await updateGuest(weddingId.value, target.guestId, { flowerVisible: visible })
+    target.flowerVisible = visible
+    toast.add({ title: visible ? '已顯示這位賓客的花朵' : '已隱藏這位賓客的花朵', color: 'success' })
+    await refresh()
+  }
+  catch {
+    toast.add({ title: '花朵顯示設定儲存失敗，請重試', color: 'error' })
+  }
+  finally {
+    isSavingFlower.value = false
+  }
+}
+
 // 關係描述：新郎〔姓名〕· 家人
 function relationshipText(guest: GuestListItem) {
   const role = guest.side === 'groom' ? '新郎' : '新娘'
@@ -1078,6 +1098,16 @@ async function confirmRemove() {
                   loading="lazy"
                   class="max-h-48 rounded-lg border border-line bg-paper-soft"
                 >
+                <USwitch
+                  :model-value="detailTarget.flowerVisible ?? true"
+                  :disabled="isSavingFlower"
+                  label="在前台顯示這朵花"
+                  data-testid="rsvp-flower-visible"
+                  @update:model-value="setFlowerVisible"
+                />
+                <p class="text-caption text-ink-500">
+                  切換後自動儲存，只影響這位賓客的花朵。隱藏後仍可查看、下載，其他賓客不受影響。
+                </p>
                 <UButton
                   data-testid="rsvp-flower-download"
                   icon="i-heroicons-arrow-down-tray"

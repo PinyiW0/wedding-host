@@ -1,0 +1,1 @@
+ALTER TABLE "rsvp_form_configs" ADD COLUMN "show_guest_flowers" boolean DEFAULT true NOT NULL;

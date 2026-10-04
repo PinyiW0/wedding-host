@@ -34,17 +34,6 @@ const BUBBLE_MS = 2800
 /** 判斷名字的頭尾是不是英數字（Happy 要補空白、錢錢不用） */
 const LATIN = /[a-z0-9]/i
 
-/* ── 賓客的花怎麼分：上方一片、花田左右兩側各一叢 ──
-   新人 2026-09-16：「花田四周左右兩側也可以，隨機、大大小小、有動態感；一個人一朵花、不要重複」。
-   兩側那兩叢掛在花田外面（.side），只有 1280px 以上的桌機兩旁才有空間放；
-   窄一點的螢幕（含手機）全部排在上方，不藏也不重複——每朵花只會在其中一區出現一次 */
-const SIDE_MAX = 8
-const wide = ref(false)
-let sideQuery: MediaQueryList | undefined
-function syncWide() {
-  wide.value = sideQuery?.matches ?? false
-}
-
 /** 一個人一朵：同一位賓客只留第一朵（API 本來就一人一筆，這裡是保險） */
 const uniqueFlowers = computed(() => {
   const seen = new Set<string>()
@@ -56,19 +45,6 @@ const uniqueFlowers = computed(() => {
     list.push(flower)
   }
   return list
-})
-
-/** 桌機兩側各分到最多 8 朵、且不超過總數的四分之一（花少的時候上方不能空掉）；其餘在上方 */
-const groups = computed(() => {
-  const all = uniqueFlowers.value
-  if (!wide.value)
-    return { top: all, left: [] as FlowerWallItem[], right: [] as FlowerWallItem[] }
-  const perSide = Math.min(SIDE_MAX, Math.floor(all.length / 4))
-  return {
-    left: all.slice(0, perSide),
-    right: all.slice(perSide, perSide * 2),
-    top: all.slice(perSide * 2),
-  }
 })
 
 /** 三朵花的錯落：寬度、抬高多少（底邊對齊後加 margin-bottom）、傾角、紙條的傾角，由左到右。第四朵以後沿用最後一組。
@@ -197,16 +173,9 @@ function onCatLeave(key: string) {
     nudgedKey.value = null
 }
 
-onMounted(() => {
-  sideQuery = window.matchMedia('(min-width: 1280px)')
-  syncWide()
-  sideQuery.addEventListener('change', syncWide)
-})
-
 onBeforeUnmount(() => {
   if (bubbleTimer)
     clearTimeout(bubbleTimer)
-  sideQuery?.removeEventListener('change', syncWide)
 })
 </script>
 
@@ -241,8 +210,8 @@ onBeforeUnmount(() => {
         <!-- 賓客畫的花，上方那一片：越多往上長越高（沿用花田頁的 FlowerField 散佈排法，緊湊版 32～80px 大大小小，hover 綻花瓣）。
              跟花田之間留 3rem：找到肥肥時牠會從花田頂端探出來，這段空讓牠有地方站；真的疊到也是貓在前（.cat-field 疊上層） -->
         <FlowerField
-          v-if="groups.top.length > 0"
-          :flowers="groups.top"
+          v-if="uniqueFlowers.length > 0"
+          :flowers="uniqueFlowers"
           interactive
           compact
           class="mx-auto max-w-2xl pb-12"
@@ -284,25 +253,10 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <!-- 花田＋左右兩側的兩叢賓客花：兩叢掛在花田框外（1280px 以上才有），落點隨 hash 散在框裡。
+        <!-- 花田插畫；賓客作品統一在上方換行，避免兩側隨機落點互相遮擋。
              flow-root：花田那塊的負 margin-top 才不會穿透這一層往上收（margin 合併），把這個框拉高到蓋住上方三朵花——
              框本身會吃點擊，蓋到就點不到花；隔開後只有 pointer-events: none 的花田探出來 -->
         <div class="relative flow-root">
-          <FlowerField
-            v-if="groups.left.length > 0"
-            :flowers="groups.left"
-            layout="meadow"
-            interactive
-            class="side side-l"
-          />
-          <FlowerField
-            v-if="groups.right.length > 0"
-            :flowers="groups.right"
-            layout="meadow"
-            interactive
-            class="side side-r"
-          />
-
           <!-- 花田橫幅＋藏在裡面的三隻貓。
                overflow-hidden 是給手機用的：手機把整條花田放大到 165%，超出畫面的兩端裁掉、不產生橫向捲動。
                手機再用 -mx-6 頂掉 section 的左右內距：花田切在螢幕邊而不是內距邊，才讀得出「花田還延伸出去」。
@@ -483,26 +437,6 @@ onBeforeUnmount(() => {
   transition:
     opacity 400ms var(--ease-standard),
     translate 400ms var(--ease-emphasized);
-}
-
-/* ── 花田左右兩側的兩叢賓客花 ── */
-
-/* 掛在花田框的左右兩緣：框寬 8rem、往花田裡收 1rem（花田兩端是收尖的，角落本來就空），
-   從花田頂端上方一點一直到接近底部，花在框裡隨 hash 落點。
-   1280px 的視窗兩旁各有 232px 空間，框露在外面 112px、花最多再突出 40px，不會撐出橫向捲動。
-   z-index 0 壓在 .cat-field（1）之下：靠近花田的那幾朵像長在花叢後面 */
-.side {
-  position: absolute;
-  top: -10%;
-  bottom: 6%;
-  z-index: 0;
-  width: 8rem;
-}
-.side-l {
-  right: calc(100% - 1rem);
-}
-.side-r {
-  left: calc(100% - 1rem);
 }
 
 /* ── 花田橫幅與藏在裡面的三隻貓 ── */

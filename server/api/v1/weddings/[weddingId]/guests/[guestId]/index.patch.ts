@@ -35,9 +35,14 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
   if (body.diet !== undefined)
     assertEnum(body.diet, ['meat', 'vegetarian'], '飲食偏好')
 
+  if (body.flowerVisible !== undefined && typeof body.flowerVisible !== 'boolean')
+    throw createError({ statusCode: 400, statusMessage: 'flowerVisible 必須為布林值' })
+
   const patch: Partial<typeof guests.$inferInsert> = {}
   if (existingGuest.invitedPartySize == null && existingGuest.rsvpAttending === null)
     patch.invitedPartySize = existingGuest.partySize
+  if (body.flowerVisible !== undefined)
+    patch.flowerVisible = body.flowerVisible
   if (body.name !== undefined)
     patch.name = body.name
   if (body.side !== undefined)
@@ -146,6 +151,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
 
   return {
     guestId: guest!.guestId,
+    flowerVisible: guest!.flowerVisible,
     weddingId: guest!.weddingId,
     name: guest!.name,
     side: guest!.side,
