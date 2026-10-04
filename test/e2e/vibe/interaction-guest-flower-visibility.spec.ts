@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { login, TestUsers } from '../helpers'
+import { login, resetMockData, TestUsers } from '../helpers'
 
 test.setTimeout(60000)
 
 test('RSVP 回覆可獨立隱藏指定賓客花朵，保留下載與重新回覆後的隱藏設定', async ({ page }) => {
+  await resetMockData(page)
   await login(page, TestUsers.admin.account, TestUsers.admin.password)
   const created = await page.request.post('/api/v1/weddings', { data: { title: '花朵開關測試', venue: '測試', address: '測試', date: '2027-01-01' } })
   expect(created.ok()).toBeTruthy()
