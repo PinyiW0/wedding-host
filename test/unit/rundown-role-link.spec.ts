@@ -1,7 +1,7 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { describe, expect, it } from 'vitest'
 
-import { signRoleLink, signWeddingLink, verifyLinkSig, verifyRoleLinkSig } from '../../server/utils/guest-link'
+import { signGuestLink, signRoleLink, signStaffLink, signWeddingLink, verifyLinkSig, verifyRoleLinkSig, verifyStaffLinkSig } from '../../server/utils/guest-link'
 import { classifyRoute } from '../../server/utils/route-auth'
 
 // 流程表角色連結（issue #188）：r 簽名只認同一場、同一個角色的角色版端點。
@@ -35,6 +35,35 @@ describe('角色簽名', () => {
 
   it('婚禮分享簽名不會被當成角色簽名', () => {
     expect(verifyRoleLinkSig(signWeddingLink(W), W, 'role-001')).toBe(false)
+  })
+})
+
+describe('總覽簽名（issue #190）', () => {
+  it('同一場 → 驗得過；別場 → 驗不過', () => {
+    expect(verifyStaffLinkSig(signStaffLink(W), W)).toBe(true)
+    expect(verifyStaffLinkSig(signStaffLink(W), 'wedding-002')).toBe(false)
+  })
+
+  it('賓客的 w／g 簽名不會被當成總覽簽名', () => {
+    expect(verifyStaffLinkSig(signWeddingLink(W), W)).toBe(false)
+    expect(verifyStaffLinkSig(signGuestLink(W, 'g1'), W)).toBe(false)
+  })
+
+  it('總覽簽名不能當婚禮分享或角色簽名用', () => {
+    expect(verifyLinkSig(signStaffLink(W), W)).toBe(false)
+    expect(verifyRoleLinkSig(signStaffLink(W), W, 'role-001')).toBe(false)
+  })
+})
+
+describe('classifyRoute：流程表端點', () => {
+  it('全表與角色清單 → staff（不再是 share）', () => {
+    expect(classifyRoute('GET', `/api/v1/weddings/${W}/rundown-items`)).toEqual({ kind: 'staff', weddingId: W })
+    expect(classifyRoute('GET', `/api/v1/weddings/${W}/rundown-roles`)).toEqual({ kind: 'staff', weddingId: W })
+  })
+
+  it('整表儲存與新增角色仍是管理端', () => {
+    expect(classifyRoute('PUT', `/api/v1/weddings/${W}/rundown-items`)).toMatchObject({ kind: 'auth' })
+    expect(classifyRoute('POST', `/api/v1/weddings/${W}/rundown-roles`)).toMatchObject({ kind: 'auth' })
   })
 })
 

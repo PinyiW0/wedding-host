@@ -10,8 +10,10 @@ export type RouteAccess
     // open＝公開三頁（故事／喜帖／相簿）與出席回覆本身需要的那幾支：新人自己那場（landingWeddingId）不帶簽章也放行（issue #163）
     | { kind: 'share', weddingId: string, open?: boolean }
     | { kind: 'guest', weddingId: string, guestId: string } // 賓客專屬：相符的 g 簽名或有權使用者
-    // 流程表角色版（issue #188）：相符的 r 簽名、婚禮分享簽名（w/g，舊角色連結相容）或有權使用者
+    // 流程表角色版（issue #188）：相符的 r 簽名、總覽 s 簽名或有權使用者；賓客的 w／g 不通行（issue #190）
     | { kind: 'role', weddingId: string, roleId: string }
+    // 流程表全表與角色清單（issue #190）：總覽 s 簽名或有權使用者；賓客的 w／g 不通行
+    | { kind: 'staff', weddingId: string }
     | { kind: 'auth', weddingId: string | null, receptionist: boolean, adminOnly?: boolean }
 
 // 公開頁（RSVP／謝卡／自助報到／投影／流程表／花田）讀取的婚禮層級資料
@@ -21,8 +23,7 @@ const SHARE_GET = new Set([
   'line-oa',
   'flowers',
   'projection-settings',
-  'rundown-items',
-  'rundown-roles',
+  'guest-schedule', // 賓客版流程：只回賓客可見時段的公開欄位（issue #190）
   'blessings', // 投影牆讀取（僅簽名連結持有者可達）
   'guests/display-names', // 投影牆賓客名對照：僅 id+name，無 PII（完整賓客資料收回管理端 auth）
 ])
@@ -43,7 +44,8 @@ const RECEPTION_GET = new Set([
 // 這幾支對新人自己那場不驗簽章（issue #163）——公開頁已寫死綁一個婚禮 ID、ID 本來就在網址上，簽章沒有多保護什麼，
 // 卻是上線後每一次「出席回覆載入失敗」的原因（入口網址少了 ?sig=，喜帖／相簿頁不打 API 看不出來，點到出席回覆才 403）。
 // 投影牆（blessings、guests/display-names、projection-settings）與流程表不在此列：那些會列出賓客姓名，維持要簽章
-const LANDING_OPEN_GET = new Set(['', 'rsvp-config', 'line-oa', 'flowers'])
+// 賓客版流程（guest-schedule）只回賓客可見時段的時間／事項／場地，與喜帖內容同級，一併免簽章（issue #190）
+const LANDING_OPEN_GET = new Set(['', 'rsvp-config', 'line-oa', 'flowers', 'guest-schedule'])
 
 // 這個請求是不是「新人自己那場的 open 路由」（issue #163）。landingId 沒設（dev／e2e 是空字串）＝沒有這個例外
 export function isLandingOpen(route: RouteAccess, landingId: string | null | undefined): boolean {
@@ -99,6 +101,8 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   const rundownRoleView = method === 'GET' ? sub.match(RUNDOWN_ROLE_VIEW_RE) : null
   if (rundownRoleView)
     return { kind: 'role', weddingId, roleId: decodeURIComponent(rundownRoleView[1]!) }
+  if (method === 'GET' && (sub === 'rundown-items' || sub === 'rundown-roles'))
+    return { kind: 'staff', weddingId }
 
   // 婚禮分享資料：公開頁讀取＋公開表單／祝福提交（SubmitRsvp、SubmitBlessing: Guest）
   if (method === 'GET' && SHARE_GET.has(sub))

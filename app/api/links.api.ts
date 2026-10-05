@@ -18,6 +18,14 @@ export function getRoleSignedLink(weddingId: string, roleId: string) {
   })
 }
 
+// 流程表總覽連結簽名（issue #190）：工作人員看全部角色；賓客的婚禮分享簽名讀不到流程表
+export function getStaffSignedLink(weddingId: string) {
+  return useHttp().getOnce<SignedLinkResponse>('/api/v1/weddings/{weddingId}/signed-links', {
+    pathParams: { weddingId },
+    query: { scope: 'staff' },
+  })
+}
+
 // 取得公開連結的短碼（取得或建立；同一種連結永遠回同一個短碼）
 // 賓客層級四種（rsvp-guest／blessing／checkin／thankyou）要帶 guestId
 export function getShortLink(weddingId: string, kind: ShortLinkKind, guestId?: string) {

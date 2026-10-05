@@ -3,9 +3,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 
 // 賓客連結 HMAC 簽名：防止裸 id 枚舉（連結由新人人工傳送，簽名擋轉傳外洩後的鄰近 id 竄改）
 // 格式：
-//   婚禮分享連結（公開 RSVP／流程表／花田／投影）→ w.<digest>
+//   婚禮分享連結（公開 RSVP／花田／投影）      → w.<digest>
 //   賓客專屬連結（RSVP／謝卡／自助報到／祝福）  → g.<guestId>.<digest>
 //   流程表角色連結（工作人員只看自己那份）      → r.<roleId>.<digest>（issue #188）
+//   流程表總覽連結（工作人員看全部角色）        → s.<digest>（issue #190）
+// 流程表的 r／s 簽章與賓客的 w／g 互不通行：賓客手上的喜帖連結讀不到工作人員流程
 // digest 綁定 weddingId（＋guestId），不含過期時間：連結人工傳送且需長期有效（婚後謝卡），
 // 需失效時輪換 NUXT_GUEST_LINK_SECRET 即可
 
@@ -23,6 +25,10 @@ export function signGuestLink(weddingId: string, guestId: string): string {
 
 export function signRoleLink(weddingId: string, roleId: string): string {
   return `r.${roleId}.${hmac(`r:${weddingId}:${roleId}`)}`
+}
+
+export function signStaffLink(weddingId: string): string {
+  return `s.${hmac(`s:${weddingId}`)}`
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -55,4 +61,11 @@ export function verifyRoleLinkSig(sig: string, weddingId: string, roleId: string
   if (parts[0] !== 'r' || parts.length !== 3 || parts[1] !== roleId)
     return false
   return safeEqual(parts[2]!, hmac(`r:${weddingId}:${roleId}`))
+}
+
+export function verifyStaffLinkSig(sig: string, weddingId: string): boolean {
+  const parts = sig.split('.')
+  if (parts[0] !== 's' || parts.length !== 2)
+    return false
+  return safeEqual(parts[1]!, hmac(`s:${weddingId}`))
 }

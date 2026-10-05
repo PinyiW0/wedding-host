@@ -255,6 +255,9 @@ api_contract:
     RundownRoleView:
       file: rundown.ts
       fields: { roleId: string, roleName: string, groomName: 'string | null', brideName: 'string | null', items: 'RundownRoleViewItem[]（僅該角色參與的時段）' }
+    GuestScheduleItem:
+      file: rundown.ts
+      fields: { rundownItemId: string, time: 'string (HH:MM) | null', durationMinutes: number, title: string, location: 'string | null', highlight: boolean }
     # 範本 RUNDOWN_TEMPLATE 移至前端 app/utils/rundownTemplate.ts（buildTemplateRows/previewTemplateTimes），無後端端點
     # --- thankyou.ts（新增公開謝卡讀取） ---
     PublicThankYouCard:
@@ -454,6 +457,7 @@ api_contract:
     - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-items, request: '{}', response: 'RundownItemListItem[]（time null 置頂，其餘依 time 升冪）' }
     - { method: PUT, path: /api/v1/weddings/{weddingId}/rundown-items, request: SaveRundownTableBody, response: RundownTableSavedEvent }
     - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-roles/{roleId}/view, request: '{}', response: 'RundownRoleView（角色連結 r 簽名可讀；issue #188）' }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/guest-schedule, request: '{}', response: 'GuestScheduleItem[]（只含賓客可見時段；賓客版 /schedule 專用，issue #190）' }
     # --- invitations（喜帖已寄送記號） ---
     - { method: PUT, path: /api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent, request: MarkInvitationSentBody, response: InvitationSentMarkedEvent }
 

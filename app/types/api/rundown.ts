@@ -104,3 +104,14 @@ export interface RundownRoleView {
   brideName: string | null
   items: RundownRoleViewItem[]
 }
+
+// 賓客版流程（issue #190）：/schedule 唯一讀取的端點，只有賓客可見時段的公開欄位——
+// 不含共用物品、備註、角色事項，也不含未公開的時段
+export interface GuestScheduleItem {
+  rundownItemId: string
+  time: string | null
+  durationMinutes: number
+  title: string
+  location: string | null
+  highlight: boolean
+}
