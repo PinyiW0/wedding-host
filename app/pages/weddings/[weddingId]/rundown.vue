@@ -13,7 +13,7 @@ import {
   createRundownRole,
   deleteRundownRole,
   getRoleSignedLink,
-  getSignedLink,
+  getStaffSignedLink,
   listRundownItems,
   listRundownRoles,
   saveRundownTable,
@@ -420,14 +420,14 @@ function applyTemplateToDraft() {
 }
 
 // === 複製分享連結（免登入公開頁）===
-// 帶角色＝角色連結：r 簽名只讀得到該角色那份（issue #188）；不帶＝全部角色總覽（婚禮分享簽名）
+// 帶角色＝角色連結：r 簽名只讀得到該角色那份（issue #188）；不帶＝全部角色總覽（s 簽名，issue #190）
 async function copyRundownLink(role: RundownRoleListItem | null) {
   const base = `${window.location.origin}/rundown/${weddingId.value}`
   try {
     // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
     const { sig } = role
       ? await getRoleSignedLink(weddingId.value, role.roleId)
-      : await getSignedLink(weddingId.value)
+      : await getStaffSignedLink(weddingId.value)
     const params = new URLSearchParams()
     if (role)
       params.set('role', role.roleId)
