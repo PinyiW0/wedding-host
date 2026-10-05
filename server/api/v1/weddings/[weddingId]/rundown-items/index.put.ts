@@ -37,7 +37,13 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
     location: row.location ?? null,
     supplies: row.supplies ?? null,
     note: row.note ?? null,
-    roleTasks: (row.roleTasks ?? []).filter(rt => validRoleIds.has(rt.roleId)),
+    // 逐欄手構：只收 roleId／task／supplies（角色自己的物品，issue #188），空物品不存
+    roleTasks: (row.roleTasks ?? [])
+      .filter(rt => validRoleIds.has(rt.roleId))
+      .map((rt) => {
+        const supplies = typeof rt.supplies === 'string' ? rt.supplies.trim() : ''
+        return { roleId: rt.roleId, task: typeof rt.task === 'string' ? rt.task : '', ...(supplies ? { supplies } : {}) }
+      }),
     // 凍結測試以 raw PUT 不帶此欄呼叫，必須有預設值
     highlight: row.highlight ?? false,
     // 同上；預設不公開，賓客版流程頁只呈現明確勾選的時段

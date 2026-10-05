@@ -124,6 +124,19 @@ export default defineEventHandler(async (event) => {
     return
   }
 
+  // 未登入 × 流程表角色連結：r 簽名只認同一個角色；w/g 簽名本來就讀得到全表，照舊放行
+  if (route.kind === 'role') {
+    if (!enforced)
+      return
+    const query = getQuery(event)
+    const sig = getHeader(event, 'x-guest-sig') || (typeof query.sig === 'string' ? query.sig : undefined)
+    const valid = !!sig
+      && (verifyRoleLinkSig(sig, route.weddingId, route.roleId) || verifyLinkSig(sig, route.weddingId))
+    if (!valid)
+      throw createError({ statusCode: 403, statusMessage: '連結無效或已失效' })
+    return
+  }
+
   // 未登入 × 管理端路由
   if (enforced)
     throw createError({ statusCode: 401, statusMessage: '請先登入' })

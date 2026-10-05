@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 // 格式：
 //   婚禮分享連結（公開 RSVP／流程表／花田／投影）→ w.<digest>
 //   賓客專屬連結（RSVP／謝卡／自助報到／祝福）  → g.<guestId>.<digest>
+//   流程表角色連結（工作人員只看自己那份）      → r.<roleId>.<digest>（issue #188）
 // digest 綁定 weddingId（＋guestId），不含過期時間：連結人工傳送且需長期有效（婚後謝卡），
 // 需失效時輪換 NUXT_GUEST_LINK_SECRET 即可
 
@@ -18,6 +19,10 @@ export function signWeddingLink(weddingId: string): string {
 
 export function signGuestLink(weddingId: string, guestId: string): string {
   return `g.${guestId}.${hmac(`g:${weddingId}:${guestId}`)}`
+}
+
+export function signRoleLink(weddingId: string, roleId: string): string {
+  return `r.${roleId}.${hmac(`r:${weddingId}:${roleId}`)}`
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -42,4 +47,12 @@ export function verifyLinkSig(sig: string, weddingId: string, requiredGuestId?: 
     return safeEqual(parts[1]!, hmac(`w:${weddingId}`))
   }
   return false
+}
+
+// 角色簽章只通行同一個角色的流程端點；verifyLinkSig 不認 r 簽章，所以拿不到全表與其他分享資料
+export function verifyRoleLinkSig(sig: string, weddingId: string, roleId: string): boolean {
+  const parts = sig.split('.')
+  if (parts[0] !== 'r' || parts.length !== 3 || parts[1] !== roleId)
+    return false
+  return safeEqual(parts[2]!, hmac(`r:${weddingId}:${roleId}`))
 }

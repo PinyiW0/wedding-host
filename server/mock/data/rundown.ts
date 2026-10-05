@@ -18,7 +18,7 @@ export interface MockRundownItem {
   supplies: string | null
   note: string | null
   // 矩陣格：各角色在此時段的個別事項（task 可空字串＝參與但無個別事項）
-  roleTasks: { roleId: string, task: string }[]
+  roleTasks: { roleId: string, task: string, supplies?: string }[]
   // 使用者標記列
   highlight: boolean
 }

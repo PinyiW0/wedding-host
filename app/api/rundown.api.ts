@@ -6,6 +6,7 @@ import type {
   RundownRoleCreatedEvent,
   RundownRoleListItem,
   RundownRoleUpdatedEvent,
+  RundownRoleView,
   RundownTableSavedEvent,
   SaveRundownTableBody,
   UpdateRundownRoleBody,
@@ -60,5 +61,17 @@ export function saveRundownTable(weddingId: string, body: SaveRundownTableBody) 
   return useHttp().put<RundownTableSavedEvent>(
     '/api/v1/weddings/{weddingId}/rundown-items',
     { pathParams: { weddingId }, body },
+  )
+}
+
+// === 流程表角色版（issue #188）：角色連結只讀得到自己那份 ===
+export function getRundownRoleView(
+  weddingId: MaybeRefOrGetter<string>,
+  roleId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<RundownRoleView>,
+) {
+  return useHttp().get<RundownRoleView>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/rundown-roles/${toValue(roleId)}/view`,
+    options,
   )
 }

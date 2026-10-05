@@ -239,7 +239,7 @@ api_contract:
       fields: { roleId: string, name: string }
     RundownRoleTask:
       file: rundown.ts
-      fields: { roleId: string, task: 'string（矩陣格：該角色在此時段的個別事項；空字串＝參與但無個別事項）' }
+      fields: { roleId: string, task: 'string（矩陣格：該角色在此時段的個別事項；空字串＝參與但無個別事項）', supplies: 'string?（該角色自己要帶的物品；issue #188）' }
     RundownItemListItem:
       file: rundown.ts
       fields: { rundownItemId: string, weddingId: string, time: 'string (HH:MM) | null（null＝未定時段置頂）', durationMinutes: number, title: string, location: 'string | null', supplies: 'string | null', note: 'string | null', roleTasks: 'RundownRoleTask[]' }
@@ -249,6 +249,12 @@ api_contract:
     RundownTableSavedEvent:
       file: rundown.ts
       fields: { weddingId: string, itemCount: number, items: 'RundownItemListItem[]' }
+    RundownRoleViewItem:
+      file: rundown.ts
+      fields: { rundownItemId: string, time: 'string (HH:MM) | null', durationMinutes: number, title: string, location: 'string | null', roleSupplies: 'string（該角色自己的物品）', sharedSupplies: 'string | null（整列共用物品）', note: 'string | null', task: 'string（該角色在此時段要做的事，可多行）', highlight: boolean }
+    RundownRoleView:
+      file: rundown.ts
+      fields: { roleId: string, roleName: string, groomName: 'string | null', brideName: 'string | null', items: 'RundownRoleViewItem[]（僅該角色參與的時段）' }
     # 範本 RUNDOWN_TEMPLATE 移至前端 app/utils/rundownTemplate.ts（buildTemplateRows/previewTemplateTimes），無後端端點
     # --- thankyou.ts（新增公開謝卡讀取） ---
     PublicThankYouCard:
@@ -447,6 +453,7 @@ api_contract:
     - { method: DELETE, path: /api/v1/weddings/{weddingId}/rundown-roles/{roleId}, request: '{}', response: void }
     - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-items, request: '{}', response: 'RundownItemListItem[]（time null 置頂，其餘依 time 升冪）' }
     - { method: PUT, path: /api/v1/weddings/{weddingId}/rundown-items, request: SaveRundownTableBody, response: RundownTableSavedEvent }
+    - { method: GET, path: /api/v1/weddings/{weddingId}/rundown-roles/{roleId}/view, request: '{}', response: 'RundownRoleView（角色連結 r 簽名可讀；issue #188）' }
     # --- invitations（喜帖已寄送記號） ---
     - { method: PUT, path: /api/v1/weddings/{weddingId}/guests/{guestId}/invitation-sent, request: MarkInvitationSentBody, response: InvitationSentMarkedEvent }
 

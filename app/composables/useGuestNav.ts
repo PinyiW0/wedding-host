@@ -2,6 +2,7 @@
 // 賓客公開頁導覽（issue #132）：依當前連結的簽名等級決定可導覽的目的地。
 // 簽名格式見 server/utils/guest-link.ts —— 婚禮級 w.<digest> 只通行婚禮層級分享頁；
 // 賓客級 g.<guestId>.<digest> 另可通行賓客專屬頁（個人 RSVP／自助報到／謝卡／LINE 綁定）。
+// 流程表角色簽名 r.<roleId>.<digest> 只通行角色版流程表（issue #188），導覽整組收起。
 // 導覽時 sig 必須沿路帶著，否則 useHttp 的 sigHeaders() 取不到簽名、API 回 401。
 // 各目的地的參數形態與 GuestLinkCenter.vue 發出的連結一致。
 
@@ -50,8 +51,11 @@ export function useGuestNav() {
   }
 
   // 出席回覆：賓客級走個人頁（帶得出既有回覆），婚禮級走公開表單
+  // 角色簽名點進任何賓客頁都會 403：工作人員只需要自己那份流程
+  const isRoleScoped = computed(() => sig.value.startsWith('r.'))
+
   const ctaItem = computed<GuestNavItem | null>(() => {
-    if (!weddingId.value)
+    if (!weddingId.value || isRoleScoped.value)
       return null
     if (isGuestScoped.value && guestId.value) {
       return {
@@ -70,7 +74,7 @@ export function useGuestNav() {
   // 依婚禮時序排列：流程 → 當天報到 → 祝福（留言／花田）→ 婚後謝卡 → 通知綁定
   const menuItems = computed<GuestNavItem[]>(() => {
     const wid = weddingId.value
-    if (!wid)
+    if (!wid || isRoleScoped.value)
       return []
 
     const gid = guestId.value

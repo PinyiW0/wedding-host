@@ -10,6 +10,8 @@ export type RouteAccess
     // open＝公開三頁（故事／喜帖／相簿）與出席回覆本身需要的那幾支：新人自己那場（landingWeddingId）不帶簽章也放行（issue #163）
     | { kind: 'share', weddingId: string, open?: boolean }
     | { kind: 'guest', weddingId: string, guestId: string } // 賓客專屬：相符的 g 簽名或有權使用者
+    // 流程表角色版（issue #188）：相符的 r 簽名、婚禮分享簽名（w/g，舊角色連結相容）或有權使用者
+    | { kind: 'role', weddingId: string, roleId: string }
     | { kind: 'auth', weddingId: string | null, receptionist: boolean, adminOnly?: boolean }
 
 // 公開頁（RSVP／謝卡／自助報到／投影／流程表／花田）讀取的婚禮層級資料
@@ -51,6 +53,7 @@ export function isLandingOpen(route: RouteAccess, landingId: string | null | und
 const GUEST_ACTION_RE = /^guests\/([^/]+)\/(?:rsvp|self-check-in|line-binding)$/
 const GUEST_LINE_LOGIN_RE = /^guests\/([^/]+)\/line-login$/ // OAuth 起手（GET）：同賓客專屬授權
 const THANK_YOU_PUBLIC_RE = /^thank-you-card\/public\/([^/]+)$/
+const RUNDOWN_ROLE_VIEW_RE = /^rundown-roles\/([^/]+)\/view$/
 const RECEPTION_ACTION_RE = /^guests\/[^/]+\/(?:check-in|cake-box-distribution)$/
 const GIFT_MONEY_RE = /^guests\/[^/]+\/gift-money$/
 const BLESSING_REVIEW_RE = /^blessings\/[^/]+\/(?:approve|reject|project)$/
@@ -92,6 +95,10 @@ export function classifyRoute(method: string, pathname: string): RouteAccess {
   const thankYouPublic = method === 'GET' ? sub.match(THANK_YOU_PUBLIC_RE) : null
   if (thankYouPublic)
     return { kind: 'guest', weddingId, guestId: decodeURIComponent(thankYouPublic[1]!) }
+
+  const rundownRoleView = method === 'GET' ? sub.match(RUNDOWN_ROLE_VIEW_RE) : null
+  if (rundownRoleView)
+    return { kind: 'role', weddingId, roleId: decodeURIComponent(rundownRoleView[1]!) }
 
   // 婚禮分享資料：公開頁讀取＋公開表單／祝福提交（SubmitRsvp、SubmitBlessing: Guest）
   if (method === 'GET' && SHARE_GET.has(sub))
