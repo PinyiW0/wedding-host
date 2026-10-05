@@ -6,7 +6,7 @@
 - 範圍：`server/**` 全部 handler、授權鏈、簽名機制、密鑰設定
 - 方法：`/security-review` 起手 + 四路對抗式掃描（租戶隔離 / 注入輸入驗證 / 資訊洩露 PII / 密鑰與基礎設施）
 
-授權模型現況（供對照）：`server/middleware/auth.ts` 對登入者以 `hasWeddingScope` 驗 path 上的 `weddingId` 歸屬（新人限自有、接待員限綁定、管理者跨場放行），不符即 403；匿名存取以 HMAC 簽名（`w.` 婚禮／`g.` 賓客）綁定 path `weddingId`。`enforced` 模式（production）無 token 即 401、無效 token 即 401、分享／賓客連結需簽名；`open` 模式（dev／e2e）無 token 退回預設管理員、簽名不強制。唯一例外是新人自己那場（`landingWeddingId`）的五支 open 路由：不驗簽章，遇到沒有這場權限的登入或無效 token 也當成沒登入放行（`isLandingOpen()`，見 R5）。
+授權模型現況（供對照）：`server/middleware/auth.ts` 對登入者以 `hasWeddingScope` 驗 path 上的 `weddingId` 歸屬（新人限自有、接待員限綁定、管理者跨場放行），不符即 403；匿名存取以 HMAC 簽名（`w.` 婚禮／`g.` 賓客／`r.` 流程表角色／`s.` 流程表總覽）綁定 path `weddingId`。`enforced` 模式（production）無 token 即 401、無效 token 即 401、分享／賓客連結需簽名；`open` 模式（dev／e2e）無 token 退回預設管理員、簽名不強制。唯一例外是新人自己那場（`landingWeddingId`）的六支 open 路由：不驗簽章，遇到沒有這場權限的登入或無效 token 也當成沒登入放行（`isLandingOpen()`，見 R5）。
 
 ---
 
@@ -123,13 +123,13 @@
 ### R5 — 新人自己那場的公開頁讀取與出席回覆免簽章（issue #163，2026-09-16）
 公開三頁（`/story`、`/invite`、`/gallery`）已寫死綁 `runtimeConfig.public.landingWeddingId`（`wedding-2cf97d94`），婚禮 ID 本來就在網址上，`w.` 簽章對這一場沒有多保護什麼；卻是上線當天每一次「出席回覆載入失敗」的原因——喜帖與相簿頁本身不打 API，入口網址少了 `?sig=` 也看不出異狀，一路點到出席回覆才三支 API 全部 403。
 
-- **放行範圍**（`server/utils/route-auth.ts` 標 `open: true`，`server/middleware/auth.ts` 於 enforced 下比對 `landingWeddingId` 後跳過驗簽）：GET 婚禮詳情、`rsvp-config`、`line-oa`、`flowers`；POST `guests/rsvp-public`。只放行這一個婚禮 ID。
+- **放行範圍**（`server/utils/route-auth.ts` 標 `open: true`，`server/middleware/auth.ts` 於 enforced 下比對 `landingWeddingId` 後跳過驗簽）：GET 婚禮詳情、`rsvp-config`、`line-oa`、`flowers`、`guest-schedule`（賓客版流程，issue #190 加入：只回賓客可見時段的時間／事項／場地／標記，與喜帖內容同級）；POST `guests/rsvp-public`。只放行這一個婚禮 ID。
 - **訪客身上帶的登入不擋**（2026-09-17，PR #165 審查）：`useHttp` 在公開頁一樣會帶 token，原本中介層先走「已登入」分支——綁在別場的新人／接待員拿到 403，登入過期的人拿到 401（前端接著清登入態、導去 `/login`）。現在這五支遇到「沒有這場權限的登入」或「無效的 token」一律當成沒登入放行：不掛 `authUser`，婚禮詳情回的是剔除 `ownerId`／`deletedAt` 的匿名版。有這場權限的登入照舊走登入身分。判斷集中在 `isLandingOpen()`，其他路由的 401／403 不變。
 - **維持要簽章**：其他婚禮 ID；賓客專屬連結（`g.`：謝卡、賓客 RSVP、綁 LINE）；投影牆讀取（`blessings`、`guests/display-names`、`projection-settings`）、流程表、祝福提交、圖片直傳——這些會列出賓客姓名或寫上牆。
 - **殘餘風險接受**：任何人拿到網址都能讀這場的公開資料（新人姓名、日期、場地、RSVP 題目、花田手繪＋賓客名，見 R2）與提交出席回覆；提交仍是「待確認」狀態、由新人審核，且 `rsvp-public` 已有輸入驗證（M4）。做成多場婚禮的模板時，這條例外要一起拿掉（`landingWeddingId` 留空即整體回到要簽章）。
 
 ### 其他知情項（非缺陷）
-- **`rundown-items`（share）**：流程表內部備註（`supplies`／`note`／`roleTasks`）對所有簽名者可見。若日後在備註寫敏感事項（紅包箱交接等），需拆簽名 scope 或收回管理端。目前備註為一般流程資訊，接受。
+- **流程表簽名 scope（issue #188／#190，已收斂）**：`rundown-items`、`rundown-roles` 與角色版（`rundown-roles/{roleId}/view`）只認登入、`r.`（同一角色）與 `s.`（總覽）簽名，賓客的 `w.`／`g.` 一律 403；賓客版 `/schedule` 改讀 `guest-schedule`，伺服器端只投影賓客可見時段的公開欄位。`s.` 另可「讀」婚禮層級分享資料（GET），不能打分享類寫入（公開 RSVP、祝福、上傳簽名）。殘餘風險：簽名不過期，`r.`／`s.` 連結外流只能輪換 `NUXT_GUEST_LINK_SECRET`（會連帶讓所有賓客連結失效）。
 - **公開寫入無限量**：`rsvp-public`／`blessings` 提交無數量上限，理論上可灌爆待審佇列。已有 presign／登入限流基礎設施，若出現濫用可比照套用。
 
 ---
