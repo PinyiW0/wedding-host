@@ -47,7 +47,9 @@ beforeAll(async () => {
   vi.stubGlobal('createError', createError)
   vi.stubGlobal('classifyRoute', classifyRoute)
   vi.stubGlobal('isLandingOpen', isLandingOpen)
-  vi.stubGlobal('verifyLinkSig', () => false)
+  // 'w.ok' 當成驗得過的婚禮分享簽名；角色簽名只認 r.<同一個角色>.ok
+  vi.stubGlobal('verifyLinkSig', (sig: string) => sig === 'w.ok')
+  vi.stubGlobal('verifyRoleLinkSig', (sig: string, _weddingId: string, roleId: string) => sig === `r.${roleId}.ok`)
   // 'valid' 當成驗得過的 token，其餘一律視為無效／過期
   vi.stubGlobal('verifyAuthToken', async (token: string) => token === 'valid' ? { userId: 'acc-1' } : null)
   handler = (await import('../../server/middleware/auth')).default as Handler
@@ -59,11 +61,11 @@ beforeEach(() => {
   dbRows.clear()
 })
 
-function makeEvent(method: string, path: string, token?: string): H3Event {
+function makeEvent(method: string, path: string, token?: string, sig?: string): H3Event {
   const req = new IncomingMessage(new Socket())
   req.method = method
   req.url = path
-  req.headers = { host: 'localhost', ...(token ? { authorization: `Bearer ${token}` } : {}) }
+  req.headers = { host: 'localhost', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(sig ? { 'x-guest-sig': sig } : {}) }
   return createEvent(req, new ServerResponse(req))
 }
 
@@ -148,5 +150,30 @@ describe('auth 中介層：訪客身上帶的登入（enforced）', () => {
     const event = makeEvent('GET', api(LANDING), 'valid')
     expect(await run(event)).toBe(0)
     expect(event.context.authUser).toMatchObject({ userId: 'acc-1', role: '接待員', weddingId: LANDING })
+  })
+})
+
+describe('auth 中介層：流程表角色連結（enforced，issue #188）', () => {
+  const view = (roleId: string) => api(OTHER, `/rundown-roles/${roleId}/view`)
+
+  it('同一個角色的角色簽名 → 放行', async () => {
+    expect(await run(makeEvent('GET', view('role-001'), undefined, 'r.role-001.ok'))).toBe(0)
+  })
+
+  it('把網址的角色換掉（簽名不變）→ 403', async () => {
+    expect(await run(makeEvent('GET', view('role-002'), undefined, 'r.role-001.ok'))).toBe(403)
+  })
+
+  it('拿角色簽名讀全表或角色清單 → 403', async () => {
+    expect(await run(makeEvent('GET', api(OTHER, '/rundown-items'), undefined, 'r.role-001.ok'))).toBe(403)
+    expect(await run(makeEvent('GET', api(OTHER, '/rundown-roles'), undefined, 'r.role-001.ok'))).toBe(403)
+  })
+
+  it('沒有簽名 → 403', async () => {
+    expect(await run(makeEvent('GET', view('role-001')))).toBe(403)
+  })
+
+  it('婚禮分享簽名（舊角色連結）→ 放行', async () => {
+    expect(await run(makeEvent('GET', view('role-001'), undefined, 'w.ok'))).toBe(0)
   })
 })

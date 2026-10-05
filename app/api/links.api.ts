@@ -10,6 +10,14 @@ export function getSignedLink(weddingId: string, guestId?: string) {
   })
 }
 
+// 流程表角色連結簽名（issue #188）：只通行該角色的角色版端點
+export function getRoleSignedLink(weddingId: string, roleId: string) {
+  return useHttp().getOnce<SignedLinkResponse>('/api/v1/weddings/{weddingId}/signed-links', {
+    pathParams: { weddingId },
+    query: { roleId },
+  })
+}
+
 // 取得公開連結的短碼（取得或建立；同一種連結永遠回同一個短碼）
 // 賓客層級四種（rsvp-guest／blessing／checkin／thankyou）要帶 guestId
 export function getShortLink(weddingId: string, kind: ShortLinkKind, guestId?: string) {

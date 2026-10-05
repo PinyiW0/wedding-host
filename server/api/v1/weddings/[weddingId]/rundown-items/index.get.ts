@@ -10,17 +10,7 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownItemLis
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
   const rows = await db.select().from(rundownItems).where(eq(rundownItems.weddingId, weddingId)).orderBy(asc(rundownItems.seq))
-  // 排序：time null（未定時段）置頂，其餘依 time 字串升冪
-  return rows
-    .sort((a, b) => {
-      if (a.time === null && b.time === null)
-        return 0
-      if (a.time === null)
-        return -1
-      if (b.time === null)
-        return 1
-      return a.time.localeCompare(b.time)
-    })
+  return sortRundownRows(rows)
     .map(i => ({
       rundownItemId: i.rundownItemId,
       weddingId: i.weddingId,
