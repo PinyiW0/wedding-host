@@ -150,14 +150,16 @@ setResponseStatus(201) / 回傳 XxxEvent
 
 ### 4.3 賓客簽名連結（guest-link）
 
-`server/utils/guest-link.ts`，HMAC-SHA256（secret = `NUXT_GUEST_LINK_SECRET`），`timingSafeEqual` 防時序攻擊。兩種格式：
+`server/utils/guest-link.ts`，HMAC-SHA256（secret = `NUXT_GUEST_LINK_SECRET`），`timingSafeEqual` 防時序攻擊。四種格式：
 
 | 格式 | 綁定 | 用途 |
 |------|------|------|
-| `w.<digest>` | weddingId | 婚禮分享連結（公開 RSVP、流程表、花田、投影） |
+| `w.<digest>` | weddingId | 婚禮分享連結（公開 RSVP、賓客版流程、花田、投影） |
 | `g.<guestId>.<digest>` | weddingId + guestId | 賓客專屬連結（個人 RSVP、謝卡、自助報到、祝福） |
+| `r.<roleId>.<digest>` | weddingId + roleId | 流程表角色連結：只通行該角色的角色版端點（issue #188） |
+| `s.<digest>` | weddingId | 流程表總覽連結：通行全表、角色清單、任一角色版與婚禮層級分享資料（issue #190） |
 
-簽名**不含過期時間**（謝卡等連結需婚後長期有效），要全面失效就輪換 secret。賓客簽名可通行婚禮層級的分享資料，反之不可。`enforced` 下匿名路由必須帶 `X-Guest-Sig` header 或 `?sig=`。
+簽名**不含過期時間**（謝卡等連結需婚後長期有效），要全面失效就輪換 secret。賓客簽名可通行婚禮層級的分享資料，反之不可。工作人員流程表（`rundown-items`、`rundown-roles`、角色版）只認 `r`／`s` 與登入，賓客的 `w`／`g` 一律 403；賓客版流程走 `guest-schedule`，只回賓客可見時段的公開欄位。`enforced` 下匿名路由必須帶 `X-Guest-Sig` header 或 `?sig=`。
 
 ### 4.4 其他 server utils
 
