@@ -117,10 +117,10 @@ export default defineEventHandler(async (event) => {
       return
     const query = getQuery(event)
     const sig = getHeader(event, 'x-guest-sig') || (typeof query.sig === 'string' ? query.sig : undefined)
-    // 流程表總覽 s 簽名也通行婚禮層級分享資料（總覽頁要讀新人姓名）；反之賓客 w／g 讀不到流程表
+    // 流程表總覽 s 簽名只能「讀」婚禮層級分享資料（總覽頁要讀新人姓名），不能代賓客提交 RSVP／祝福或要上傳簽名
     const valid = !!sig && !!weddingId
       && (verifyLinkSig(sig, weddingId, route.kind === 'guest' ? route.guestId : undefined)
-        || (route.kind === 'share' && verifyStaffLinkSig(sig, weddingId)))
+        || (route.kind === 'share' && event.method === 'GET' && verifyStaffLinkSig(sig, weddingId)))
     if (!valid)
       throw createError({ statusCode: 403, statusMessage: '連結無效或已失效' })
     return

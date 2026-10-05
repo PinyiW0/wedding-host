@@ -199,6 +199,12 @@ describe('auth 中介層：流程表不對賓客簽名開放（enforced，issue 
     expect(await run(makeEvent('POST', api(OTHER, '/guests/g1/rsvp'), undefined, 's.ok'))).toBe(403)
   })
 
+  it('總覽簽名不能打分享類寫入（公開 RSVP、祝福、上傳簽名）', async () => {
+    expect(await run(makeEvent('POST', api(OTHER, '/guests/rsvp-public'), undefined, 's.ok'))).toBe(403)
+    expect(await run(makeEvent('POST', api(OTHER, '/blessings'), undefined, 's.ok'))).toBe(403)
+    expect(await run(makeEvent('POST', api(OTHER, '/uploads/presign'), undefined, 's.ok'))).toBe(403)
+  })
+
   it('賓客版流程：婚禮分享簽名可讀；新人那場免簽章', async () => {
     expect(await run(makeEvent('GET', api(OTHER, '/guest-schedule'), undefined, 'w.ok'))).toBe(0)
     expect(await run(makeEvent('GET', api(LANDING, '/guest-schedule')))).toBe(0)
