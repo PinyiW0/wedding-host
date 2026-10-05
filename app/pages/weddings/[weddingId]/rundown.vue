@@ -160,25 +160,10 @@ function removeRow(row: DraftRow) {
   draft.value = draft.value.filter(r => r.id !== row.id)
 }
 
-// === 拖曳重排（時間格不動、只換內容）===
-// 內容欄位（事項/場地/物品/備註/角色事項/時長/標記/賓客可見）隨拖曳搬家；
-// id / rundownItemId / time 是「時間格」不變量 → 列陣列順序與 PUT 的 id 集合恆定，
-// 不會破壞 .nth() 凍結定位，也絕不誤觸「未帶回＝刪除」合約
-type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'roleSuppliesById' | 'highlight' | 'guestVisible'>
-
-function pickContent(row: DraftRow): RowContent {
-  return {
-    durationMinutes: row.durationMinutes,
-    title: row.title,
-    location: row.location,
-    supplies: row.supplies,
-    note: row.note,
-    roleTaskById: row.roleTaskById,
-    roleSuppliesById: row.roleSuppliesById,
-    highlight: row.highlight,
-    guestVisible: row.guestVisible,
-  }
-}
+// === 拖曳重排（整列一起搬，時間與時長跟著走）===
+// 舊做法「時間格不動、只換內容」會讓時長跟著內容走、起始時間留在原位，訖時間全部錯位；
+// 沒填時間的新列拖上去還會把最後一列擠進無時間的格子。改為整列搬，每列保留自己的起訖。
+// 只改草稿順序，PUT 的 id 集合不變（不觸發「未帶回＝刪除」）；儲存後 GET 仍依時間排序
 
 const draggingRowIndex = ref<number | null>(null)
 const dragOverRowIndex = ref<number | null>(null)
@@ -210,11 +195,11 @@ function onRowDragPointerUp() {
   dragOverRowIndex.value = null
   if (from === null || to === null || from === to)
     return
-  // 內容陣列搬家（shift 語意），回填固定時間槽位；訖時間由 endTimeOf 自動重算
-  const contents = draft.value.map(pickContent)
-  const [moved] = contents.splice(from, 1)
-  contents.splice(to, 0, moved!)
-  draft.value.forEach((row, i) => Object.assign(row, contents[i]))
+  // shift 語意：抽出拖曳列，插到目標位置
+  const rows = [...draft.value]
+  const [moved] = rows.splice(from, 1)
+  rows.splice(to, 0, moved!)
+  draft.value = rows
 }
 
 onBeforeUnmount(() => {
@@ -819,7 +804,7 @@ function downloadRundownJpeg() {
                   dragOverRowIndex === idx && draggingRowIndex !== null && draggingRowIndex !== idx && 'border-t-2 border-t-gold',
                 ]"
               >
-                <!-- 拖曳把手：時間格不動、只搬內容 -->
+                <!-- 拖曳把手：整列一起搬（時間與時長跟著走） -->
                 <td v-if="roleFilter === ALL_ROLES" class="p-1 text-center">
                   <button
                     type="button"
