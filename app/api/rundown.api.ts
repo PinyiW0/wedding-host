@@ -2,6 +2,7 @@ import type { MaybeRefOrGetter } from 'vue'
 import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CreateRundownRoleBody,
+  GuestScheduleListItem,
   RundownItemListItem,
   RundownRoleCreatedEvent,
   RundownRoleListItem,
@@ -72,6 +73,17 @@ export function getRundownRoleView(
 ) {
   return useHttp().get<RundownRoleView>(
     () => `/api/v1/weddings/${toValue(weddingId)}/rundown-roles/${toValue(roleId)}/view`,
+    options,
+  )
+}
+
+// === 賓客版流程（issue #190）：只有賓客可見時段的公開欄位 ===
+export function listGuestSchedule(
+  weddingId: MaybeRefOrGetter<string>,
+  options?: HttpGetOptions<GuestScheduleListItem[]>,
+) {
+  return useHttp().get<GuestScheduleListItem[]>(
+    () => `/api/v1/weddings/${toValue(weddingId)}/guest-schedule`,
     options,
   )
 }

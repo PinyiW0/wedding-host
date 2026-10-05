@@ -140,7 +140,7 @@ setResponseStatus(201) / 回傳 XxxEvent
 
 - 一律 `/api/v1/` 前綴，Nitro file-based routing（`*.get.ts` / `*.post.ts`…），共 105 支 handler。POST 兼作動作端點（`check-in`、`approve`、`merge`），PUT 用於整批覆寫設定。唯一例外：`/api/line-login/callback` 刻意放在 v1 之外——OAuth callback 需向 LINE console 登錄固定 URL，不隨 API 版本演進。
 - `server/middleware/auth.ts` 統一把關，流程：
-  1. `classifyRoute()`（`server/utils/route-auth.ts`）將路由分類為 `public / share / guest / auth`；share 裡公開頁與出席回覆自己會打的五支另標 `open`
+  1. `classifyRoute()`（`server/utils/route-auth.ts`）將路由分類為 `public / share / guest / role / staff / auth`（`role`＝角色版流程、`staff`＝流程表全表與角色清單，見 §4.3）；share 裡公開頁、出席回覆與賓客版流程自己會打的六支另標 `open`
   2. `isLandingOpen()`：open 路由 × 新人自己那場（`runtimeConfig.public.landingWeddingId`）＝免簽章例外（issue #163，`docs/security.md` R5）
   3. 解析 Bearer token → 回查 `users` 或 `reception_accounts`（已刪帳號視為無效）
   4. `hasWeddingScope()` 婚禮範圍授權（不符回 403）+ `assertRouteRole()` 角色授權（管理者放行、`adminOnly` 擋新人、接待員限白名單正則）
@@ -150,14 +150,16 @@ setResponseStatus(201) / 回傳 XxxEvent
 
 ### 4.3 賓客簽名連結（guest-link）
 
-`server/utils/guest-link.ts`，HMAC-SHA256（secret = `NUXT_GUEST_LINK_SECRET`），`timingSafeEqual` 防時序攻擊。兩種格式：
+`server/utils/guest-link.ts`，HMAC-SHA256（secret = `NUXT_GUEST_LINK_SECRET`），`timingSafeEqual` 防時序攻擊。四種格式：
 
 | 格式 | 綁定 | 用途 |
 |------|------|------|
-| `w.<digest>` | weddingId | 婚禮分享連結（公開 RSVP、流程表、花田、投影） |
+| `w.<digest>` | weddingId | 婚禮分享連結（公開 RSVP、賓客版流程、花田、投影） |
 | `g.<guestId>.<digest>` | weddingId + guestId | 賓客專屬連結（個人 RSVP、謝卡、自助報到、祝福） |
+| `r.<roleId>.<digest>` | weddingId + roleId | 流程表角色連結：只通行該角色的角色版端點（issue #188） |
+| `s.<digest>` | weddingId | 流程表總覽連結：通行全表、角色清單、任一角色版與婚禮層級分享資料（issue #190） |
 
-簽名**不含過期時間**（謝卡等連結需婚後長期有效），要全面失效就輪換 secret。賓客簽名可通行婚禮層級的分享資料，反之不可。`enforced` 下匿名路由必須帶 `X-Guest-Sig` header 或 `?sig=`。
+簽名**不含過期時間**（謝卡等連結需婚後長期有效），要全面失效就輪換 secret。賓客簽名可通行婚禮層級的分享資料，反之不可。工作人員流程表（`rundown-items`、`rundown-roles`、角色版）只認 `r`／`s` 與登入，賓客的 `w`／`g` 一律 403；賓客版流程走 `guest-schedule`，只回賓客可見時段的公開欄位。`enforced` 下匿名路由必須帶 `X-Guest-Sig` header 或 `?sig=`。
 
 ### 4.4 其他 server utils
 

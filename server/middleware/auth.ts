@@ -117,21 +117,24 @@ export default defineEventHandler(async (event) => {
       return
     const query = getQuery(event)
     const sig = getHeader(event, 'x-guest-sig') || (typeof query.sig === 'string' ? query.sig : undefined)
+    // 流程表總覽 s 簽名只能「讀」婚禮層級分享資料（總覽頁要讀新人姓名），不能代賓客提交 RSVP／祝福或要上傳簽名
     const valid = !!sig && !!weddingId
-      && verifyLinkSig(sig, weddingId, route.kind === 'guest' ? route.guestId : undefined)
+      && (verifyLinkSig(sig, weddingId, route.kind === 'guest' ? route.guestId : undefined)
+        || (route.kind === 'share' && event.method === 'GET' && verifyStaffLinkSig(sig, weddingId)))
     if (!valid)
       throw createError({ statusCode: 403, statusMessage: '連結無效或已失效' })
     return
   }
 
-  // 未登入 × 流程表角色連結：r 簽名只認同一個角色；w/g 簽名本來就讀得到全表，照舊放行
-  if (route.kind === 'role') {
+  // 未登入 × 流程表（工作人員）：只認 r（同一個角色）與 s（總覽）簽名；賓客的 w／g 一律 403（issue #190）
+  if (route.kind === 'role' || route.kind === 'staff') {
     if (!enforced)
       return
     const query = getQuery(event)
     const sig = getHeader(event, 'x-guest-sig') || (typeof query.sig === 'string' ? query.sig : undefined)
     const valid = !!sig
-      && (verifyRoleLinkSig(sig, route.weddingId, route.roleId) || verifyLinkSig(sig, route.weddingId))
+      && (verifyStaffLinkSig(sig, route.weddingId)
+        || (route.kind === 'role' && verifyRoleLinkSig(sig, route.weddingId, route.roleId)))
     if (!valid)
       throw createError({ statusCode: 403, statusMessage: '連結無效或已失效' })
     return

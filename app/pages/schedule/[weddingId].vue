@@ -1,6 +1,6 @@
 <!-- app/pages/schedule/[weddingId].vue — 賓客版當日流程（免登入；只呈現後台勾選「賓客可見」的時段） -->
 <script setup lang="ts">
-import { getWedding, listRundownItems } from '~/api'
+import { getWedding, listGuestSchedule } from '~/api'
 
 definePageMeta({ layout: 'guest' })
 
@@ -11,12 +11,9 @@ const { data: wedding } = await getWedding(weddingId)
 const groomName = computed(() => wedding.value?.groomName || '新郎')
 const brideName = computed(() => wedding.value?.brideName || '新娘')
 
-// 與工作人員版 /rundown 讀同一份資料，差別在此頁只取賓客可見的時段，
-// 且不呈現物品／備註／角色個別事項（那些是給工作人員照表執行用的）
-// items GET 已排序：time null 置頂、其餘依 time 升冪
-const { data: items } = await listRundownItems(weddingId, { default: () => [] })
-
-const visibleItems = computed(() => (items.value ?? []).filter(item => item.guestVisible))
+// 賓客版專用端點（issue #190）：伺服器只回賓客可見時段的時間／事項／場地，
+// 工作人員的物品／備註／角色事項不會送到賓客手機；已排序：time null 置頂、其餘依 time 升冪
+const { data: visibleItems } = await listGuestSchedule(weddingId, { default: () => [] })
 </script>
 
 <template>
@@ -36,7 +33,7 @@ const visibleItems = computed(() => (items.value ?? []).filter(item => item.gues
     </div>
 
     <!-- 流程時間軸：只有時間、事項與場地 -->
-    <div v-if="visibleItems.length > 0" class="flex flex-col">
+    <div v-if="(visibleItems?.length ?? 0) > 0" class="flex flex-col">
       <div
         v-for="item in visibleItems"
         :key="item.rundownItemId"
