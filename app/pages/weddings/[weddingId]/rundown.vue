@@ -12,6 +12,7 @@ import { z } from 'zod'
 import {
   createRundownRole,
   deleteRundownRole,
+  getRoleSignedLink,
   getSignedLink,
   listRundownItems,
   listRundownRoles,
@@ -42,6 +43,7 @@ const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 // 草稿列：純 UI 狀態（API 合約型別一律 import ~/types/api/rundown，送出時轉 SaveRundownTableBody）
 // - id 供 v-for 穩定 key：既有列＝rundownItemId、新列＝draft-N 臨時 id（送出時剔除）
 // - roleTaskById 以 Record 表示角色欄：key 存在＝該角色參與此列；清空文字＝移除 entry
+// - roleSuppliesById：各角色自己要帶的物品（issue #188），規則同上；事項或物品任一有字＝參與
 interface DraftRow {
   id: string
   rundownItemId?: string
@@ -53,6 +55,7 @@ interface DraftRow {
   supplies: string
   note: string
   roleTaskById: Record<string, string>
+  roleSuppliesById: Record<string, string>
   // 使用者標記列（底色強調，隨整表 PUT 持久化）
   highlight: boolean
   // 對賓客公開此時段（賓客版流程頁 /schedule 只呈現勾選的列）
@@ -71,9 +74,12 @@ function toDraftRows(list: RundownItemListItem[]): DraftRow[] {
     location: item.location ?? '',
     supplies: item.supplies ?? '',
     note: item.note ?? '',
-    // 只保留有文字的個別事項（key 存在＝參與）
+    // 只保留有文字的個別事項與物品（key 存在＝參與）
     roleTaskById: Object.fromEntries(
       item.roleTasks.filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
+    ),
+    roleSuppliesById: Object.fromEntries(
+      item.roleTasks.filter(rt => rt.supplies).map(rt => [rt.roleId, rt.supplies!]),
     ),
     highlight: item.highlight ?? false,
     guestVisible: item.guestVisible ?? false,
@@ -117,6 +123,22 @@ function setRoleTask(row: DraftRow, roleId: string, task: string) {
     row.roleTaskById[roleId] = task
 }
 
+function roleSuppliesOf(row: DraftRow, roleId: string): string {
+  return row.roleSuppliesById[roleId] ?? ''
+}
+
+function setRoleSupplies(row: DraftRow, roleId: string, supplies: string) {
+  if (supplies === '')
+    delete row.roleSuppliesById[roleId]
+  else
+    row.roleSuppliesById[roleId] = supplies
+}
+
+// 該角色是否參與此列：事項或自己的物品任一有字
+function hasRole(row: DraftRow, roleId: string): boolean {
+  return row.roleTaskById[roleId] !== undefined || row.roleSuppliesById[roleId] !== undefined
+}
+
 // 新增一列：append 於草稿尾端，不重排
 function addRow() {
   draft.value.push({
@@ -128,6 +150,7 @@ function addRow() {
     supplies: '',
     note: '',
     roleTaskById: {},
+    roleSuppliesById: {},
     highlight: false,
     guestVisible: false,
   })
@@ -141,7 +164,7 @@ function removeRow(row: DraftRow) {
 // 內容欄位（事項/場地/物品/備註/角色事項/時長/標記/賓客可見）隨拖曳搬家；
 // id / rundownItemId / time 是「時間格」不變量 → 列陣列順序與 PUT 的 id 集合恆定，
 // 不會破壞 .nth() 凍結定位，也絕不誤觸「未帶回＝刪除」合約
-type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'highlight' | 'guestVisible'>
+type RowContent = Pick<DraftRow, 'durationMinutes' | 'title' | 'location' | 'supplies' | 'note' | 'roleTaskById' | 'roleSuppliesById' | 'highlight' | 'guestVisible'>
 
 function pickContent(row: DraftRow): RowContent {
   return {
@@ -151,6 +174,7 @@ function pickContent(row: DraftRow): RowContent {
     supplies: row.supplies,
     note: row.note,
     roleTaskById: row.roleTaskById,
+    roleSuppliesById: row.roleSuppliesById,
     highlight: row.highlight,
     guestVisible: row.guestVisible,
   }
@@ -216,8 +240,12 @@ const roleFilterOptions = computed(() => [
 const visibleRows = computed(() => {
   if (roleFilter.value === ALL_ROLES)
     return draft.value
-  return draft.value.filter(row => row.roleTaskById[roleFilter.value] !== undefined)
+  return draft.value.filter(row => hasRole(row, roleFilter.value))
 })
+// 篩選中的角色（頁首「複製分享連結」據此決定發角色連結或全部總覽）
+const filteredRole = computed(() =>
+  (roles.value ?? []).find(r => r.roleId === roleFilter.value) ?? null,
+)
 // 篩選中角色欄只顯示該角色（固定欄保留）
 const visibleRoles = computed(() => {
   const list = roles.value ?? []
@@ -240,10 +268,14 @@ function buildPayload(): SaveRundownTableBody {
         location: row.location,
         supplies: row.supplies,
         note: row.note,
-        // 只送非空字串的個別事項
-        roleTasks: Object.entries(row.roleTaskById)
-          .filter(([, task]) => task.trim() !== '')
-          .map(([roleId, task]) => ({ roleId, task })),
+        // 只送事項或物品有字的角色；物品空白不帶
+        roleTasks: Array.from(new Set([...Object.keys(row.roleTaskById), ...Object.keys(row.roleSuppliesById)]), (roleId) => {
+          const rawTask = row.roleTaskById[roleId] ?? ''
+          const task = rawTask.trim() === '' ? '' : rawTask
+          const supplies = (row.roleSuppliesById[roleId] ?? '').trim()
+          return { roleId, task, ...(supplies ? { supplies } : {}) }
+        })
+          .filter(rt => rt.task !== '' || rt.supplies),
         highlight: row.highlight,
         guestVisible: row.guestVisible,
       }
@@ -351,8 +383,10 @@ async function confirmRoleRemove(role: RundownRoleListItem) {
     await Promise.all([refreshRoles(), refreshItems()])
     // 草稿鏡射級聯：移除該角色欄的 entry；原本乾淨才整份重建對齊（dirty 時保留未儲存編輯）
     const wasDirty = isDirty.value
-    for (const row of draft.value)
+    for (const row of draft.value) {
       delete row.roleTaskById[role.roleId]
+      delete row.roleSuppliesById[role.roleId]
+    }
     if (!wasDirty)
       rebuildDraft()
   }
@@ -392,6 +426,7 @@ function applyTemplateToDraft() {
     roleTaskById: Object.fromEntries(
       (row.roleTasks ?? []).filter(rt => rt.task !== '').map(rt => [rt.roleId, rt.task]),
     ),
+    roleSuppliesById: {},
     highlight: false,
     // 範本自帶賓客可見預設（賓客在場的段落才勾），新人仍可逐列調整
     guestVisible: row.guestVisible ?? false,
@@ -399,18 +434,22 @@ function applyTemplateToDraft() {
   isTemplateOpen.value = false
 }
 
-// === 複製分享連結（免登入公開頁；帶當前篩選角色）===
-async function copyShareLink() {
+// === 複製分享連結（免登入公開頁）===
+// 帶角色＝角色連結：r 簽名只讀得到該角色那份（issue #188）；不帶＝全部角色總覽（婚禮分享簽名）
+async function copyRundownLink(role: RundownRoleListItem | null) {
   const base = `${window.location.origin}/rundown/${weddingId.value}`
   try {
     // 連結附 HMAC 簽名：enforced 模式下公開頁憑此放行
-    const { sig } = await getSignedLink(weddingId.value)
-    const params = new URLSearchParams({ sig })
-    if (roleFilter.value !== ALL_ROLES)
-      params.set('role', roleFilter.value)
+    const { sig } = role
+      ? await getRoleSignedLink(weddingId.value, role.roleId)
+      : await getSignedLink(weddingId.value)
+    const params = new URLSearchParams()
+    if (role)
+      params.set('role', role.roleId)
+    params.set('sig', sig)
     const url = `${base}?${params.toString()}`
     await navigator.clipboard.writeText(url)
-    toast.add({ title: '已複製分享連結', description: url, color: 'success' })
+    toast.add({ title: role ? `已複製「${role.name}」的連結` : '已複製分享連結', description: url, color: 'success' })
   }
   catch {
     toast.add({ title: '複製失敗', description: base, color: 'error' })
@@ -491,9 +530,9 @@ function buildRundownCanvas(): HTMLCanvasElement {
       ctx.fillText(row.location, bodyX, lineY, bodyW)
     }
     const tasks = visibleRoles.value
-      .map(r => ({ name: r.name, task: row.roleTaskById[r.roleId] ?? '' }))
-      .filter(entry => entry.task !== '')
-      .map(entry => `${entry.name}：${entry.task}`)
+      .map(r => ({ name: r.name, task: row.roleTaskById[r.roleId] ?? '', supplies: row.roleSuppliesById[r.roleId] ?? '' }))
+      .filter(entry => entry.task !== '' || entry.supplies !== '')
+      .map(entry => `${entry.name}：${entry.task}${entry.supplies ? `（物品：${entry.supplies}）` : ''}`)
     if (tasks.length > 0) {
       lineY += f(12)
       ctx.fillStyle = CHART.inkSoft
@@ -542,7 +581,7 @@ function downloadRundownJpeg() {
             icon="i-heroicons-link"
             color="neutral"
             variant="outline"
-            @click="copyShareLink"
+            @click="copyRundownLink(filteredRole)"
           >
             複製分享連結
           </UButton>
@@ -584,9 +623,14 @@ function downloadRundownJpeg() {
       <!-- 角色管理：膠囊卡片（名稱 + 改名/移除） -->
       <section class="mb-8 shrink-0">
         <div class="mb-4 flex items-center justify-between">
-          <p class="text-overline uppercase text-gold-deep">
-            工作人員角色
-          </p>
+          <div>
+            <p class="text-overline uppercase text-gold-deep">
+              工作人員角色
+            </p>
+            <p class="mt-1 text-caption text-ink-300">
+              點角色旁的連結圖示，複製該角色專屬的流程連結，貼給負責的人
+            </p>
+          </div>
           <UButton
             data-testid="rundown-role-create"
             icon="i-heroicons-plus"
@@ -630,6 +674,17 @@ function downloadRundownJpeg() {
               </UButton>
             </template>
             <template v-else>
+              <!-- 角色專屬連結（issue #188）：一鍵複製，不必先切篩選 -->
+              <UTooltip text="複製此角色的流程連結">
+                <UButton
+                  icon="i-heroicons-link"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  :aria-label="`複製 ${role.name} 的連結`"
+                  @click="copyRundownLink(role)"
+                />
+              </UTooltip>
               <UButton
                 icon="i-heroicons-pencil-square"
                 color="neutral"
@@ -662,7 +717,7 @@ function downloadRundownJpeg() {
               流程矩陣表
             </p>
             <p class="mt-1 text-caption text-ink-300">
-              勾選「賓客」欄的時段才會出現在賓客版流程頁
+              勾選「賓客」欄的時段才會出現在賓客版流程頁；角色欄寫該角色要做的事與做法（可換行），下方小欄填該角色自己要帶的物品
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-3">
@@ -732,7 +787,7 @@ function downloadRundownJpeg() {
                   場地
                 </th>
                 <th class="min-w-32 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
-                  物品
+                  共用物品
                 </th>
                 <th class="min-w-32 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   備註
@@ -826,7 +881,7 @@ function downloadRundownJpeg() {
                     data-testid="rundown-cell-supplies"
                     variant="ghost"
                     size="sm"
-                    placeholder="物品"
+                    placeholder="共用物品"
                     class="w-full"
                   />
                 </td>
@@ -857,14 +912,30 @@ function downloadRundownJpeg() {
                   :key="role.roleId"
                   class="border-r border-line p-1 dark:border-neutral-800"
                 >
-                  <UInput
+                  <!-- 角色格＝該角色要做的事＋做法；可換行，角色版流程頁照原換行顯示 -->
+                  <UTextarea
                     :model-value="roleTaskOf(row, role.roleId)"
                     :data-testid="`rundown-cell-role-${role.roleId}`"
                     variant="ghost"
                     size="sm"
-                    :placeholder="role.name"
+                    :rows="1"
+                    autoresize
+                    :maxrows="6"
+                    placeholder="要做的事、怎麼做"
+                    :aria-label="`${role.name} 要做的事`"
                     class="w-full"
                     @update:model-value="setRoleTask(row, role.roleId, String($event))"
+                  />
+                  <!-- 該角色自己要帶的物品（issue #188）；整列共用的放「共用物品」欄 -->
+                  <UInput
+                    :model-value="roleSuppliesOf(row, role.roleId)"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-heroicons-shopping-bag"
+                    placeholder="要帶的物品"
+                    :aria-label="`${role.name} 要帶的物品`"
+                    class="w-full"
+                    @update:model-value="setRoleSupplies(row, role.roleId, String($event))"
                   />
                 </td>
                 <td class="p-1 text-center">
