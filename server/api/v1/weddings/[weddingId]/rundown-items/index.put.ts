@@ -51,11 +51,15 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownTableSa
   }))
 
   // 整批取代：改用「upsert（by rundownItemId）先行 + 刪除不在新集合者」取代 delete-all+insert，
-  // 任一步失敗都不會讓流程表瞬間清空；顯示序由 GET 依 time 排序、不依賴 seq（issue #71）
+  // 任一步失敗都不會讓流程表瞬間清空（issue #71）
+  // 列順序隨整表儲存落地（issue #192）：seq＝payload 順序。GET 先依 seq 取、再依 time 穩定排序，
+  // 同時間（含未定時段）的列因此照儲存當下的畫面順序呈現——指定列上下插入與拖曳排序才留得住位置
   if (items.length) {
-    await db.insert(rundownItems).values(items).onConflictDoUpdate({
+    const records = items.map((item, index) => ({ ...item, seq: index + 1 }))
+    await db.insert(rundownItems).values(records).onConflictDoUpdate({
       target: rundownItems.rundownItemId,
       set: {
+        seq: sql`excluded.seq`,
         time: sql`excluded.time`,
         durationMinutes: sql`excluded.duration_minutes`,
         title: sql`excluded.title`,

@@ -139,11 +139,10 @@ function hasRole(row: DraftRow, roleId: string): boolean {
   return row.roleTaskById[roleId] !== undefined || row.roleSuppliesById[roleId] !== undefined
 }
 
-// 新增一列：append 於草稿尾端，不重排
-function addRow() {
-  draft.value.push({
+function createDraftRow(time = ''): DraftRow {
+  return {
     id: `draft-${++draftSeq}`,
-    time: '',
+    time,
     durationMinutes: 0,
     title: '',
     location: '',
@@ -153,7 +152,28 @@ function addRow() {
     roleSuppliesById: {},
     highlight: false,
     guestVisible: false,
-  })
+  }
+}
+
+// 新增一列：append 於草稿尾端，不重排。按鈕在表格上方的工具列，加完把表格捲到底讓新列露出來
+const tableScroll = useTemplateRef<HTMLDivElement>('tableScroll')
+async function addRow() {
+  draft.value.push(createDraftRow())
+  await nextTick()
+  tableScroll.value?.scrollTo({ top: tableScroll.value.scrollHeight })
+}
+
+// 矩陣表填寫說明（資訊圖示的提示）：滑鼠停留／鍵盤聚焦由 UTooltip 處理，觸控裝置沒有 hover，點一下也要開
+const isMatrixHelpOpen = ref(false)
+
+// 指定列上下插入（issue #192）：新列預帶相鄰時間——往上＝該列開始、往下＝該列結束。
+// 儲存後 GET 依開始時間重排，沒時間的列會被排到最上面，預帶時間新列才留得住位置
+function insertRow(row: DraftRow, position: 'above' | 'below') {
+  const index = draft.value.findIndex(r => r.id === row.id)
+  if (index === -1)
+    return
+  const time = position === 'above' ? row.time : endTimeOf(row)
+  draft.value.splice(position === 'above' ? index : index + 1, 0, createDraftRow(time))
 }
 
 function removeRow(row: DraftRow) {
@@ -346,6 +366,14 @@ async function onRoleSubmit(event: FormSubmitEvent<RoleSchema>) {
     isRoleSubmitting.value = false
   }
 }
+
+// === 角色區塊收合（issue #192）：矩陣表是主要工作區，角色設定完可收成一行 ===
+// 存 cookie：SSR 讀得到，重整後首屏就是上次的狀態；從未操作過＝展開（主 spec 進頁即找角色膠囊）
+const isRolesOpen = useCookie<boolean>('rundown-roles-open', {
+  default: () => true,
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: 'lax',
+})
 
 // === 角色移除（膠囊上兩段式 inline 確認；後端級聯清理各列 roleTasks）===
 // 不用 ConfirmModal：modal（Reka Dialog）開啟時 body 其餘內容被設 aria-hidden，
@@ -606,29 +634,48 @@ function downloadRundownJpeg() {
     <!-- 按鈕列與角色區固定，只有矩陣表格自帶捲軸（捲軸不再蓋到上方按鈕） -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!-- 角色管理：膠囊卡片（名稱 + 改名/移除） -->
-      <section class="mb-8 shrink-0">
-        <div class="mb-4 flex items-center justify-between">
-          <div>
-            <p class="text-overline uppercase text-gold-deep">
-              工作人員角色
-            </p>
-            <p class="mt-1 text-caption text-ink-300">
+      <section
+        aria-labelledby="rundown-roles-heading"
+        class="shrink-0"
+        :class="isRolesOpen ? 'mb-8' : 'mb-4'"
+      >
+        <div class="flex items-center justify-between gap-3" :class="isRolesOpen && 'mb-4'">
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <p id="rundown-roles-heading" class="text-overline uppercase text-gold-deep">
+                工作人員角色
+              </p>
+              <span v-if="!isRolesOpen" class="text-caption text-ink-300">{{ (roles ?? []).length }} 個</span>
+            </div>
+            <p v-show="isRolesOpen" class="mt-1 text-caption text-ink-300">
               點角色旁的連結圖示，複製該角色專屬的流程連結，貼給負責的人
             </p>
           </div>
-          <UButton
-            data-testid="rundown-role-create"
-            icon="i-heroicons-plus"
-            color="neutral"
-            variant="outline"
-            size="sm"
-            @click="openRoleCreate"
-          >
-            新增角色
-          </UButton>
+          <div class="flex flex-none items-center gap-1">
+            <UButton
+              data-testid="rundown-role-create"
+              icon="i-heroicons-plus"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              @click="openRoleCreate"
+            >
+              新增角色
+            </UButton>
+            <!-- 收合後整塊只剩這一行（issue #192），把高度讓給矩陣表 -->
+            <UButton
+              :icon="isRolesOpen ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              :aria-label="isRolesOpen ? '收合工作人員角色' : '展開工作人員角色'"
+              :aria-expanded="isRolesOpen"
+              @click="isRolesOpen = !isRolesOpen"
+            />
+          </div>
         </div>
 
-        <div v-if="(roles?.length ?? 0) > 0" class="flex flex-wrap gap-2.5">
+        <div v-if="(roles?.length ?? 0) > 0" v-show="isRolesOpen" class="flex flex-wrap gap-2.5">
           <div
             v-for="role in roles"
             :key="role.roleId"
@@ -689,7 +736,7 @@ function downloadRundownJpeg() {
             </template>
           </div>
         </div>
-        <p v-else class="text-body text-ink-300">
+        <p v-else v-show="isRolesOpen" class="text-body text-ink-300">
           尚無角色，點「新增角色」建立第一個工作人員角色
         </p>
       </section>
@@ -697,13 +744,32 @@ function downloadRundownJpeg() {
       <!-- 流程矩陣表：列＝時間段、固定欄＋每角色一欄，表格內直接編輯草稿 -->
       <section class="flex min-h-0 flex-1 flex-col">
         <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <div>
+          <div class="flex items-center gap-1.5">
             <p class="text-overline uppercase text-gold-deep">
               流程矩陣表
             </p>
-            <p class="mt-1 text-caption text-ink-300">
-              勾選「賓客」欄的時段才會出現在賓客版流程頁；角色欄寫該角色要做的事與做法（可換行），下方小欄填該角色自己要帶的物品
-            </p>
+            <!-- 填寫說明收進資訊圖示（issue #192）：平常不佔高度，要看再停留 -->
+            <UTooltip
+              v-model:open="isMatrixHelpOpen"
+              disable-closing-trigger
+              :content="{ side: 'bottom', align: 'start' }"
+              :ui="{ content: 'h-auto max-w-xs py-2' }"
+            >
+              <button
+                type="button"
+                class="flex items-center rounded text-ink-300 hover:text-ink dark:hover:text-paper"
+                aria-label="流程矩陣表填寫說明"
+                @click="isMatrixHelpOpen = true"
+              >
+                <UIcon name="i-heroicons-information-circle" class="size-4" />
+              </button>
+              <template #content>
+                <p class="whitespace-normal">
+                  勾選「賓客」欄的時段才會出現在賓客版流程頁；角色欄寫該角色要做的事與做法（可換行），下方小欄填該角色自己要帶的物品
+                </p>
+              </template>
+            </UTooltip>
+            <span class="ml-1.5 text-caption text-ink-300">共 {{ visibleRows.length }} 段</span>
           </div>
           <div class="flex flex-wrap items-center gap-3">
             <USelectMenu
@@ -724,6 +790,15 @@ function downloadRundownJpeg() {
               @click="isResetOpen = true"
             >
               重置
+            </UButton>
+            <!-- 新增一列：加在表格最底（主 spec 以 /新增一列/ 找這顆、並假設新列在最後） -->
+            <UButton
+              icon="i-heroicons-plus"
+              color="neutral"
+              variant="outline"
+              @click="addRow"
+            >
+              新增一列
             </UButton>
             <UButton
               data-testid="rundown-save"
@@ -750,14 +825,15 @@ function downloadRundownJpeg() {
 
         <div
           v-if="visibleRows.length > 0"
+          ref="tableScroll"
           class="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-white dark:border-neutral-800 dark:bg-neutral-900"
         >
           <table class="w-full border-collapse text-body">
             <thead>
               <tr class="border-b border-line bg-cream/60 dark:border-neutral-800 dark:bg-neutral-800/40">
                 <!-- 拖曳把手欄（僅全部角色視圖；篩選中 index 對不上完整草稿） -->
-                <th v-if="roleFilter === ALL_ROLES" class="sticky top-0 z-10 w-8 bg-cream px-1 py-2 dark:bg-neutral-800">
-                  <span class="sr-only">拖曳排序</span>
+                <th v-if="roleFilter === ALL_ROLES" class="sticky top-0 z-10 w-14 bg-cream px-1 py-2 dark:bg-neutral-800">
+                  <span class="sr-only">拖曳排序與插入</span>
                 </th>
                 <th class="w-28 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-ink-500 dark:border-neutral-800 dark:text-neutral-400">
                   開始
@@ -805,17 +881,43 @@ function downloadRundownJpeg() {
                 ]"
               >
                 <!-- 拖曳把手：整列一起搬（時間與時長跟著走） -->
-                <td v-if="roleFilter === ALL_ROLES" class="p-1 text-center">
-                  <button
-                    type="button"
-                    data-testid="rundown-row-drag"
-                    class="cursor-grab touch-none rounded p-1 text-ink-300 hover:text-ink active:cursor-grabbing dark:hover:text-paper"
-                    :class="draggingRowIndex === idx && 'text-gold-deep'"
-                    :aria-label="`拖曳調整 ${row.title || '此列'} 順序`"
-                    @pointerdown="onRowDragPointerDown($event, idx)"
-                  >
-                    <UIcon name="i-heroicons-bars-2" class="size-4" />
-                  </button>
+                <td v-if="roleFilter === ALL_ROLES" class="px-1 py-0">
+                  <div class="flex items-center justify-center">
+                    <button
+                      type="button"
+                      data-testid="rundown-row-drag"
+                      class="cursor-grab touch-none rounded p-1 text-ink-300 hover:text-ink active:cursor-grabbing dark:hover:text-paper"
+                      :class="draggingRowIndex === idx && 'text-gold-deep'"
+                      :aria-label="`拖曳調整 ${row.title || '此列'} 順序`"
+                      @pointerdown="onRowDragPointerDown($event, idx)"
+                    >
+                      <UIcon name="i-heroicons-bars-2" class="size-4" />
+                    </button>
+                    <!-- 上下兩顆＋：位置對應方向（上＝往上插入、下＝往下插入）。
+                         名稱用「插入」不用「新增」：主 spec 以 /新增一列/ 找工具列那顆按鈕，同名會撞 strict mode -->
+                    <div class="flex flex-col">
+                      <UTooltip text="往上插入一列" :content="{ side: 'right' }">
+                        <button
+                          type="button"
+                          class="flex h-5 w-6 items-center justify-center rounded text-ink-300 hover:text-ink dark:hover:text-paper"
+                          :aria-label="`往上插入一列（${row.title || '此列'}）`"
+                          @click="insertRow(row, 'above')"
+                        >
+                          <UIcon name="i-heroicons-plus" class="size-3.5" />
+                        </button>
+                      </UTooltip>
+                      <UTooltip text="往下插入一列" :content="{ side: 'right' }">
+                        <button
+                          type="button"
+                          class="flex h-5 w-6 items-center justify-center rounded text-ink-300 hover:text-ink dark:hover:text-paper"
+                          :aria-label="`往下插入一列（${row.title || '此列'}）`"
+                          @click="insertRow(row, 'below')"
+                        >
+                          <UIcon name="i-heroicons-plus" class="size-3.5" />
+                        </button>
+                      </UTooltip>
+                    </div>
+                  </div>
                 </td>
                 <td class="border-r border-line p-1 dark:border-neutral-800">
                   <!-- [&_input::...] 隱藏原生 time picker icon；保持 type=time（凍結 fill('17:30') 依賴值格式） -->
@@ -958,19 +1060,6 @@ function downloadRundownJpeg() {
             ? '點「新增一列」建立，或用「帶入宴客段範本」快速起步'
             : '此角色目前沒有參與的時段'"
         />
-
-        <div class="mt-3 flex shrink-0 items-center justify-between">
-          <UButton
-            icon="i-heroicons-plus"
-            color="neutral"
-            variant="outline"
-            size="sm"
-            @click="addRow"
-          >
-            新增一列
-          </UButton>
-          <span class="text-caption text-ink-300">共 {{ visibleRows.length }} 段</span>
-        </div>
       </section>
     </div>
 
