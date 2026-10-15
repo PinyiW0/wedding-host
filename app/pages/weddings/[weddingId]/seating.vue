@@ -176,7 +176,7 @@ const { downloadItems } = useSeatingChartExport({
   tables,
   venueMarkers,
   venueLayout,
-  math: { tableSeats, guestById, mainTable, isMainTable },
+  math: { tableSeats, guestById, mainTable, isMainTable, unseatedGuests, pendingMembers },
   tablePos,
   markerPos,
 })
