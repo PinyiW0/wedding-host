@@ -1,8 +1,9 @@
 // app/composables/useSeatingChartExport.ts
-// 下載桌次圖（issue #73 自 seating.vue 拆出；issue #101 增賓客名單版）：
+// 下載桌次圖（issue #73 自 seating.vue 拆出；issue #101 增賓客名單版；issue #194 增 Excel 名單）：
 // 以 canvas 依桌位 positionX/Y 畫圓桌地圖，匯出 JPEG / PDF。兩個版本共用版面計算：
 //   - 備餐地圖：圈內標桌名 + 餐點分類（不含賓客姓名），供餐廳人員知道各桌素葷與兒童需求
 //   - 賓客名單：圈內列出該桌所有賓客姓名，供列印／分享的桌位示意圖
+//   - 賓客名單 Excel：工作表 1 是「第幾桌坐了誰」的表格，工作表 2 貼桌位示意圖（交給餐廳／接待不必手抄）
 import type { MaybeRefOrGetter } from 'vue'
 import type { SeatingMath } from '~/composables/useSeatingMath'
 import type { CanvasBox } from '~/composables/useVenueCanvasGeometry'
@@ -47,7 +48,7 @@ interface ChartExportDeps {
   venueMarkers: MaybeRefOrGetter<VenueMarkerListItem[] | null | undefined>
   // 舞台位置與尺寸：下載圖與畫布同一份佈局，擺位才對得起來
   venueLayout: MaybeRefOrGetter<VenueLayoutDetail | null | undefined>
-  math: Pick<SeatingMath, 'tableSeats' | 'guestById' | 'mainTable' | 'isMainTable'>
+  math: Pick<SeatingMath, 'tableSeats' | 'guestById' | 'mainTable' | 'isMainTable' | 'unseatedGuests' | 'pendingMembers'>
   // 位置以畫布當下呈現為準（拖曳中的本地覆寫也一併採用）
   tablePos: (table: TableListItem) => { x: number, y: number }
   markerPos: (marker: VenueMarkerListItem) => { x: number, y: number }
@@ -55,7 +56,7 @@ interface ChartExportDeps {
 
 export function useSeatingChartExport(deps: ChartExportDeps) {
   const toast = useToast()
-  const { tableSeats, guestById, mainTable, isMainTable } = deps.math
+  const { tableSeats, guestById, mainTable, isMainTable, unseatedGuests, pendingMembers } = deps.math
   const tables = computed(() => toValue(deps.tables) ?? [])
   const venueMarkers = computed(() => toValue(deps.venueMarkers) ?? [])
 
@@ -441,7 +442,94 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     triggerDownload(canvasToPdfBlob(buildNameChartCanvas()), `桌位示意圖-${wid()}.pdf`)
   }
 
-  // 下載桌次圖下拉選單：備餐地圖（餐點分類）/ 賓客名單（桌位示意圖），各含 JPEG / PDF
+  // === 賓客名單 Excel（issue #194）===
+  // 桌號：主桌 1，其餘依桌名自然排序（「第2桌」在「第10桌」前）——資料沒有桌號欄位，以這個順序當桌號
+  function numberedTables() {
+    const main = mainTable.value
+    const rest = tables.value
+      .filter(t => t.tableId !== main?.tableId)
+      .sort((a, b) => a.tableName.localeCompare(b.tableName, 'zh-Hant', { numeric: true }))
+    return main ? [main, ...rest] : rest
+  }
+
+  // 一組賓客一列；同一組拆到兩桌就每桌各一列（人數是坐在這桌的人數），未排桌的放最後
+  function guestRows(): (string | number)[][] {
+    const rows: (string | number)[][] = []
+    numberedTables().forEach((t, i) => {
+      const seats = tableSeats(t.tableId).slice().sort((a, b) => a.seatNumber - b.seatNumber)
+      const order: string[] = []
+      for (const s of seats) {
+        if (!order.includes(s.guestId))
+          order.push(s.guestId)
+      }
+      for (const guestId of order) {
+        const g = guestById(guestId)
+        const here = seats.filter(s => s.guestId === guestId)
+        const child = here.filter(s => s.seatType === 'childChair').length
+        const split = g ? here.length < g.partySize : false
+        rows.push([
+          i + 1,
+          t.tableName,
+          g?.name ?? guestId,
+          here.length,
+          g ? dietLabel(g.diet) : '',
+          child,
+          split ? `拆桌：本桌 ${here.length} 位／共 ${g!.partySize} 位` : '',
+        ])
+      }
+    })
+    for (const g of unseatedGuests.value) {
+      const pending = pendingMembers(g.guestId)
+      const child = pending.filter(s => s.seatType === 'childChair').length
+      const split = pending.length < g.partySize
+      rows.push([
+        '',
+        '未排桌',
+        g.name,
+        pending.length,
+        dietLabel(g.diet),
+        child,
+        split ? `部分已入座：尚有 ${pending.length} 位未排` : '',
+      ])
+    }
+    return rows
+  }
+
+  // exceljs 約 1MB，只在按下載時才載入，平常開桌次頁不受影響
+  async function downloadGuestListXlsx() {
+    try {
+      const { default: ExcelJS } = await import('exceljs')
+      const book = new ExcelJS.Workbook()
+      const list = book.addWorksheet('賓客名單', { views: [{ state: 'frozen', ySplit: 1 }] })
+      list.columns = [
+        { header: '桌號', width: 8 },
+        { header: '桌名', width: 14 },
+        { header: '姓名', width: 16 },
+        { header: '同行人數', width: 10 },
+        { header: '葷素', width: 8 },
+        { header: '兒童椅', width: 8 },
+        { header: '備註', width: 28 },
+      ]
+      list.getRow(1).font = { bold: true }
+      list.addRows(guestRows())
+
+      const chart = book.addWorksheet('桌位示意圖')
+      const canvas = buildNameChartCanvas()
+      const image = book.addImage({ base64: canvas.toDataURL('image/png'), extension: 'png' })
+      chart.addImage(image, { tl: { col: 0, row: 0 }, ext: { width: A4_W, height: A4_H } })
+
+      const buffer = await book.xlsx.writeBuffer()
+      triggerDownload(
+        new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        `賓客名單-${wid()}.xlsx`,
+      )
+    }
+    catch {
+      toast.add({ title: '產生 Excel 失敗，請稍後再試', color: 'error' })
+    }
+  }
+
+  // 下載桌次圖下拉選單：備餐地圖（餐點分類）/ 賓客名單（桌位示意圖 JPEG / PDF、表格 Excel）
   const downloadItems = [
     [
       { label: '備餐地圖 · JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadChartJpeg() },
@@ -450,6 +538,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     [
       { label: '賓客名單 · JPEG', icon: 'i-heroicons-photo', onSelect: () => downloadNameChartJpeg() },
       { label: '賓客名單 · PDF', icon: 'i-heroicons-document-text', onSelect: () => downloadNameChartPdf() },
+      { label: '賓客名單 · Excel', icon: 'i-heroicons-table-cells', onSelect: () => void downloadGuestListXlsx() },
     ],
   ]
 
@@ -459,5 +548,6 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     downloadChartPdf,
     downloadNameChartJpeg,
     downloadNameChartPdf,
+    downloadGuestListXlsx,
   }
 }

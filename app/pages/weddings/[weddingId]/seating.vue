@@ -42,8 +42,29 @@ const { data: venueMarkers, error: markersError, refresh: refreshMarkers } = mar
 const { data: allSeats, error: seatsError, refresh: refreshSeats } = seatsAsync
 
 async function refreshAll() {
-  await Promise.all([refreshTables(), refreshSeats()])
+  await Promise.all([refreshTables(), refreshGuests(), refreshSeats()])
 }
+
+// 其他分頁可能修改同行人數與座位；回到桌次頁時一起重抓，避免用舊人數計算待排席。
+// focus 與 visibilitychange 常接連觸發，合併為一次刷新。
+let returnRefreshTimer: ReturnType<typeof setTimeout> | undefined
+function refreshOnReturn() {
+  if (document.visibilityState !== 'visible')
+    return
+  clearTimeout(returnRefreshTimer)
+  returnRefreshTimer = setTimeout(() => {
+    void refreshAll()
+  }, 100)
+}
+onMounted(() => {
+  window.addEventListener('focus', refreshOnReturn)
+  document.addEventListener('visibilitychange', refreshOnReturn)
+})
+onBeforeUnmount(() => {
+  clearTimeout(returnRefreshTimer)
+  window.removeEventListener('focus', refreshOnReturn)
+  document.removeEventListener('visibilitychange', refreshOnReturn)
+})
 
 // 讀取失敗（issue #103）：任一讀取失敗即顯示故障＋重試，
 // 不得因 default 值以「無賓客／無桌次」樣貌呈現（座位會全變 guestId、名單空白）
@@ -155,7 +176,7 @@ const { downloadItems } = useSeatingChartExport({
   tables,
   venueMarkers,
   venueLayout,
-  math: { tableSeats, guestById, mainTable, isMainTable },
+  math: { tableSeats, guestById, mainTable, isMainTable, unseatedGuests, pendingMembers },
   tablePos,
   markerPos,
 })

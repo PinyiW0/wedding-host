@@ -47,6 +47,39 @@ const uniqueFlowers = computed(() => {
   return list
 })
 
+/* ── 賓客的花分三區，合起來像半個花圈沿著花田輪廓長（issue #194，新人 10-15：散落在花叢旁、左上右上不要空著、
+   上方只佔三朵花那排的高度、花不要小到看不見、不要雜亂）。
+   1024px 以上：上方一道弧＋左右兩叢，兩叢從弧的頂端一路長到花田底部，貼著花田那側最密、往外往上變稀；
+   窄螢幕兩旁沒空間，全部在上方那道弧。每區大小固定，花多才互疊，不往外撐（疏密規則見 FlowerField compact）。
+   上方分三成：兩叢的花集中在下半，弧上太少會斷掉 */
+const TOP_SHARE = 0.3
+const wide = ref(false)
+let sideQuery: MediaQueryList | undefined
+function syncWide() {
+  wide.value = sideQuery?.matches ?? false
+}
+
+const groups = computed(() => {
+  const all = uniqueFlowers.value
+  if (!wide.value)
+    return { top: all, left: [] as FlowerWallItem[], right: [] as FlowerWallItem[] }
+  const topCount = Math.round(all.length * TOP_SHARE)
+  const leftCount = Math.ceil((all.length - topCount) / 2)
+  return {
+    top: all.slice(0, topCount),
+    left: all.slice(topCount, topCount + leftCount),
+    right: all.slice(topCount + leftCount),
+  }
+})
+
+/** 兩叢要往上長多高＝花田框頂端到上方那條頂端的距離（三朵花、間距會變，量出來的才準） */
+const fieldWrap = ref<HTMLElement | null>(null)
+const above = ref(0)
+let aboveObserver: ResizeObserver | undefined
+function syncAbove() {
+  above.value = fieldWrap.value?.offsetTop ?? 0
+}
+
 /** 三朵花的錯落：寬度、抬高多少（底邊對齊後加 margin-bottom）、傾角、紙條的傾角，由左到右。第四朵以後沿用最後一組。
     抬高用 margin 不用 translate：搖曳動畫寫在 translate 上，同一個屬性會互相覆蓋 */
 const ARRANGE = [
@@ -173,9 +206,22 @@ function onCatLeave(key: string) {
     nudgedKey.value = null
 }
 
+onMounted(() => {
+  sideQuery = window.matchMedia('(min-width: 1024px)')
+  syncWide()
+  sideQuery.addEventListener('change', syncWide)
+  const wrap = fieldWrap.value?.parentElement
+  if (wrap) {
+    aboveObserver = new ResizeObserver(syncAbove)
+    aboveObserver.observe(wrap)
+  }
+})
+
 onBeforeUnmount(() => {
   if (bubbleTimer)
     clearTimeout(bubbleTimer)
+  sideQuery?.removeEventListener('change', syncWide)
+  aboveObserver?.disconnect()
 })
 </script>
 
@@ -207,15 +253,10 @@ onBeforeUnmount(() => {
           {{ liveMessage }}
         </p>
 
-        <!-- 賓客畫的花，上方那一片：越多往上長越高（沿用花田頁的 FlowerField 散佈排法，緊湊版 32～80px 大大小小，hover 綻花瓣）。
+        <!-- 賓客畫的花，上方那道弧的位置：花由下方花田框裡的 crown 那層畫（弧要往下降到三朵花兩側，捧住三朵花），
+             這裡只留固定高度，不隨花數長高。窄螢幕兩旁沒空間、花全在這道弧上，所以高一點（128px）。
              跟花田之間留 3rem：找到肥肥時牠會從花田頂端探出來，這段空讓牠有地方站；真的疊到也是貓在前（.cat-field 疊上層） -->
-        <FlowerField
-          v-if="uniqueFlowers.length > 0"
-          :flowers="uniqueFlowers"
-          interactive
-          compact
-          class="mx-auto max-w-2xl pb-12"
-        />
+        <div v-if="groups.top.length > 0" class="mb-12 h-32 lg:h-24" aria-hidden="true" />
 
         <!-- 新人畫的三朵花：站在花田上方、底邊對齊再各自上下位移，往下疊進花田 4px 像種在花叢最後一排。
              加了互動就不再是純裝飾，所以每朵包成真的 button、拿掉整排的 aria-hidden。
@@ -253,10 +294,35 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <!-- 花田插畫；賓客作品統一在上方換行，避免兩側隨機落點互相遮擋。
+        <!-- 花田插畫＋左右兩叢賓客花（1024px 以上）：兩叢掛在花田框外、往裡收 1rem，從上方那條的頂端長到花田底部，
+             壓在花田之下（花田兩端收尖，靠近的那幾朵像長在花叢後面）。
              flow-root：花田那塊的負 margin-top 才不會穿透這一層往上收（margin 合併），把這個框拉高到蓋住上方三朵花——
              框本身會吃點擊，蓋到就點不到花；隔開後只有 pointer-events: none 的花田探出來 -->
-        <div class="relative flow-root">
+        <div ref="fieldWrap" class="relative flow-root" :style="{ '--above': `${above}px` }">
+          <FlowerField
+            v-if="groups.top.length > 0"
+            :flowers="groups.top"
+            interactive
+            compact
+            bed="crown"
+            class="side side-top"
+          />
+          <FlowerField
+            v-if="groups.left.length > 0"
+            :flowers="groups.left"
+            interactive
+            compact
+            bed="left"
+            class="side side-l"
+          />
+          <FlowerField
+            v-if="groups.right.length > 0"
+            :flowers="groups.right"
+            interactive
+            compact
+            bed="right"
+            class="side side-r"
+          />
           <!-- 花田橫幅＋藏在裡面的三隻貓。
                overflow-hidden 是給手機用的：手機把整條花田放大到 165%，超出畫面的兩端裁掉、不產生橫向捲動。
                手機再用 -mx-6 頂掉 section 的左右內距：花田切在螢幕邊而不是內距邊，才讀得出「花田還延伸出去」。
@@ -437,6 +503,39 @@ onBeforeUnmount(() => {
   transition:
     opacity 400ms var(--ease-standard),
     translate 400ms var(--ease-emphasized);
+}
+
+/* ── 花田左右兩叢賓客花 ──
+   寬度取「視窗扣掉花田後一側的空間」，最寬 13rem；往花田裡收 1rem（花田兩端收尖，角落本來就空）。
+   上緣對齊上方那條的頂端（--above 由 script 量），下緣對齊花田底部。
+   z-index 0 壓在 .cat-field（1）之下 */
+.side {
+  --side-w: min(13rem, calc((100vw - 48rem) / 2 - 0.5rem));
+  position: absolute;
+  top: calc(var(--above) * -1);
+  bottom: 0;
+  z-index: 0;
+  width: var(--side-w);
+}
+.side-l {
+  left: calc(var(--side-w) * -1 + 1rem);
+}
+/* 上方那道弧：從上方留位的頂端到花田框頂端，寬同花田，蓋住三朵花那排（三朵花的位置不放花、整層不吃點擊）。
+   手機頂掉 section 內距，花用滿螢幕寬 */
+.side-top {
+  bottom: auto;
+  left: -1.5rem;
+  width: calc(100% + 3rem);
+  height: var(--above);
+}
+@media (min-width: 640px) {
+  .side-top {
+    left: 0;
+    width: 100%;
+  }
+}
+.side-r {
+  right: calc(var(--side-w) * -1 + 1rem);
 }
 
 /* ── 花田橫幅與藏在裡面的三隻貓 ── */
