@@ -259,6 +259,30 @@ const visibleRoles = computed(() => {
   return list.filter(r => r.roleId === roleFilter.value)
 })
 
+// === 角色欄顯示／隱藏（issue #194）：角色多時表格太寬，撰寫時手動收起暫時用不到的欄 ===
+// 只影響這台裝置的畫面：不動草稿（隱藏欄的內容照樣儲存）、不影響下載 JPEG 與角色連結。
+// 存 cookie（每場婚禮各一份）：重整後維持；單一角色篩選時一律顯示該角色，不受隱藏影響
+const hiddenRoleIds = useCookie<string[]>(`rundown-hidden-roles-${weddingId.value}`, {
+  default: () => [],
+  maxAge: 60 * 60 * 24 * 365,
+  sameSite: 'lax',
+})
+const hiddenRoles = computed(() => (roles.value ?? []).filter(r => hiddenRoleIds.value.includes(r.roleId)))
+const matrixRoles = computed(() => {
+  if (roleFilter.value !== ALL_ROLES)
+    return visibleRoles.value
+  return visibleRoles.value.filter(r => !hiddenRoleIds.value.includes(r.roleId))
+})
+function hideRoleColumn(roleId: string) {
+  hiddenRoleIds.value = [...hiddenRoleIds.value, roleId]
+}
+function showRoleColumn(roleId: string) {
+  hiddenRoleIds.value = hiddenRoleIds.value.filter(id => id !== roleId)
+}
+function showAllRoleColumns() {
+  hiddenRoleIds.value = []
+}
+
 // === 整表儲存（SaveRundownTable：既有列帶 rundownItemId、新列省略、未帶回＝刪除）===
 const isSaving = ref(false)
 const saveError = ref('')
@@ -813,6 +837,34 @@ function downloadRundownJpeg() {
           </div>
         </div>
 
+        <!-- 已隱藏的角色欄：逐一點回來，或一次全部顯示（單一角色篩選時隱藏不作用，這列也不出現） -->
+        <div
+          v-if="roleFilter === ALL_ROLES && hiddenRoles.length > 0"
+          class="mb-3 flex flex-wrap items-center gap-2 text-caption text-ink-500"
+        >
+          <span>已隱藏 {{ hiddenRoles.length }} 欄：</span>
+          <UButton
+            v-for="role in hiddenRoles"
+            :key="role.roleId"
+            icon="i-heroicons-plus"
+            color="neutral"
+            variant="outline"
+            size="xs"
+            :aria-label="`顯示 ${role.name} 欄`"
+            @click="showRoleColumn(role.roleId)"
+          >
+            {{ role.name }}
+          </UButton>
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            @click="showAllRoleColumns"
+          >
+            全部顯示
+          </UButton>
+        </div>
+
         <UAlert
           v-if="saveError"
           data-testid="rundown-save-error"
@@ -858,11 +910,24 @@ function downloadRundownJpeg() {
                   賓客
                 </th>
                 <th
-                  v-for="role in visibleRoles"
+                  v-for="role in matrixRoles"
                   :key="role.roleId"
                   class="min-w-36 sticky top-0 z-10 border-r border-line bg-cream px-2 py-2 text-left text-caption font-medium dark:bg-neutral-800 text-gold-deep dark:border-neutral-800"
                 >
-                  {{ role.name }}
+                  <div class="flex items-center justify-between gap-1">
+                    <span>{{ role.name }}</span>
+                    <!-- 隱藏這一欄（只影響畫面）；單一角色篩選時不提供，避免把唯一一欄收掉。
+                         用 ✕ 不用眼睛：「賓客」欄的眼睛是「對賓客公開」，兩個意思不能共用同一個圖示 -->
+                    <UButton
+                      v-if="roleFilter === ALL_ROLES"
+                      icon="i-heroicons-x-mark"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      :aria-label="`隱藏 ${role.name} 欄`"
+                      @click="hideRoleColumn(role.roleId)"
+                    />
+                  </div>
                 </th>
                 <th class="sticky top-0 z-10 w-20 bg-cream px-2 py-2 dark:bg-neutral-800">
                   <span class="sr-only">列操作</span>
@@ -995,7 +1060,7 @@ function downloadRundownJpeg() {
                   />
                 </td>
                 <td
-                  v-for="role in visibleRoles"
+                  v-for="role in matrixRoles"
                   :key="role.roleId"
                   class="border-r border-line p-1 dark:border-neutral-800"
                 >
