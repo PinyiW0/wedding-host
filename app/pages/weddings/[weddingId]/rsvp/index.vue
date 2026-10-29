@@ -837,7 +837,8 @@ async function confirmRemove() {
 
           <div class="space-y-4">
             <!-- 出席覆寫（維持 rsvp-override 契約；置頂以利下拉展開） -->
-            <UFormField label="出席狀態（覆寫）" name="attending">
+            <!-- 標籤不可含「送出／覆寫／確定」：NuxtUI 4.12 起標籤就是下拉按鈕的名稱，會撞 spec 找送出鍵的 /送出|覆寫|確定/（#196） -->
+            <UFormField label="出席狀態" name="attending">
               <USelectMenu
                 v-model="overrideAttending"
                 data-testid="rsvp-override-attending"
