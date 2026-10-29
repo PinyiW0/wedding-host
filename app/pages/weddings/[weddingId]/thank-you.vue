@@ -830,13 +830,14 @@ async function submitFallback() {
               />
             </UFormField>
 
-            <UFormField label="發送管道" name="channel">
+            <!-- 標籤不可含「發送／送出／確定」：NuxtUI 4.12 起標籤就是下拉按鈕的名稱，會撞 spec 找送出鍵的 /發送|送出|確定/（#196） -->
+            <UFormField label="送達方式" name="channel">
               <USelectMenu
                 v-model="fallbackChannel"
                 data-testid="fallback-channel-select"
                 :items="CHANNEL_OPTIONS"
                 value-key="value"
-                placeholder="選擇發送管道"
+                placeholder="選擇送達方式"
                 class="w-full"
               />
             </UFormField>

@@ -15,18 +15,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [22.22.0]
-
     steps:
       # action 一律釘 commit SHA（非可變 tag）：tag 可被上游移動，
       # 惡意版本會在持有 secrets 的 job 內執行。升版時連同註解的版本號一起更新。
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js (.nvmrc)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install
@@ -69,11 +65,11 @@ jobs:
             echo "has_specs=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Use Node.js 22.22.0
+      - name: Use Node.js (.nvmrc)
         if: steps.specs.outputs.has_specs == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install
@@ -129,11 +125,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: needs.build-e2e.outputs.has_specs == 'true'
 
-      - name: Use Node.js 22.22.0
+      - name: Use Node.js (.nvmrc)
         if: needs.build-e2e.outputs.has_specs == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: npm
 
       # 仍要 npm ci：Playwright、drizzle-kit 與 spec 的 import 來自 node_modules；.output 本身自帶執行期依賴
@@ -234,10 +230,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Use Node.js 22.22.0
+      - name: Use Node.js (.nvmrc)
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22.22.0
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install

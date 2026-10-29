@@ -131,6 +131,12 @@
 ### 其他知情項（非缺陷）
 - **流程表簽名 scope（issue #188／#190，已收斂）**：`rundown-items`、`rundown-roles` 與角色版（`rundown-roles/{roleId}/view`）只認登入、`r.`（同一角色）與 `s.`（總覽）簽名，賓客的 `w.`／`g.` 一律 403；賓客版 `/schedule` 改讀 `guest-schedule`，伺服器端只投影賓客可見時段的公開欄位。`s.` 另可「讀」婚禮層級分享資料（GET），不能打分享類寫入（公開 RSVP、祝福、上傳簽名）。殘餘風險：簽名不過期，`r.`／`s.` 連結外流只能輪換 `NUXT_GUEST_LINK_SECRET`（會連帶讓所有賓客連結失效）。
 - **公開寫入無限量**：`rsvp-public`／`blessings` 提交無數量上限，理論上可灌爆待審佇列。已有 presign／登入限流基礎設施，若出現濫用可比照套用。
+- **依賴套件的 `overrides`（issue #196）**：`package.json` 的 `overrides` 強制三處間接依賴的版本，讓 `npm audit` 不帶 moderate 以上。`npm audit fix --force` 給的解法是把 drizzle-kit 降到 0.18、exceljs 降到 3.4，故不採用。
+  - `fontless` → `esbuild ^0.28.2`：`@nuxt/ui` 字型模組底下的 fontless 寫死 `esbuild ^0.27.0`，修補版 0.28.1 在範圍外。
+  - `@esbuild-kit/core-utils` → `esbuild ^0.28.2`：drizzle-kit 列了 `@esbuild-kit/esm-loader` 但程式碼不載入，舊版 esbuild 0.18 從不執行，強制版本只為消掉報告。
+  - `exceljs` → `uuid ^11.1.1`：exceljs 只用 `v4`，漏洞在 `v3/v5/v6` 帶 `buf` 參數時；11.x 仍提供 CommonJS 入口。
+  - 上游放寬範圍後（fontless 接受 0.28、drizzle-kit 拿掉 esbuild-kit、exceljs 升 uuid）即可移除對應條目。
+- **deepmerge 的 low 漏洞（GHSA-gcqx-w48m-w2h4，issue #196）**：`npm audit` 剩的 7 個 low 都是同一條鏈 nuxt → nitropack → `@rollup/plugin-node-resolve` → deepmerge。deepmerge 最新版 4.3.1 仍在受影響範圍，上游無修補版；只在建置階段合併 rollup 設定，不處理使用者輸入。
 
 ---
 
