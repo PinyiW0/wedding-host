@@ -122,7 +122,7 @@ npm run dev   # 自動拉起 Docker Postgres、migrate + seed，零設定
 
 啟動後以示範帳號 `couple`（密碼 `couple1122`）登入，即以「新人」視角操作含完整示範資料的婚禮。
 
-環境需求：Node.js >= 22.12、Docker。環境變數清單見 [docs/architecture.md](docs/architecture.md) §8（全部可留空，未設定時自動退回本機相容行為）。
+環境需求：Node.js 26.13.0（以 `.nvmrc` 為準，先 `nvm use` 再 `npm install`：Node 22 內建的 npm 10 在這個依賴樹會崩潰）、Docker。Node 版本寫在 `.nvmrc`、Dockerfile `ARG NODE_VERSION`、package.json `engines` 三處，升版時三處一起改，不一致時 `npm run test:unit` 會失敗。環境變數清單見 [docs/architecture.md](docs/architecture.md) §8（全部可留空，未設定時自動退回本機相容行為）。
 
 ### 常用指令
 
