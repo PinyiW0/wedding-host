@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.6
 
 # Node 版本單一來源：ARG 預設值與 .nvmrc、package.json engines 對齊，CI 直接讀 .nvmrc。
-# 釘確切版而非浮動標籤（26-alpine）：浮動標籤建出什麼版本看建置當天，釘死才保證帶著已知的安全修補上線。
+# 釘確切版而非浮動標籤（24-alpine）：浮動標籤建出什麼版本看建置當天，釘死才保證帶著已知的安全修補上線。
 # Node 再出修補時改三處：.nvmrc、這裡的預設值、package.json engines（test/unit/node-version-sync.spec.ts 會比對）；臨時覆寫：docker build --build-arg NODE_VERSION=<版本>
-ARG NODE_VERSION=26.13.0
+ARG NODE_VERSION=24.22.2
 
 # ---- Builder ----
 FROM node:${NODE_VERSION}-alpine AS builder

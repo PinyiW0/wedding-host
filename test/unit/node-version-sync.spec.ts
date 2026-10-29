@@ -21,8 +21,9 @@ describe('三處 Node 版本同步', () => {
     expect(arg, `Dockerfile 的 ARG NODE_VERSION 與 .nvmrc（${nvmrc}）不一致`).toBe(nvmrc)
   })
 
-  it('package.json 的 engines.node 等於 >=<.nvmrc>', () => {
+  // 用 ^ 不用 >=：正式站在 Vercel，它依 engines 挑「範圍內最新的支援版」，>= 會在 Vercel 支援新 major 時自動跳過去
+  it('package.json 的 engines.node 等於 ^<.nvmrc>', () => {
     const engines = (JSON.parse(read('package.json')) as { engines?: { node?: string } }).engines?.node
-    expect(engines, `package.json 的 engines.node 與 .nvmrc（${nvmrc}）不一致`).toBe(`>=${nvmrc}`)
+    expect(engines, `package.json 的 engines.node 與 .nvmrc（${nvmrc}）不一致`).toBe(`^${nvmrc}`)
   })
 })
