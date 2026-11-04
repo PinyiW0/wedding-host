@@ -1,0 +1,28 @@
+diff --git a/node_modules/reka-ui/dist/Toast/ToastAnnounce.cjs b/node_modules/reka-ui/dist/Toast/ToastAnnounce.cjs
+index 0996bb8..5c81e06 100644
+--- a/node_modules/reka-ui/dist/Toast/ToastAnnounce.cjs
++++ b/node_modules/reka-ui/dist/Toast/ToastAnnounce.cjs
+@@ -26,8 +26,7 @@ var ToastAnnounce_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */
+ 		}
+ 		return (_ctx, _cache) => {
+ 			return (0, vue.unref)(isAnnounced) || renderAnnounceText.value ? ((0, vue.openBlock)(), (0, vue.createBlock)((0, vue.unref)(require_VisuallyHidden_VisuallyHidden.VisuallyHidden_default), {
+-				key: 0,
+-				feature: "fully-hidden"
++				key: 0
+ 			}, {
+ 				default: (0, vue.withCtx)(() => [(0, vue.createTextVNode)((0, vue.toDisplayString)((0, vue.unref)(providerContext).label.value) + " ", 1), (0, vue.renderSlot)(_ctx.$slots, "default")]),
+ 				_: 3
+diff --git a/node_modules/reka-ui/dist/Toast/ToastAnnounce.js b/node_modules/reka-ui/dist/Toast/ToastAnnounce.js
+index 9214d18..3025a08 100644
+--- a/node_modules/reka-ui/dist/Toast/ToastAnnounce.js
++++ b/node_modules/reka-ui/dist/Toast/ToastAnnounce.js
+@@ -25,8 +25,7 @@ var ToastAnnounce_vue_vue_type_script_setup_true_lang_default = /* @__PURE__ */
+ 		}
+ 		return (_ctx, _cache) => {
+ 			return unref(isAnnounced) || renderAnnounceText.value ? (openBlock(), createBlock(unref(VisuallyHidden_default), {
+-				key: 0,
+-				feature: "fully-hidden"
++				key: 0
+ 			}, {
+ 				default: withCtx(() => [createTextVNode(toDisplayString(unref(providerContext).label.value) + " ", 1), renderSlot(_ctx.$slots, "default")]),
+ 				_: 3
