@@ -5,6 +5,8 @@
 //       要改位址帶 CAPTURE_BASE_URL=http://localhost:3333 npm run capture:demo
 // 副作用：開頭會呼叫 /api/__test__/reset —— 本機 DB 會被清空並重置為 seed 資料，
 //         手動建的資料會消失（與跑 E2E 相同的代價）。
+// 資料：seed 為了 E2E 刻意精簡，直接錄會滿畫面空狀態；reset 後由 scripts/demo-data.mjs
+//       補成一場像樣的婚禮（賓客、回覆、喜餅、小物、流程、謝卡），錄到接待段再補報到與禮金。
 //
 // GIF 產生方式（無系統依賴，不需 ffmpeg）：
 //   Playwright 逐幀截圖 → 送進一個 about:blank 分頁，用 canvas 解碼成 RGBA
@@ -17,6 +19,7 @@ import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
+import { DEMO, seedDemoBase, seedDemoReception } from './demo-data.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const BASE = process.env.CAPTURE_BASE_URL ?? 'http://localhost:3000'
@@ -35,8 +38,28 @@ const MOBILE = { width: 390, height: 844 }
 // GIF 輸出尺寸：兩者都是來源的等比縮放（1600×1000 → 880×550；手機 @2x 截圖縮回 1×）
 const DESKTOP_GIF = { width: 880, height: 550 }
 const MOBILE_GIF = { width: 390, height: 844 }
+// 桌次圖要 15 桌一次入鏡，視窗放大再等比縮回（2400×1500 → 960×600）
+const SEATING = { width: 2400, height: 1500 }
+const SEATING_GIF = { width: 960, height: 600 }
 
 const FPS = 8
+
+// 錄影會用到的頁面（暖機用）
+const WARMUP_PATHS = [
+  `/weddings/${WEDDING_ID}`,
+  `/weddings/${WEDDING_ID}/seating`,
+  `/weddings/${WEDDING_ID}/guests`,
+  `/weddings/${WEDDING_ID}/cake-box`,
+  `/weddings/${WEDDING_ID}/gifts`,
+  `/weddings/${WEDDING_ID}/rundown`,
+  `/weddings/${WEDDING_ID}/blessings`,
+  `/reception?weddingId=${WEDDING_ID}`,
+  `/projection/${WEDDING_ID}`,
+  `/rundown/${WEDDING_ID}`,
+  `/thankyou/${WEDDING_ID}/${THANKYOU_GUEST_ID}`,
+  `/flowers/${WEDDING_ID}`,
+  `/rsvp/public/${WEDDING_ID}`,
+]
 
 /** 隱藏 dev server 的 Nuxt DevTools 浮標，避免入鏡 */
 async function hideDevtools(ctx) {
@@ -125,8 +148,11 @@ function startRecording(page) {
     while (state.running) {
       const startedAt = Date.now()
       const png = await page.screenshot({ type: 'png', animations: 'allow' }).catch(() => null)
-      if (!png)
-        break
+      // 換頁途中截圖會失敗，稍等再試；不能直接結束，否則換頁後的畫面都錄不到
+      if (!png) {
+        await new Promise(r => setTimeout(r, 100))
+        continue
+      }
 
       const now = Date.now()
       frames.push({ png, delay: Math.min(200, Math.max(20, now - lastAt)) })
@@ -154,17 +180,64 @@ async function writeGif(encoder, frames, size, name) {
   return gif.length
 }
 
+/** 把一張 JPEG 等比縮到指定寬度，存進 docs/screenshots（用編碼器分頁的 canvas，不另加影像處理依賴） */
+async function saveScaledJpeg(encoder, srcPath, width, name) {
+  const b64 = (await readFile(srcPath)).toString('base64')
+  const out = await encoder.evaluate(async ({ b64, width }) => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob())
+    const canvas = new OffscreenCanvas(width, Math.round(bitmap.height * width / bitmap.width))
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.86 })).arrayBuffer())
+    let s = ''
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+    return btoa(s)
+  }, { b64, width })
+  await writeFile(resolve(SHOT_DIR, name), Buffer.from(out, 'base64'))
+  console.log(`✓ ${name}`)
+}
+
 async function shoot(page, name, waitMs = 600) {
-  await page.waitForLoadState('networkidle').catch(() => {})
-  await page.waitForTimeout(waitMs)
-  await page.screenshot({ path: resolve(SHOT_DIR, name) })
+  for (let attempt = 1; ; attempt++) {
+    await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
+    await page.waitForTimeout(waitMs)
+    try {
+      await page.screenshot({ path: resolve(SHOT_DIR, name), timeout: 10000 })
+      break
+    }
+    catch (err) {
+      // 偶爾頁面遲遲不出畫面（實測都接在謝卡動畫之後），重新載入再截，三次都失敗才放棄
+      if (attempt >= 3)
+        throw err
+      await page.reload({ waitUntil: 'load' })
+    }
+  }
   console.log(`✓ ${name}`)
 }
 
 // ===== 劇本 =====
 
+/**
+ * 開頁：等 load，再給 networkidle 最多 8 秒（帶大圖或長連線的頁面等不到 idle，不能因此整支失敗），
+ * 最後等 Vue 掛上去——SSR 的畫面先出來、事件還沒接好時，點下去不會有反應。
+ */
+async function visit(page, url) {
+  await page.goto(url, { waitUntil: 'load' })
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {})
+  await page.waitForFunction(() => !!document.querySelector('#__nuxt')?.__vue_app__, null, { timeout: 15000 }).catch(() => {})
+}
+
+/** 點了之後應該出現某個元素；第一下落空（事件還沒接好）就再點，最多四次 */
+async function clickUntil(target, expected) {
+  for (let i = 0; i < 4; i++) {
+    await target.click()
+    if (await expected.waitFor({ timeout: 4000 }).then(() => true, () => false))
+      return
+  }
+  throw new Error('點了四次都沒出現預期的畫面')
+}
+
 async function login(page) {
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
+  await visit(page, `${BASE}/login`)
   await page.getByTestId('login-account').fill(ACCOUNT.username)
   await page.getByTestId('login-password').fill(ACCOUNT.password)
   await page.getByTestId('login-submit').click()
@@ -179,7 +252,8 @@ async function login(page) {
  * 點選路徑有「待放置：<賓客>」提示條，狀態變化在 GIF 上看得見。
  */
 async function recordSeating(page, encoder) {
-  await page.goto(`${BASE}/weddings/${WEDDING_ID}/seating`, { waitUntil: 'networkidle' })
+  await page.setViewportSize(SEATING)
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/seating`)
   await page.waitForTimeout(1200)
 
   const stop = startRecording(page)
@@ -191,17 +265,38 @@ async function recordSeating(page, encoder) {
   await page.getByTestId('table-001-empty-1').click()
   await page.waitForTimeout(1100)
 
-  // 其餘交給推薦排序
+  // 其餘交給推薦排序（逐位送出，全部排完右側名單會顯示「賓客皆已排席」）
   await page.getByTestId('vibe-seating-recommend').click()
-  await page.waitForTimeout(2000) // 自動帶位 + 圓桌逐一填滿的重繪
-  await page.waitForTimeout(700) // 結果停留（連同上方色數，是控制檔案大小的兩個旋鈕）
+  await page.getByText('賓客皆已排席').waitFor({ timeout: 60000 })
+  await page.waitForTimeout(1500) // 結果停留（連同上方色數，是控制檔案大小的兩個旋鈕）
 
-  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'seating.gif')
+  const size = await writeGif(encoder, await stop(), { ...SEATING_GIF, colors: 128 }, 'seating.gif')
+
+  // 下載備餐地圖當 README 的靜態圖。排席完成的提示訊息會蓋住右上角的下載鈕，等它消失再點
+  await page.waitForTimeout(5500)
+  const download = page.waitForEvent('download', { timeout: 30000 })
+  const downloadButton = page.getByTestId('vibe-seating-download')
+  await downloadButton.click()
+  const chartJpeg = page.getByText('備餐地圖 · JPEG')
+  await chartJpeg.waitFor()
+  await page.waitForTimeout(400)
+  // README 用：下載選單打開的樣子（備餐地圖與賓客名單各種格式，賓客名單可下載 Excel）
+  const anchor = await downloadButton.boundingBox()
+  await page.screenshot({
+    path: resolve(SHOT_DIR, 'seating-download.png'),
+    clip: { x: Math.max(0, Math.min(SEATING.width - 960, anchor.x - 560)), y: 0, width: 960, height: 480 },
+  })
+  console.log('✓ seating-download.png')
+  await chartJpeg.click()
+  await saveScaledJpeg(encoder, await (await download).path(), 1000, 'seating-chart.jpg')
+
+  await page.setViewportSize(DESKTOP)
+  return size
 }
 
 /** 祝福審核 → 投影牆：後台通過一則，切到投影牆看跑馬燈 */
 async function recordProjection(page, encoder) {
-  await page.goto(`${BASE}/weddings/${WEDDING_ID}/blessings`, { waitUntil: 'networkidle' })
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/blessings`)
   await page.waitForTimeout(1000)
 
   const stop = startRecording(page)
@@ -224,41 +319,109 @@ async function recordProjection(page, encoder) {
     await page.waitForTimeout(1200)
   }
 
-  await page.goto(`${BASE}/projection/${WEDDING_ID}`, { waitUntil: 'networkidle' })
+  await visit(page, `${BASE}/projection/${WEDDING_ID}`)
   await page.waitForTimeout(4500) // 跑馬燈跑一段
 
   return writeGif(encoder, await stop(), DESKTOP_GIF, 'projection.gif')
 }
 
-/** 賓客名單：開表單新增一位賓客，送出後看到新賓客出現在名單上 */
-async function recordGuests(page, encoder) {
-  await page.goto(`${BASE}/weddings/${WEDDING_ID}/guests`, { waitUntil: 'networkidle' })
+/** 連結中心：點賓客的「連結」，側欄滑出四張 QR 卡（回覆／祝福／報到／謝卡），複製專屬回覆連結 */
+async function recordLinks(page, encoder) {
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/guests`)
   await page.waitForTimeout(800)
 
   const stop = startRecording(page)
+  await page.waitForTimeout(900)
+
+  await clickUntil(page.getByRole('button', { name: `連結 ${DEMO.linkGuestName}` }), page.getByTestId('vibe-link-center-panel'))
+  // 四條短網址是開側欄時才產生的，等複製鈕出現代表卡片都好了
+  await page.getByTestId('vibe-link-copy-rsvp').waitFor({ timeout: 20000 })
+  await page.waitForTimeout(1400)
+  await page.getByTestId('vibe-link-copy-rsvp').click()
+  await page.waitForTimeout(1800)
+
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'links.gif')
+}
+
+/** 喜餅與小物：依分類帶入款式 → 盒數與金額更新 → 切到婚禮小物看採購總額 */
+async function recordCakeGifts(page, encoder) {
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/cake-box`)
+  await page.waitForTimeout(800)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(900)
+
+  await clickUntil(page.getByTestId('cake-box-auto-assign'), page.getByTestId('cake-box-auto-apply'))
+  await page.waitForTimeout(1500) // 對話框停一下，看得到「分類 → 款式」的對應
+  await page.getByTestId('cake-box-auto-apply').click()
+  await page.getByTestId('cake-box-auto-apply').waitFor({ state: 'hidden', timeout: 60000 })
+  await page.waitForTimeout(1800)
+
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/gifts`)
+  await page.waitForTimeout(2200)
+
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'cakebox.gif')
+}
+
+/** 當天流程（後台）：矩陣表 → 複製「新秘」的角色專屬連結 */
+async function recordRundown(page, encoder) {
+  await visit(page, `${BASE}/weddings/${WEDDING_ID}/rundown`)
+  await page.waitForTimeout(800)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(1200)
+
+  await page.getByRole('button', { name: `複製 ${DEMO.roleName} 的連結` }).click()
+  await page.waitForTimeout(2200)
+
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'rundown.gif')
+}
+
+/** 當天流程（工作人員手機）：角色專屬頁只列自己的待辦與要帶的物品 */
+async function recordRundownRole(page, encoder, roleId) {
+  await visit(page, `${BASE}/rundown/${WEDDING_ID}?role=${roleId}`)
+  await page.waitForTimeout(1000)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(900)
+  for (let i = 0; i < 14; i++) {
+    await page.mouse.wheel(0, 60)
+    await page.waitForTimeout(110)
+  }
+  await page.waitForTimeout(1200)
+
+  return writeGif(encoder, await stop(), MOBILE_GIF, 'rundown-role.gif')
+}
+
+/** 接待台：搜尋賓客 → 報到（橫幅顯示桌名）→ 登記禮金 → 打開禮金彙總 */
+async function recordReception(page, encoder, guestId) {
+  await visit(page, `${BASE}/reception?weddingId=${WEDDING_ID}`)
+  await page.waitForTimeout(800)
+
+  const stop = startRecording(page)
+  await page.waitForTimeout(700)
+
+  await page.getByTestId('vibe-reception-search').pressSequentially(DEMO.receptionGuestName, { delay: 220 })
+  await page.waitForTimeout(700)
+  await clickUntil(page.getByTestId(`reception-checkin-${guestId}`), page.getByTestId('vibe-checkin-table-banner'))
+  await page.waitForTimeout(1500)
+
+  await page.getByTestId(`reception-gift-${guestId}`).click()
+  await page.waitForTimeout(700)
+  await page.getByTestId('vibe-reception-quick-amount-3600').click()
   await page.waitForTimeout(500)
+  await page.getByTestId('reception-gift-submit').click()
+  await page.waitForTimeout(1300)
 
-  await page.getByTestId('guest-create').click()
-  await page.getByTestId('guest-form-modal').waitFor()
-  await page.waitForTimeout(500)
+  await page.getByTestId('vibe-gift-summary-open').click()
+  await page.waitForTimeout(2200)
 
-  await page.getByTestId('guest-name').fill('陳曉婷')
-  await page.waitForTimeout(350)
-  await page.getByTestId('guest-category').fill('朋友')
-  await page.waitForTimeout(350)
-  await page.getByTestId('guest-contact').fill('0955666777')
-  await page.waitForTimeout(500)
-
-  await page.getByTestId('guest-submit').click()
-  await page.getByTestId('guest-form-modal').waitFor({ state: 'hidden' }).catch(() => {})
-  await page.waitForTimeout(1200) // toast + 名單刷新落定
-
-  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'guests.gif')
+  return writeGif(encoder, await stop(), { ...DESKTOP_GIF, colors: 128 }, 'reception.gif')
 }
 
 /** 賓客 RSVP：填出席資訊 → 手繪小花 → 送出 */
 async function recordRsvp(page, encoder) {
-  await page.goto(`${BASE}/rsvp/public/${WEDDING_ID}`, { waitUntil: 'networkidle' })
+  await visit(page, `${BASE}/rsvp/public/${WEDDING_ID}`)
   await page.waitForTimeout(1200)
 
   const stop = startRecording(page)
@@ -316,7 +479,7 @@ async function drawFlower(page, canvas) {
 
 /** 謝卡公開頁共用劇本：點信封開封，謝卡自信封口升起展開（行動版／桌面版共用，僅輸出尺寸不同） */
 async function recordThankyouReveal(page, encoder, size, name) {
-  await page.goto(`${BASE}/thankyou/${WEDDING_ID}/${THANKYOU_GUEST_ID}`, { waitUntil: 'networkidle' })
+  await visit(page, `${BASE}/thankyou/${WEDDING_ID}/${THANKYOU_GUEST_ID}`)
   await page.waitForTimeout(1200)
 
   const stop = startRecording(page)
@@ -349,45 +512,77 @@ async function main() {
     process.exit(1)
   }
   console.log('seed 已重設')
+  console.log('示範資料', await seedDemoBase(BASE))
 
   await mkdir(DEMO_DIR, { recursive: true })
   await mkdir(SHOT_DIR, { recursive: true })
+
+  // 新增的賓客 ID 是隨機的，錄影要用的人以姓名查
+  const guests = await (await fetch(`${BASE}/api/v1/weddings/${WEDDING_ID}/guests`)).json()
+  const roles = await (await fetch(`${BASE}/api/v1/weddings/${WEDDING_ID}/rundown-roles`)).json()
+  const receptionGuestId = guests.find(g => g.name === DEMO.receptionGuestName).guestId
+  const roleId = roles.find(r => r.name === DEMO.roleName).roleId
 
   const browser = await chromium.launch()
   const encoder = await createEncoder(browser)
 
   // --- 後台（已登入）---
-  const adminCtx = await browser.newContext({ viewport: DESKTOP, locale: 'zh-TW' })
+  // 無畫面模式預設沒有剪貼簿權限，不給的話「複製連結」會顯示「複製失敗」
+  const adminCtx = await browser.newContext({ viewport: DESKTOP, locale: 'zh-TW', permissions: ['clipboard-read', 'clipboard-write'] })
   await hideDevtools(adminCtx)
   const admin = await adminCtx.newPage()
   await login(admin)
 
+  // 暖機：dev server 剛啟動時，每個頁面第一次打開要現場編譯，還可能整頁重載，
+  // 這時候去點按鈕會找不到。先把要錄的頁面全部開過一次再開始
+  for (const path of WARMUP_PATHS)
+    await visit(admin, `${BASE}${path}`)
+
+  // 籌備：排桌要在報到之前（報到後接待台才有桌名可顯示）
   await recordSeating(admin, encoder)
+  await recordLinks(admin, encoder)
+  await recordCakeGifts(admin, encoder)
+  await recordRundown(admin, encoder)
+  await visit(admin, `${BASE}/weddings/${WEDDING_ID}/rundown`)
+  await shoot(admin, 'rundown.png')
+  await visit(admin, `${BASE}/weddings/${WEDDING_ID}/cake-box`)
+  await shoot(admin, 'cake-box.png')
+
+  // 當天：先補報到與禮金，接待台與總覽的數字才像婚禮進行中
+  console.log('報到與禮金', await seedDemoReception(BASE))
+  await recordReception(admin, encoder, receptionGuestId)
   await recordProjection(admin, encoder)
-  await recordGuests(admin, encoder)
   await recordThankyouWeb(admin, encoder)
 
-  await admin.goto(`${BASE}/weddings/${WEDDING_ID}`, { waitUntil: 'networkidle' })
-  await shoot(admin, 'dashboard.png')
-  await admin.goto(`${BASE}/weddings/${WEDDING_ID}/guests`, { waitUntil: 'networkidle' })
-  await shoot(admin, 'guests.png')
-  await admin.goto(`${BASE}/weddings/${WEDDING_ID}/blessings`, { waitUntil: 'networkidle' })
-  await shoot(admin, 'blessings.png')
-  await admin.goto(`${BASE}/projection/${WEDDING_ID}`, { waitUntil: 'networkidle' })
-  await shoot(admin, 'projection.png', 1500)
+  // 靜態截圖另開一個分頁（同一個登入狀態）：接在錄影用的分頁後面截，曾經等不到畫面而逾時
+  const adminStill = await adminCtx.newPage()
+  await visit(adminStill, `${BASE}/weddings/${WEDDING_ID}`)
+  await shoot(adminStill, 'dashboard.png')
+  await visit(adminStill, `${BASE}/weddings/${WEDDING_ID}/guests`)
+  await shoot(adminStill, 'guests.png')
+  await visit(adminStill, `${BASE}/weddings/${WEDDING_ID}/blessings`)
+  await shoot(adminStill, 'blessings.png')
+  await visit(adminStill, `${BASE}/projection/${WEDDING_ID}`)
+  await shoot(adminStill, 'projection.png', 1500)
+  await adminStill.close()
 
-  // --- 賓客公開頁（未登入，行動裝置尺寸）---
+  // --- 賓客與工作人員的公開頁（未登入，行動裝置尺寸）---
   const guestCtx = await browser.newContext({ viewport: MOBILE, locale: 'zh-TW', isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   await hideDevtools(guestCtx)
   const guest = await guestCtx.newPage()
 
-  await recordRsvp(guest, encoder)
-  await recordThankyou(guest, encoder)
+  // 同上：靜態截圖另開分頁
+  const still = await guestCtx.newPage()
+  await visit(still, `${BASE}/flowers/${WEDDING_ID}`)
+  await shoot(still, 'flowers-mobile.png', 2000)
+  await visit(still, `${BASE}/rsvp/public/${WEDDING_ID}`)
+  await shoot(still, 'rsvp-mobile.png', 1200)
+  await still.close()
 
-  await guest.goto(`${BASE}/rsvp/public/${WEDDING_ID}`, { waitUntil: 'networkidle' })
-  await shoot(guest, 'rsvp-mobile.png', 1200)
-  await guest.goto(`${BASE}/flowers/${WEDDING_ID}`, { waitUntil: 'networkidle' })
-  await shoot(guest, 'flowers-mobile.png', 2000)
+  await recordRundownRole(guest, encoder, roleId)
+  await recordThankyou(guest, encoder)
+  // 公開回覆會多一位「待確認」賓客，放最後錄，前面的素材才不受影響
+  await recordRsvp(guest, encoder)
 
   await browser.close()
   console.log('全部完成')
