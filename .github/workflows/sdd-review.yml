@@ -10,6 +10,12 @@ on:
       - 'server/**'
   workflow_dispatch:
 
+# 同一個 PR 連續 push 只留最後一次 run，避免每次 push 都另起一次 claude-code-action 燒 OAuth 額度；
+# 被取消的 run 狀態是 cancelled，不是紅燈
+concurrency:
+  group: sdd-review-${{ github.ref }}
+  cancel-in-progress: true
+
 # 只給留言所需權限；不開 contents: write，故無 commit loop 風險（Phase 2 才需要）
 # id-token: write 是 claude-code-action 用 OIDC 換取 GitHub token 的必要權限
 permissions:
