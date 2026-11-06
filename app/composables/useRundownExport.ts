@@ -49,7 +49,6 @@ const CHART = {
   paper: '#ffffff', // 列印白底
   ink: '#111111', // 主標 / 標題（ink）
   inkSoft: '#6B655C', // 角色事項（ink-500）
-  inkFaint: '#A8A096', // 次要（ink-300）
   line: '#DCD4C7', // 分隔線（line）
   cream: '#F4EFE6', // 表頭底（cream）
   highlight: '#F3EBDD', // 標記列底（gold-light 淡化）
@@ -173,7 +172,7 @@ function bigColumns(roles: RundownRoleListItem[]): BigColumn[] {
     { label: '主要事項', width: 200, cell: row => [{ text: row.title, color: CHART.ink, weight: 600 }] },
     { label: '場地', width: 120, cell: plain(row => row.location) },
     { label: '共用物品', width: 160, cell: plain(row => row.supplies) },
-    { label: '備註', width: 220, cell: plain(row => row.note, CHART.inkFaint) },
+    { label: '備註', width: 220, cell: plain(row => row.note) },
     ...roles.flatMap((role, i): BigColumn[] => [
       {
         label: role.name,
@@ -184,7 +183,7 @@ function bigColumns(roles: RundownRoleListItem[]): BigColumn[] {
           const supplies = row.roleSuppliesById[role.roleId] ?? ''
           return [
             ...(task ? [{ text: task, color: CHART.ink, weight: 400 as const }] : []),
-            ...(supplies ? [{ text: `物品：${supplies}`, color: CHART.inkFaint, weight: 400 as const }] : []),
+            ...(supplies ? [{ text: `物品：${supplies}`, color: CHART.inkSoft, weight: 400 as const }] : []),
           ]
         },
       },

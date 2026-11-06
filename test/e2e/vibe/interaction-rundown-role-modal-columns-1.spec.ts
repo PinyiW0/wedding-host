@@ -155,15 +155,20 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
       expect(heads.filter(h => ['接待', '總場控', '新秘', '平面攝影師'].includes(h))).toEqual(['平面攝影師', '接待', '總場控', '新秘'])
     })
 
-    test('鍵盤也能排序：聚焦把手按下方向鍵，該角色欄往右移一格', async ({ page }) => {
+    test('鍵盤也能排序：聚焦把手連按兩次下方向鍵，該角色欄往右移兩格', async ({ page }) => {
       await openColumnMenu(page)
-      const saved = page.waitForResponse(res => res.url().includes('/rundown-roles/order') && res.request().method() === 'PUT')
-      await page.getByRole('button', { name: '拖曳調整 接待 欄的順序' }).focus()
-      await page.keyboard.press('ArrowDown')
-      expect((await saved).ok()).toBe(true)
+      const handle = page.getByRole('button', { name: '拖曳調整 接待 欄的順序' })
+      await handle.focus()
+      for (let i = 0; i < 2; i++) {
+        const saved = page.waitForResponse(res => res.url().includes('/rundown-roles/order') && res.request().method() === 'PUT')
+        await page.keyboard.press('ArrowDown')
+        expect((await saved).ok()).toBe(true)
+        // 排完焦點回到同一個把手，才能接著按
+        await expect(handle).toBeFocused()
+      }
 
       const heads = (await page.getByRole('columnheader').allInnerTexts()).map(h => h.trim())
-      expect(heads.filter(h => ['接待', '總場控', '新秘', '平面攝影師'].includes(h))).toEqual(['總場控', '接待', '新秘', '平面攝影師'])
+      expect(heads.filter(h => ['接待', '總場控', '新秘', '平面攝影師'].includes(h))).toEqual(['總場控', '新秘', '接待', '平面攝影師'])
     })
 
     test('工作人員總覽頁照角色順序列出同一時段的事項', async ({ page }) => {
@@ -229,6 +234,18 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
       await expect(page).toHaveURL(GUESTS_URL_RE)
     })
 
+    test('有改動時用婚禮切換器換到別場，也會先詢問', async ({ page }) => {
+      await page.getByTestId('rundown-cell-note').first().fill('還沒存的備註')
+      await page.getByRole('button', { name: '切換婚禮' }).click()
+      await page.getByRole('menuitem', { name: '張志豪與陳怡君的婚禮' }).click()
+
+      const dialog = page.getByRole('dialog')
+      await expect(dialog.getByText('離開這一頁？')).toBeVisible()
+      await dialog.getByRole('button', { name: '取消' }).click()
+      await expect(page).toHaveURL(new RegExp(`${RUNDOWN_PATH}$`))
+      await expect(page.getByTestId('rundown-cell-note').first()).toHaveValue('還沒存的備註')
+    })
+
     test('沒有改動時點側欄直接離開，不詢問', async ({ page }) => {
       await page.getByRole('link', { name: '賓客名單', exact: true }).click()
       await expect(page).toHaveURL(GUESTS_URL_RE)
@@ -254,6 +271,24 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
       await expect(titles).toHaveValue('丙')
 
       await page.getByRole('button', { name: '復原' }).first().click()
+      await page.getByRole('button', { name: '復原' }).first().click()
+      await expect(titles).toHaveCount(3)
+      expect(await titles.evaluateAll(els => els.map(el => (el as HTMLTextAreaElement).value))).toEqual([SEED_TITLE, '乙', '丙'])
+    })
+
+    test('先刪後一列再刪前一列，依刪除順序復原，兩列仍回到原本的位置', async ({ page }) => {
+      await page.getByRole('button', { name: '新增一列' }).click()
+      await page.getByRole('button', { name: '新增一列' }).click()
+      const titles = page.getByTestId('rundown-cell-title')
+      await titles.nth(1).fill('乙')
+      await titles.nth(2).fill('丙')
+
+      await page.getByRole('button', { name: '刪除 乙' }).click()
+      await page.getByRole('button', { name: `刪除 ${SEED_TITLE}` }).click()
+      await expect(titles).toHaveValue('丙')
+
+      // 提示由新到舊排列：先按「乙」那則（較舊、在後面），再按 seed 那則
+      await page.getByRole('button', { name: '復原' }).last().click()
       await page.getByRole('button', { name: '復原' }).first().click()
       await expect(titles).toHaveCount(3)
       expect(await titles.evaluateAll(els => els.map(el => (el as HTMLTextAreaElement).value))).toEqual([SEED_TITLE, '乙', '丙'])

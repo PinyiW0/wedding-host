@@ -96,6 +96,10 @@ const isDirty = computed(() => JSON.stringify(draft.value) !== draftBaseline.val
 
 // 刪除列的「復原」提示（見 removeRow）：草稿重建後舊列已不屬於這份草稿，提示一併收掉
 const undoToastIds = new Set<string | number>()
+// 復原用的順序紀錄：目前草稿＋還能復原的已刪列，照刪除前的相對位置排在一起。
+// 每次刪除時重算，復原時照這份紀錄找位置——不論刪除與復原的先後順序，都能回到原位
+const pendingDeletedIds = new Set<string>()
+let undoOrder: string[] = []
 
 // 以 refresh 後的 items 重建草稿並同步基準（此時才呈現排序後順序）
 function rebuildDraft() {
@@ -103,6 +107,8 @@ function rebuildDraft() {
   draftBaseline.value = JSON.stringify(draft.value)
   undoToastIds.forEach(id => toast.remove(id))
   undoToastIds.clear()
+  pendingDeletedIds.clear()
+  undoOrder = []
 }
 
 // 結束時間＝開始＋時長（僅顯示推算，編輯開始時間不即時重排，避免焦點跳走）
@@ -186,15 +192,30 @@ function insertRow(row: DraftRow, position: 'above' | 'below') {
 }
 
 // 刪除只動草稿（儲存才生效）。誤刪時原本只能「放棄變更」、會連其他改動一起丟，
-// 所以提示上給「復原」，把該列插回原位置（issue #207）。
-// 位置不記數字 index（連刪幾列再復原，index 會對不上），記刪除當下的前後鄰居：
-// 復原時優先插在原本的下一列前面，下一列也不在了就插在上一列後面，兩個都不在才退回原 index
+// 所以提示上給「復原」，把該列插回原位置（issue #207）
+// 把還沒復原的已刪列，依上一份順序紀錄插回目前草稿的順序中（插在它原本前一列的後面）
+function mergeUndoOrder(): string[] {
+  const order = draft.value.map(r => r.id)
+  undoOrder.forEach((id, i) => {
+    if (!pendingDeletedIds.has(id) || order.includes(id))
+      return
+    let at = 0
+    for (let j = i - 1; j >= 0; j--) {
+      const k = order.indexOf(undoOrder[j]!)
+      if (k !== -1) {
+        at = k + 1
+        break
+      }
+    }
+    order.splice(at, 0, id)
+  })
+  return order
+}
 function removeRow(row: DraftRow) {
-  const index = draft.value.findIndex(r => r.id === row.id)
-  if (index === -1)
+  if (!draft.value.some(r => r.id === row.id))
     return
-  const nextId = draft.value[index + 1]?.id
-  const prevId = draft.value[index - 1]?.id
+  undoOrder = mergeUndoOrder()
+  pendingDeletedIds.add(row.id)
   draft.value = draft.value.filter(r => r.id !== row.id)
   const { id } = toast.add({
     title: '已刪除一列',
@@ -206,13 +227,15 @@ function removeRow(row: DraftRow) {
       variant: 'outline',
       onClick: () => {
         undoToastIds.delete(id)
+        pendingDeletedIds.delete(row.id)
         if (draft.value.some(r => r.id === row.id))
           return
+        // 插在紀錄中「後面第一個還在草稿裡的列」前面；後面都不在了，就插在「前面最近一個還在的列」後面
         const rows = [...draft.value]
-        const nextAt = rows.findIndex(r => r.id === nextId)
-        const prevAt = rows.findIndex(r => r.id === prevId)
-        const at = nextAt !== -1 ? nextAt : prevAt !== -1 ? prevAt + 1 : Math.min(index, rows.length)
-        rows.splice(at, 0, row)
+        const pos = undoOrder.indexOf(row.id)
+        const nextAt = undoOrder.slice(pos + 1).map(rid => rows.findIndex(r => r.id === rid)).find(k => k !== -1)
+        const prevAt = undoOrder.slice(0, Math.max(pos, 0)).reverse().map(rid => rows.findIndex(r => r.id === rid)).find(k => k !== -1)
+        rows.splice(nextAt ?? (prevAt === undefined ? rows.length : prevAt + 1), 0, row)
         draft.value = rows
       },
     }],
@@ -327,13 +350,19 @@ async function onRoleReorder(from: number, to: number) {
     isRoleReordering.value = false
   }
 }
-// 鍵盤：把手聚焦後按 ↑／↓ 上下移一格（只有指標拖曳的話，鍵盤使用者沒辦法排序）
-function onRoleHandleKeydown(event: KeyboardEvent, idx: number) {
+// 鍵盤：把手聚焦後按 ↑／↓ 上下移一格（只有指標拖曳的話，鍵盤使用者沒辦法排序）。
+// 清單重排會讓焦點掉到 body，排完把焦點還給同一個角色的把手，才能連續按
+async function onRoleHandleKeydown(event: KeyboardEvent, idx: number) {
   const to = event.key === 'ArrowUp' ? idx - 1 : event.key === 'ArrowDown' ? idx + 1 : -1
   if (to < 0 || to >= (roles.value?.length ?? 0))
     return
   event.preventDefault()
-  void onRoleReorder(idx, to)
+  if (isRoleReordering.value)
+    return
+  const roleId = roles.value![idx]!.roleId
+  await onRoleReorder(idx, to)
+  await nextTick()
+  document.querySelector<HTMLElement>(`[data-role-handle="${roleId}"]`)?.focus()
 }
 
 // === 整表儲存（SaveRundownTable：既有列帶 rundownItemId、新列省略、未帶回＝刪除）===
@@ -403,17 +432,25 @@ defineShortcuts({
 })
 
 // === 未儲存改動的防護（issue #207）：整表儲存制，沒存就離開會整份不見 ===
-// 站內換頁：先攔下、問過才放行；重新整理／關分頁：交給瀏覽器的離開確認
+// 站內換頁：先攔下、問過才放行；重新整理／關分頁：交給瀏覽器的離開確認。
+// 用婚禮切換器從 A 婚禮切到 B 婚禮是同一條路由換參數，不會觸發 leave，另用 update 攔 weddingId 變更
 const isLeaveOpen = ref(false)
 let pendingLeavePath = ''
 let isLeaveConfirmed = false
-onBeforeRouteLeave((to) => {
-  if (!isDirty.value || isLeaveConfirmed)
+function guardUnsaved(to: { fullPath: string }) {
+  if (isLeaveConfirmed) {
+    // 確認過的那一次放行後就重置：同一個頁面實例被沿用時，下一次離開仍要詢問
+    isLeaveConfirmed = false
+    return true
+  }
+  if (!isDirty.value)
     return true
   pendingLeavePath = to.fullPath
   isLeaveOpen.value = true
   return false
-})
+}
+onBeforeRouteLeave(to => guardUnsaved(to))
+onBeforeRouteUpdate((to, from) => (to.params.weddingId === from.params.weddingId ? true : guardUnsaved(to)))
 async function confirmLeave() {
   isLeaveConfirmed = true
   isLeaveOpen.value = false
@@ -681,7 +718,8 @@ const { exportItems } = useRundownExport({
                         class="cursor-grab touch-none rounded p-1 text-ink-300 hover:text-ink active:cursor-grabbing"
                         :aria-label="`拖曳調整 ${role.name} 欄的順序`"
                         aria-description="按上下方向鍵移動順序"
-                        :disabled="isRoleReordering"
+                        :data-role-handle="role.roleId"
+                        :aria-disabled="isRoleReordering"
                         @pointerdown="onRoleDragPointerDown($event, idx)"
                         @keydown="onRoleHandleKeydown($event, idx)"
                       >
@@ -1037,7 +1075,8 @@ const { exportItems } = useRundownExport({
     </div>
 
     <!-- 工作人員角色彈窗（issue #207）：新增、改名、移除、複製角色專屬連結；左右順序在表格上方「欄位」調整 -->
-    <UModal v-model:open="isRolesModalOpen">
+    <!-- title 給螢幕報讀用：自訂 #content 時 NuxtUI 會把它放進隱藏的 DialogTitle，版面不變 -->
+    <UModal v-model:open="isRolesModalOpen" title="工作人員角色">
       <template #content>
         <div class="flex max-h-dvh flex-col p-6">
           <h3 class="text-body-l font-semibold text-ink dark:text-paper">
