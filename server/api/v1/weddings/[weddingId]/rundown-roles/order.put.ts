@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { ReorderRundownRolesBody, RundownRoleListItem } from '../../../../../../app/types/api/rundown'
 
-import { and, asc, eq } from 'drizzle-orm'
+import { asc, eq, sql } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
 import { rundownRoles } from '../../../../../db/schema'
@@ -21,10 +21,14 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownRoleLis
   if (roleIds.length !== existing.size || roleIds.some(id => !existing.has(id)))
     throw createError({ statusCode: 400, statusMessage: '角色清單已變更，請重新整理後再排序' })
 
-  // neon-http 沒有 transaction：驗證都在寫入之前做完；逐筆更新，同一份清單重送結果相同
-  await Promise.all(roleIds.map((roleId, position) =>
-    db.update(rundownRoles).set({ position }).where(and(eq(rundownRoles.weddingId, weddingId), eq(rundownRoles.roleId, roleId))),
-  ))
+  // neon-http 沒有 transaction：驗證都在寫入之前做完，寫入用單一 CASE UPDATE——
+  // 一條語句要嘛全改、要嘛全不改，兩個排序請求交錯也只會留下其中一份完整順序（做法同 gift-categories/reorder）
+  if (roleIds.length) {
+    const cases = roleIds.map((roleId, position) => sql`when ${rundownRoles.roleId} = ${roleId} then ${position}::integer`)
+    await db.update(rundownRoles).set({
+      position: sql`case ${sql.join(cases, sql` `)} else ${rundownRoles.position} end`,
+    }).where(eq(rundownRoles.weddingId, weddingId))
+  }
 
   const sorted = await db.select().from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId)).orderBy(asc(rundownRoles.position), asc(rundownRoles.seq))
   return sorted.map(r => ({ roleId: r.roleId, weddingId: r.weddingId, name: r.name }))
