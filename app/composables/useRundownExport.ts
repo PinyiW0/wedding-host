@@ -99,6 +99,12 @@ function splitSupplies(text: string): string[] {
   return text.split(SUPPLY_SPLIT_RE).map(part => part.trim()).filter(Boolean)
 }
 
+// 檔名：當天流程表-婚禮名稱[-角色]-MMDD-HHmm.副檔名。不同婚禮、不同角色同一分鐘匯出也分得出來
+function exportFilename(wedding: RundownExportWedding | null | undefined, roleName: string, stampFile: string, ext: string) {
+  const parts = ['當天流程表', wedding?.title, roleName, stampFile]
+  return `${parts.filter(Boolean).map(part => part!.replace(FILENAME_UNSAFE_RE, '_')).join('-')}.${ext}`
+}
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -310,7 +316,7 @@ export function useRundownExport(deps: RundownExportDeps) {
     const stamp = exportStamp()
     downloadPng(
       buildBigTableCanvas(toValue(deps.allRows), toValue(deps.allRoles), exportMeta(toValue(deps.wedding), '', stamp.label)),
-      `當天流程表-${stamp.file}.png`,
+      exportFilename(toValue(deps.wedding), '', stamp.file, 'png'),
     )
   }
 
@@ -321,7 +327,7 @@ export function useRundownExport(deps: RundownExportDeps) {
     const roleName = toValue(deps.filterName)
     downloadPng(
       buildBigTableCanvas(toValue(deps.filteredRows), toValue(deps.filteredRoles), exportMeta(toValue(deps.wedding), roleName, stamp.label)),
-      `當天流程表-${roleName.replace(FILENAME_UNSAFE_RE, '_')}-${stamp.file}.png`,
+      exportFilename(toValue(deps.wedding), roleName, stamp.file, 'png'),
     )
   }
 
@@ -420,7 +426,7 @@ export function useRundownExport(deps: RundownExportDeps) {
       const buffer = await book.xlsx.writeBuffer()
       triggerDownload(
         new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-        `當天流程表-${stamp.file}.xlsx`,
+        exportFilename(toValue(deps.wedding), '', stamp.file, 'xlsx'),
       )
     }
     catch {

@@ -24,12 +24,12 @@ const ROLE_ID = 'role-002'
 // seed 唯一一列
 const SEED_TITLE = '新娘物品點交'
 
-// 匯出檔名帶匯出時間（MMDD-HHmm），同一天多次匯出也分得出先後
+// 匯出檔名帶婚禮名稱與匯出時間（MMDD-HHmm）：不同婚禮、同一天多次匯出都分得出來
 const EXPORT_NAME_RE = {
-  png: /^當天流程表-\d{4}-\d{4}\.png$/,
-  xlsx: /^當天流程表-\d{4}-\d{4}\.xlsx$/,
+  png: /^當天流程表-王小明與李小美的婚禮-\d{4}-\d{4}\.png$/,
+  xlsx: /^當天流程表-王小明與李小美的婚禮-\d{4}-\d{4}\.xlsx$/,
 } as const
-const ROLE_EXPORT_NAME_RE = /^當天流程表-新秘-\d{4}-\d{4}\.png$/
+const ROLE_EXPORT_NAME_RE = /^當天流程表-王小明與李小美的婚禮-新秘-\d{4}-\d{4}\.png$/
 const RUNDOWN_URL_RE = /\/rundown$/
 const GUESTS_URL_RE = /\/guests$/
 
@@ -155,6 +155,17 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
       expect(heads.filter(h => ['接待', '總場控', '新秘', '平面攝影師'].includes(h))).toEqual(['平面攝影師', '接待', '總場控', '新秘'])
     })
 
+    test('鍵盤也能排序：聚焦把手按下方向鍵，該角色欄往右移一格', async ({ page }) => {
+      await openColumnMenu(page)
+      const saved = page.waitForResponse(res => res.url().includes('/rundown-roles/order') && res.request().method() === 'PUT')
+      await page.getByRole('button', { name: '拖曳調整 接待 欄的順序' }).focus()
+      await page.keyboard.press('ArrowDown')
+      expect((await saved).ok()).toBe(true)
+
+      const heads = (await page.getByRole('columnheader').allInnerTexts()).map(h => h.trim())
+      expect(heads.filter(h => ['接待', '總場控', '新秘', '平面攝影師'].includes(h))).toEqual(['總場控', '接待', '新秘', '平面攝影師'])
+    })
+
     test('工作人員總覽頁照角色順序列出同一時段的事項', async ({ page }) => {
       const items = await (await page.request.get(`${API}/rundown-items`)).json()
       await page.request.put(`${API}/rundown-items`, {
@@ -229,6 +240,23 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
 
       await page.getByRole('button', { name: '復原' }).first().click()
       await expect(page.getByTestId('rundown-cell-title').first()).toHaveValue(SEED_TITLE)
+    })
+
+    test('連刪兩列再依序復原，兩列回到原本的位置', async ({ page }) => {
+      await page.getByRole('button', { name: '新增一列' }).click()
+      await page.getByRole('button', { name: '新增一列' }).click()
+      const titles = page.getByTestId('rundown-cell-title')
+      await titles.nth(1).fill('乙')
+      await titles.nth(2).fill('丙')
+
+      await page.getByRole('button', { name: /^刪除 / }).first().click()
+      await page.getByRole('button', { name: /^刪除 / }).first().click()
+      await expect(titles).toHaveValue('丙')
+
+      await page.getByRole('button', { name: '復原' }).first().click()
+      await page.getByRole('button', { name: '復原' }).first().click()
+      await expect(titles).toHaveCount(3)
+      expect(await titles.evaluateAll(els => els.map(el => (el as HTMLTextAreaElement).value))).toEqual([SEED_TITLE, '乙', '丙'])
     })
 
     test('在格子裡按 Cmd/Ctrl+S 等同按「儲存流程表」', async ({ page }) => {

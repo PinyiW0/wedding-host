@@ -186,11 +186,15 @@ function insertRow(row: DraftRow, position: 'above' | 'below') {
 }
 
 // 刪除只動草稿（儲存才生效）。誤刪時原本只能「放棄變更」、會連其他改動一起丟，
-// 所以提示上給「復原」，把該列插回原位置（issue #207）
+// 所以提示上給「復原」，把該列插回原位置（issue #207）。
+// 位置不記數字 index（連刪幾列再復原，index 會對不上），記刪除當下的前後鄰居：
+// 復原時優先插在原本的下一列前面，下一列也不在了就插在上一列後面，兩個都不在才退回原 index
 function removeRow(row: DraftRow) {
   const index = draft.value.findIndex(r => r.id === row.id)
   if (index === -1)
     return
+  const nextId = draft.value[index + 1]?.id
+  const prevId = draft.value[index - 1]?.id
   draft.value = draft.value.filter(r => r.id !== row.id)
   const { id } = toast.add({
     title: '已刪除一列',
@@ -205,7 +209,10 @@ function removeRow(row: DraftRow) {
         if (draft.value.some(r => r.id === row.id))
           return
         const rows = [...draft.value]
-        rows.splice(Math.min(index, rows.length), 0, row)
+        const nextAt = rows.findIndex(r => r.id === nextId)
+        const prevAt = rows.findIndex(r => r.id === prevId)
+        const at = nextAt !== -1 ? nextAt : prevAt !== -1 ? prevAt + 1 : Math.min(index, rows.length)
+        rows.splice(at, 0, row)
         draft.value = rows
       },
     }],
@@ -297,7 +304,12 @@ function showAllRoleColumns() {
 // 左右順序存進婚禮資料：後台矩陣、工作人員總覽頁、匯出大表都照這個順序。
 // 拖曳放開就先換畫面再送出，失敗才換回原順序（排序與草稿無關，不必等「儲存流程表」）
 const { draggingIndex: draggingRoleIndex, overIndex: dragOverRoleIndex, start: onRoleDragPointerDown } = usePointerReorder('role-index', onRoleReorder)
+// 上一個排序還沒回來就不收新的：兩個請求交錯時，晚到的舊回應會蓋掉新順序、舊請求失敗的回滾也會蓋掉新的成功結果
+const isRoleReordering = ref(false)
 async function onRoleReorder(from: number, to: number) {
+  if (isRoleReordering.value)
+    return
+  isRoleReordering.value = true
   const previous = roles.value ?? []
   const next = [...previous]
   const [moved] = next.splice(from, 1)
@@ -311,6 +323,17 @@ async function onRoleReorder(from: number, to: number) {
     const message = error?.data?.message || error?.statusMessage || '請稍後再試'
     toast.add({ title: '角色順序沒有存到', description: message, color: 'error' })
   }
+  finally {
+    isRoleReordering.value = false
+  }
+}
+// 鍵盤：把手聚焦後按 ↑／↓ 上下移一格（只有指標拖曳的話，鍵盤使用者沒辦法排序）
+function onRoleHandleKeydown(event: KeyboardEvent, idx: number) {
+  const to = event.key === 'ArrowUp' ? idx - 1 : event.key === 'ArrowDown' ? idx + 1 : -1
+  if (to < 0 || to >= (roles.value?.length ?? 0))
+    return
+  event.preventDefault()
+  void onRoleReorder(idx, to)
 }
 
 // === 整表儲存（SaveRundownTable：既有列帶 rundownItemId、新列省略、未帶回＝刪除）===
@@ -640,7 +663,7 @@ const { exportItems } = useRundownExport({
               <template #content>
                 <div class="w-72 p-3">
                   <p class="mb-2 px-1 text-caption text-ink-500">
-                    勾選要顯示的角色欄；按住把手上下拖曳調整左右順序（順序所有人共用）
+                    勾選要顯示的角色欄；按住把手上下拖曳，或聚焦把手後按上下方向鍵，調整左右順序（順序所有人共用）
                   </p>
                   <ul>
                     <li
@@ -657,7 +680,10 @@ const { exportItems } = useRundownExport({
                         type="button"
                         class="cursor-grab touch-none rounded p-1 text-ink-300 hover:text-ink active:cursor-grabbing"
                         :aria-label="`拖曳調整 ${role.name} 欄的順序`"
+                        aria-description="按上下方向鍵移動順序"
+                        :disabled="isRoleReordering"
                         @pointerdown="onRoleDragPointerDown($event, idx)"
+                        @keydown="onRoleHandleKeydown($event, idx)"
                       >
                         <UIcon name="i-heroicons-bars-2" class="size-4" />
                       </button>
