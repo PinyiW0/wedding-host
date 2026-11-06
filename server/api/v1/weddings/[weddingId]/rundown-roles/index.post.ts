@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { CreateRundownRoleBody, RundownRoleCreatedEvent } from '../../../../../../app/types/api/rundown'
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, max } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
 import { rundownRoles } from '../../../../../db/schema'
@@ -21,7 +21,10 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownRoleCre
   }
 
   const roleId = `role-${crypto.randomUUID().slice(0, 8)}`
-  await db.insert(rundownRoles).values({ roleId, weddingId, name })
+  // 新角色排在最右邊（issue #207）
+  const [last] = await db.select({ position: max(rundownRoles.position) }).from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId))
+  const position = (last?.position ?? -1) + 1
+  await db.insert(rundownRoles).values({ roleId, weddingId, name, position })
 
   setResponseStatus(event, 201)
   return { roleId, weddingId, name }

@@ -34,3 +34,11 @@ export function getShortLink(weddingId: string, kind: ShortLinkKind, guestId?: s
     body: guestId ? { kind, guestId } : { kind },
   })
 }
+
+// 流程表短網址（issue #207）：帶 roleId＝角色版、不帶＝全部角色總覽
+export function getRundownShortLink(weddingId: string, roleId?: string) {
+  return useHttp().post<ShortLinkResponse>('/api/v1/weddings/{weddingId}/short-links', {
+    pathParams: { weddingId },
+    body: roleId ? { kind: 'rundown-role', roleId } : { kind: 'rundown-staff' },
+  })
+}
