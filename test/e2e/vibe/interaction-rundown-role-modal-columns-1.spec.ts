@@ -294,6 +294,16 @@ test.describe('vibe：當天流程角色彈窗與「調整順序」選單', () =
       expect(await titles.evaluateAll(els => els.map(el => (el as HTMLTextAreaElement).value))).toEqual([SEED_TITLE, '乙', '丙'])
     })
 
+    test('刪列後確認離開，到了別頁不再留著失效的「復原」提示', async ({ page }) => {
+      await page.getByTestId('rundown-row-delete').first().click()
+      await expect(page.getByRole('button', { name: '復原' })).toBeVisible()
+
+      await page.getByRole('link', { name: '賓客名單', exact: true }).click()
+      await page.getByRole('dialog').getByRole('button', { name: '離開' }).click()
+      await expect(page).toHaveURL(GUESTS_URL_RE)
+      await expect(page.getByRole('button', { name: '復原' })).toHaveCount(0)
+    })
+
     test('在格子裡按 Cmd/Ctrl+S 等同按「儲存流程表」', async ({ page }) => {
       const note = page.getByTestId('rundown-cell-note').first()
       await note.fill('用快捷鍵存的備註')

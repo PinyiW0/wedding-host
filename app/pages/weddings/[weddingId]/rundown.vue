@@ -461,7 +461,11 @@ function onBeforeUnload(event: BeforeUnloadEvent) {
     event.preventDefault()
 }
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  // 「復原」提示掛在全域，頁面卸載後按下去也救不回任何列，一併收掉
+  undoToastIds.forEach(id => toast.remove(id))
+})
 
 // === 角色表單（新增/改名共用 Modal）===
 const roleSchema = z.object({
