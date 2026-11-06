@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from '@playwright/test'
 
 import {
@@ -23,6 +25,12 @@ import {
 const RUNDOWN_PATH = '/weddings/wedding-001/rundown'
 const ITEMS_API = '/api/v1/weddings/wedding-001/rundown-items'
 
+// 角色管理在彈窗內（issue #207）：頁面不再常駐角色區塊，先開彈窗才找得到角色項目
+async function openRolesDialog(page: Page) {
+  await page.getByRole('button', { name: /工作人員角色/ }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+}
+
 test.describe('當天流程表（Admin 端）', () => {
   test.beforeEach(async ({ page }) => {
     await resetMockData(page)
@@ -33,6 +41,7 @@ test.describe('當天流程表（Admin 端）', () => {
     test('成功新增流程角色', async ({ page }) => {
       // Given：預設四角色 seed 可見
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
+      await openRolesDialog(page)
       await expect(findEntity(page, /總場控/)).toBeVisible()
 
       // When：新增「動態攝影」
@@ -54,6 +63,7 @@ test.describe('當天流程表（Admin 端）', () => {
     test('成功更新流程角色', async ({ page }) => {
       // Given：role-004（平面攝影師）已存在
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
+      await openRolesDialog(page)
 
       // When：改名為「平面攝影」
       await findEntity(page, /平面攝影師/).getByRole('button', { name: /編輯|改名/ }).click()
@@ -84,6 +94,7 @@ test.describe('當天流程表（Admin 端）', () => {
     test('成功移除流程角色', async ({ page }) => {
       // Given：role-003（新秘）被 rundownitem-001 的 roleTasks 引用
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
+      await openRolesDialog(page)
 
       // When：移除角色
       const apiCall = waitForApiCall(page, /\/rundown-roles\/role-003(\?|$)/, 'DELETE')
