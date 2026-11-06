@@ -134,13 +134,13 @@ GIF 與截圖由 `npm run capture:demo` 用本機示範資料錄製，人名皆�
 
 ```mermaid
 flowchart TB
-  staff["管理者／新人／接待員"]
-  guest["賓客（免登入）"]
+  staff["管理者<br/>新人<br/>接待員"]
+  guest["賓客<br/>免登入"]
 
   subgraph nuxt["Nuxt 4 應用（Vercel SSR）"]
     direction LR
-    fe["app/（Vue 3＋NuxtUI）<br/>pages：4 種介面<br/>api：client API 包裝層<br/>types/api：合約型別<br/>stores：auth"]
-    be["server/（Nitro）<br/>middleware：統一授權<br/>api/v1：route handler<br/>db：Drizzle（26 張表）"]
+    fe["前端 app/<br/>Vue 3<br/>NuxtUI"]
+    be["後端 server/<br/>Nitro API<br/>Drizzle ORM"]
     fe --> be
   end
 
@@ -148,8 +148,8 @@ flowchart TB
   guest -- "HMAC 簽名連結<br/>?sig= → X-Guest-Sig" --> nuxt
 
   nuxt --> pg[("PostgreSQL<br/>Neon／本機")]
-  nuxt --> r2["Cloudflare R2<br/>presigned 直傳"]
-  nuxt --> line["LINE 平台<br/>謝卡群發＋OAuth"]
+  nuxt --> r2["Cloudflare R2<br/>圖片直傳"]
+  nuxt --> line["LINE 平台<br/>謝卡群發<br/>OAuth"]
   nuxt --> sentry["Sentry<br/>錯誤監控"]
 ```
 
