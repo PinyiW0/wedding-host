@@ -22,11 +22,12 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownRoleLis
     throw createError({ statusCode: 400, statusMessage: '角色清單已變更，請重新整理後再排序' })
 
   // neon-http 沒有 transaction：驗證都在寫入之前做完，寫入用單一 CASE UPDATE——
-  // 一條語句要嘛全改、要嘛全不改，兩個排序請求交錯也只會留下其中一份完整順序（做法同 gift-categories/reorder）
+  // 一條語句要嘛全改、要嘛全不改，兩個排序請求交錯也只會留下其中一份完整順序（做法同 gift-categories/reorder）。
+  // 驗證之後、寫入之前才新增的角色不在清單裡：else 讓它排到清單後面（仍保持彼此原本的先後），新角色不會被夾在中間
   if (roleIds.length) {
     const cases = roleIds.map((roleId, position) => sql`when ${rundownRoles.roleId} = ${roleId} then ${position}::integer`)
     await db.update(rundownRoles).set({
-      position: sql`case ${sql.join(cases, sql` `)} else ${rundownRoles.position} end`,
+      position: sql`case ${sql.join(cases, sql` `)} else ${roleIds.length}::integer + ${rundownRoles.position} end`,
     }).where(eq(rundownRoles.weddingId, weddingId))
   }
 

@@ -42,6 +42,20 @@ test.describe('vibe：流程表短網址與角色順序 API（issue #207）', ()
   test('角色版短網址：不帶角色 400、別場或不存在的角色 404', async ({ page }) => {
     expect((await page.request.post(`${API}/short-links`, { data: { kind: 'rundown-role' } })).status()).toBe(400)
     expect((await page.request.post(`${API}/short-links`, { data: { kind: 'rundown-role', roleId: 'role-999' } })).status()).toBe(404)
+
+    // 別場婚禮真實存在的角色：拿 wedding-002 的角色 ID 打 wedding-001 的端點，必須當作不存在
+    const created = await page.request.post('/api/v1/weddings/wedding-002/rundown-roles', { data: { name: '別場的接待' } })
+    expect(created.status()).toBe(201)
+    const { roleId: otherRoleId } = await created.json()
+    expect((await page.request.post(`${API}/short-links`, { data: { kind: 'rundown-role', roleId: otherRoleId } })).status()).toBe(404)
+  })
+
+  test('角色順序：排序後新增的角色排在最右邊', async ({ page }) => {
+    await page.request.put(`${API}/rundown-roles/order`, { data: { roleIds: ['role-004', 'role-003', 'role-002', 'role-001'] } })
+    const created = await (await page.request.post(`${API}/rundown-roles`, { data: { name: '主持人' } })).json()
+
+    const roles = await (await page.request.get(`${API}/rundown-roles`)).json()
+    expect(roles.map((r: { roleId: string }) => r.roleId)).toEqual(['role-004', 'role-003', 'role-002', 'role-001', created.roleId])
   })
 
   test('角色順序：清單少一個、重複或混進不存在的角色都 400，順序不變', async ({ page }) => {
