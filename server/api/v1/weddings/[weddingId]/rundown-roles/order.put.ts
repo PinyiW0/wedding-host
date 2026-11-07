@@ -1,0 +1,36 @@
+import type { H3Event } from 'h3'
+import type { ReorderRundownRolesBody, RundownRoleListItem } from '../../../../../../app/types/api/rundown'
+
+import { asc, eq, sql } from 'drizzle-orm'
+
+import { useDb } from '../../../../../db'
+import { rundownRoles } from '../../../../../db/schema'
+
+// 調整角色欄左右順序（issue #207）：body 帶這場婚禮全部角色的 roleId，陣列順序即新順序。
+// 必須剛好是全部角色、不多不少：別人剛新增或移除角色時，舊畫面送來的清單會對不上，回 400 請對方重新整理
+export default defineEventHandler(async (event: H3Event): Promise<RundownRoleListItem[]> => {
+  const weddingId = getRouterParam(event, 'weddingId')!
+  const body = await readBody<ReorderRundownRolesBody>(event)
+  const roleIds = body?.roleIds
+  if (!Array.isArray(roleIds) || roleIds.some(id => typeof id !== 'string') || new Set(roleIds).size !== roleIds.length)
+    throw createError({ statusCode: 400, statusMessage: '角色順序格式錯誤' })
+
+  const db = useDb()
+  const rows = await db.select({ roleId: rundownRoles.roleId }).from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId))
+  const existing = new Set(rows.map(r => r.roleId))
+  if (roleIds.length !== existing.size || roleIds.some(id => !existing.has(id)))
+    throw createError({ statusCode: 400, statusMessage: '角色清單已變更，請重新整理後再排序' })
+
+  // neon-http 沒有 transaction：驗證都在寫入之前做完，寫入用單一 CASE UPDATE——
+  // 一條語句要嘛全改、要嘛全不改，兩個排序請求交錯也只會留下其中一份完整順序（做法同 gift-categories/reorder）。
+  // 驗證之後、寫入之前才新增的角色不在清單裡：else 讓它排到清單後面（仍保持彼此原本的先後），新角色不會被夾在中間
+  if (roleIds.length) {
+    const cases = roleIds.map((roleId, position) => sql`when ${rundownRoles.roleId} = ${roleId} then ${position}::integer`)
+    await db.update(rundownRoles).set({
+      position: sql`case ${sql.join(cases, sql` `)} else ${roleIds.length}::integer + ${rundownRoles.position} end`,
+    }).where(eq(rundownRoles.weddingId, weddingId))
+  }
+
+  const sorted = await db.select().from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId)).orderBy(asc(rundownRoles.position), asc(rundownRoles.seq))
+  return sorted.map(r => ({ roleId: r.roleId, weddingId: r.weddingId, name: r.name }))
+})

@@ -1,0 +1,1 @@
+ALTER TABLE "rundown_roles" ADD COLUMN "position" integer DEFAULT 0 NOT NULL;

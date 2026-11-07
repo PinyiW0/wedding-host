@@ -22,11 +22,9 @@ export default defineEventHandler(async (event: H3Event) => {
   if (!link)
     throw createError({ statusCode: 404, statusMessage: '連結不存在或已失效' })
 
-  // 賓客層級的四類公開頁認的是賓客簽章（g.<guestId>.<digest>），婚禮分享簽章過不了
-  const sig = isGuestShortLinkKind(link.kind)
-    ? signGuestLink(link.weddingId, link.guestId)
-    : signWeddingLink(link.weddingId)
-  // 賓客層級的目標路徑自帶 query（weddingId／guestId），簽章要用 & 接上去
+  // 各類公開頁認的簽章不同（賓客／角色／工作人員總覽／婚禮分享），依種類現算
+  const sig = shortLinkSig(link.kind, link.weddingId, link.guestId)
+  // 賓客層級與角色版的目標路徑自帶 query，簽章要用 & 接上去
   const target = shortLinkTarget(link.kind, link.weddingId, link.guestId)
   const separator = target.includes('?') ? '&' : '?'
   return sendRedirect(event, `${target}${separator}sig=${encodeURIComponent(sig)}`, 302)

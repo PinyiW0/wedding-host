@@ -14,13 +14,12 @@ const brideName = computed(() => wedding.value?.brideName || '新娘')
 const { data: roles } = await listRundownRoles(() => props.weddingId, { default: () => [] })
 const { data: items } = await listRundownItems(() => props.weddingId, { default: () => [] })
 
-// roleId → 角色名（角色事項列顯示）
-const roleNameMap = computed(() => new Map((roles.value ?? []).map(r => [r.roleId, r.name])))
-
+// 照新人在後台排的角色順序列出（issue #207），不照各列存進去的先後
 function visibleTasks(item: RundownItemListItem): { name: string, task: string, supplies: string }[] {
-  return item.roleTasks
-    .map(rt => ({ name: roleNameMap.value.get(rt.roleId) ?? '', task: rt.task, supplies: rt.supplies ?? '' }))
-    .filter(entry => entry.name !== '')
+  return (roles.value ?? []).flatMap((role) => {
+    const rt = item.roleTasks.find(t => t.roleId === role.roleId)
+    return rt ? [{ name: role.name, task: rt.task, supplies: rt.supplies ?? '' }] : []
+  })
 }
 </script>
 
@@ -71,7 +70,7 @@ function visibleTasks(item: RundownItemListItem): { name: string, task: string, 
         </div>
         <!-- 內容：標題 + 場地 + 各角色個別事項 -->
         <div class="min-w-0 flex-1">
-          <div class="font-medium text-ink">
+          <div class="whitespace-pre-line font-medium text-ink">
             {{ item.title }}
           </div>
           <p v-if="item.location" class="mt-1 text-caption text-ink-500">
@@ -90,10 +89,10 @@ function visibleTasks(item: RundownItemListItem): { name: string, task: string, 
               <span v-if="entry.supplies" class="text-ink-300">（物品：{{ entry.supplies }}）</span>
             </p>
           </div>
-          <p v-if="item.supplies" class="mt-1.5 text-caption text-ink-500">
+          <p v-if="item.supplies" class="mt-1.5 whitespace-pre-line text-caption text-ink-500">
             共用物品：{{ item.supplies }}
           </p>
-          <p v-if="item.note" class="mt-1 text-caption text-ink-300">
+          <p v-if="item.note" class="mt-1 whitespace-pre-line text-caption text-ink-300">
             {{ item.note }}
           </p>
         </div>

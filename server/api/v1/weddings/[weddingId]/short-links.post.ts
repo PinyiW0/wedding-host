@@ -4,9 +4,9 @@ import type { CreateShortLinkBody, ShortLinkResponse } from '../../../../../app/
 import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../db'
-import { guests, shortLinks } from '../../../../db/schema'
+import { guests, rundownRoles, shortLinks } from '../../../../db/schema'
 
-// 取得婚禮公開連結的短碼（管理端專用；由統一中介層限管理者／新人）
+// 取得婚禮公開連結的短碼（管理端專用；由統一中介層限管理者／新人）。流程表兩種見 issue #207
 // 取得或建立：同一場婚禮（賓客層級再加同一位賓客）的同一種連結永遠回同一個短碼，
 // 重複按「複製」不會一直長出新碼
 export default defineEventHandler(async (event: H3Event): Promise<ShortLinkResponse> => {
@@ -18,7 +18,8 @@ export default defineEventHandler(async (event: H3Event): Promise<ShortLinkRespo
   const db = useDb()
 
   // 賓客層級四種才吃 guestId，而且必須是這場婚禮的賓客——只用 guestId 查會讓 A 場的新人
-  // 拿到 B 場賓客的專屬連結（跨租戶 IDOR）。婚禮層級一律存空字串，不讓 body 帶的值進來
+  // 拿到 B 場賓客的專屬連結（跨租戶 IDOR）。婚禮層級一律存空字串，不讓 body 帶的值進來。
+  // 流程表角色版（issue #207）同理：roleId 必須是這場婚禮的角色，存在同一欄
   let guestId = ''
   if (isGuestShortLinkKind(kind)) {
     if (typeof body.guestId !== 'string' || !body.guestId)
@@ -31,6 +32,18 @@ export default defineEventHandler(async (event: H3Event): Promise<ShortLinkRespo
     if (!guest)
       throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
     guestId = guest.guestId
+  }
+  else if (kind === 'rundown-role') {
+    if (typeof body.roleId !== 'string' || !body.roleId)
+      throw createError({ statusCode: 400, statusMessage: '角色不正確' })
+    const [role] = await db
+      .select({ roleId: rundownRoles.roleId })
+      .from(rundownRoles)
+      .where(and(eq(rundownRoles.weddingId, weddingId), eq(rundownRoles.roleId, body.roleId)))
+      .limit(1)
+    if (!role)
+      throw createError({ statusCode: 404, statusMessage: '流程角色不存在' })
+    guestId = role.roleId
   }
 
   const findExisting = () => db

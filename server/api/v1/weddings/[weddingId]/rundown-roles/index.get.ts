@@ -6,10 +6,11 @@ import { asc, eq } from 'drizzle-orm'
 import { useDb } from '../../../../../db'
 import { rundownRoles } from '../../../../../db/schema'
 
+// 依新人排的角色順序（issue #207）；沒排過的都是 0，照建立順序
 export default defineEventHandler(async (event: H3Event): Promise<RundownRoleListItem[]> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
-  const rows = await db.select().from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId)).orderBy(asc(rundownRoles.seq))
+  const rows = await db.select().from(rundownRoles).where(eq(rundownRoles.weddingId, weddingId)).orderBy(asc(rundownRoles.position), asc(rundownRoles.seq))
   return rows.map(r => ({
     roleId: r.roleId,
     weddingId: r.weddingId,

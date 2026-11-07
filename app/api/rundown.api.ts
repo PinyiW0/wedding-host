@@ -3,6 +3,7 @@ import type { HttpGetOptions } from '~/composables/useHttp'
 import type {
   CreateRundownRoleBody,
   GuestScheduleListItem,
+  ReorderRundownRolesBody,
   RundownItemListItem,
   RundownRoleCreatedEvent,
   RundownRoleListItem,
@@ -43,6 +44,14 @@ export function deleteRundownRole(weddingId: string, roleId: string) {
   return useHttp().delete<void>(
     '/api/v1/weddings/{weddingId}/rundown-roles/{roleId}',
     { pathParams: { weddingId, roleId } },
+  )
+}
+
+// 角色欄左右順序（issue #207）：回傳排好的角色清單
+export function reorderRundownRoles(weddingId: string, body: ReorderRundownRolesBody) {
+  return useHttp().put<RundownRoleListItem[]>(
+    '/api/v1/weddings/{weddingId}/rundown-roles/order',
+    { pathParams: { weddingId }, body },
   )
 }
 

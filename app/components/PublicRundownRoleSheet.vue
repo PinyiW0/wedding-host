@@ -56,7 +56,7 @@ const coupleNames = computed(() =>
           </div>
 
           <!-- 該時段的主要內容 -->
-          <p class="mt-1 text-body-l font-semibold text-ink">
+          <p class="mt-1 whitespace-pre-line text-body-l font-semibold text-ink">
             {{ item.title }}
           </p>
 

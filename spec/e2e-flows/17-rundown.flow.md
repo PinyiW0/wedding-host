@@ -36,7 +36,7 @@
 > 對應 Feature: 新增/更新/移除流程角色
 
 ### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/rundown`，預設四角色可見
+1. 進入 `/weddings/wedding-001/rundown`，開啟「工作人員角色」彈窗（issue #207：角色管理不常駐頁面），預設四角色可見
 2. 新增「動態攝影」→ 可見、成功回饋
 3. 改名、移除 → 對應更新
 4. not-found：對 `role-999` 發 PATCH/DELETE → 404「流程角色不存在」

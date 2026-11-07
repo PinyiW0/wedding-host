@@ -109,10 +109,11 @@ test.describe('vibe：賓客版當日流程', () => {
       await expect(toggles.nth(2)).toHaveAttribute('aria-pressed', 'false')
     })
 
-    test('「預覽賓客版」連到賓客版流程頁', async ({ page }) => {
+    test('「分享」選單的「預覽賓客版」連到賓客版流程頁', async ({ page }) => {
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
 
-      const preview = page.getByTestId('vibe-rundown-preview-guest')
+      await page.getByRole('button', { name: '分享' }).click()
+      const preview = page.getByRole('menuitem', { name: '預覽賓客版' })
       await expect(preview).toHaveAttribute('href', `/schedule/${WEDDING_ID}`)
       await expect(preview).toHaveAttribute('target', '_blank')
     })

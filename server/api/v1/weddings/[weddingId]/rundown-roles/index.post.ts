@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { CreateRundownRoleBody, RundownRoleCreatedEvent } from '../../../../../../app/types/api/rundown'
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
 import { rundownRoles } from '../../../../../db/schema'
@@ -21,7 +21,14 @@ export default defineEventHandler(async (event: H3Event): Promise<RundownRoleCre
   }
 
   const roleId = `role-${crypto.randomUUID().slice(0, 8)}`
-  await db.insert(rundownRoles).values({ roleId, weddingId, name })
+  // 新角色排在最右邊（issue #207）。位置在 INSERT 語句裡直接算：先讀 MAX 再寫入的話，
+  // 中間剛好有人排序，新角色會拿到舊的最大值而被夾在中間（neon-http 沒有 transaction，只能靠單一語句）
+  await db.insert(rundownRoles).values({
+    roleId,
+    weddingId,
+    name,
+    position: sql`(select coalesce(max(${rundownRoles.position}), -1) + 1 from ${rundownRoles} where ${rundownRoles.weddingId} = ${weddingId})`,
+  })
 
   setResponseStatus(event, 201)
   return { roleId, weddingId, name }

@@ -1,14 +1,15 @@
 // Source: app/pages/weddings/[weddingId]/rundown.vue + server rundown-items PUT（issue #192）
-// Pattern: 折疊（工作人員角色區塊收合＋記住選擇）+ interaction（指定列上下插入）
+// Pattern: interaction（指定列上下插入）
+// 角色區塊收合已由 issue #207 的角色彈窗取代，測試移到 interaction-rundown-role-modal-columns-1.spec.ts
 //
-// 矩陣表是主要工作區：角色區塊可收成一行把高度讓出來；
 // 中間補一段時直接在該列上下插入，新列預帶相鄰時間（儲存後依開始時間重排，沒時間的列會被排到最上面）。
 // 同時間（含未定時段）的列，儲存時連同畫面順序一起落地，插入位置才留得住。
-// 矩陣表上方只留一列工具列：填寫說明收進資訊圖示，「新增一列」放在重置與儲存之間、加完捲到新列。
+// 矩陣表上方只留一列工具列：「放棄變更」只在有未儲存改動時出現，「新增一列」在它與儲存之間、加完捲到新列。
+// 填寫說明（issue #207 起）收進「賓客」表頭旁的資訊圖示，放在它解釋的欄位旁。
 
 import { expect, test } from '@playwright/test'
 
-import { findEntity, login, resetMockData, selectOption, TestUsers, waitForApiCall } from '../helpers'
+import { login, resetMockData, selectOption, TestUsers, waitForApiCall } from '../helpers'
 
 const WEDDING_ID = 'wedding-001'
 const RUNDOWN_PATH = `/weddings/${WEDDING_ID}/rundown`
@@ -17,58 +18,10 @@ const ITEMS_API = `/api/v1/weddings/${WEDDING_ID}/rundown-items`
 // seed：rundownitem-001「新娘物品點交」16:30 / 20 分（訖 16:50），為唯一一列
 const SEED_TITLE = '新娘物品點交'
 
-test.describe('vibe：當天流程角色區塊收合與指定列插入', () => {
+test.describe('vibe：當天流程指定列插入', () => {
   test.beforeEach(async ({ page }) => {
     await resetMockData(page)
     await login(page, TestUsers.admin.account, TestUsers.admin.password)
-  })
-
-  test.describe('工作人員角色區塊收合', () => {
-    test('從未操作過時預設展開，角色膠囊可見', async ({ page }) => {
-      await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
-
-      await expect(page.getByRole('button', { name: '收合工作人員角色' })).toHaveAttribute('aria-expanded', 'true')
-      await expect(findEntity(page, /總場控/)).toBeVisible()
-    })
-
-    test('收合後只佔一行，顯示角色數量與展開鈕', async ({ page }) => {
-      // Given：展開狀態的區塊高度
-      await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
-      const region = page.getByRole('region', { name: '工作人員角色' })
-      const expandedHeight = (await region.boundingBox())!.height
-
-      // When：收合
-      await page.getByRole('button', { name: '收合工作人員角色' }).click()
-
-      // Then：膠囊收起，剩一行（標題＋數量＋按鈕）
-      await expect(page.getByRole('article', { name: '總場控' })).toBeHidden()
-      await expect(region).toContainText('4 個')
-      await expect(page.getByRole('button', { name: '展開工作人員角色' })).toHaveAttribute('aria-expanded', 'false')
-      const collapsedHeight = (await region.boundingBox())!.height
-      expect(collapsedHeight).toBeLessThanOrEqual(40)
-      expect(collapsedHeight).toBeLessThan(expandedHeight)
-    })
-
-    test('收合／展開的選擇重整後保留', async ({ page }) => {
-      await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
-
-      // When：收合後重整
-      await page.getByRole('button', { name: '收合工作人員角色' }).click()
-      await expect(page.getByRole('button', { name: '展開工作人員角色' })).toBeVisible()
-      await page.reload({ waitUntil: 'networkidle' })
-
-      // Then：仍是收合
-      await expect(page.getByRole('button', { name: '展開工作人員角色' })).toBeVisible()
-      await expect(page.getByRole('article', { name: '總場控' })).toBeHidden()
-
-      // When：展開後重整
-      await page.getByRole('button', { name: '展開工作人員角色' }).click()
-      await expect(page.getByRole('button', { name: '收合工作人員角色' })).toBeVisible()
-      await page.reload({ waitUntil: 'networkidle' })
-
-      // Then：仍是展開
-      await expect(findEntity(page, /總場控/)).toBeVisible()
-    })
   })
 
   test.describe('指定列上下插入', () => {
@@ -202,18 +155,21 @@ test.describe('vibe：當天流程角色區塊收合與指定列插入', () => {
   })
 
   test.describe('矩陣表工具列', () => {
-    test('填寫說明平常不顯示，停留資訊圖示才出現', async ({ page }) => {
+    test('賓客欄說明平常不顯示，停留表頭資訊圖示才出現', async ({ page }) => {
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
-      const help = page.getByText(/勾選「賓客」欄的時段才會出現在賓客版流程頁/)
+      const help = page.getByText(/公開的時段才會出現在賓客版流程頁/)
       await expect(help).toHaveCount(0)
 
-      await page.getByRole('button', { name: '流程矩陣表填寫說明' }).hover()
+      await page.getByRole('button', { name: '賓客欄說明' }).hover()
 
       await expect(help.first()).toBeVisible()
     })
 
-    test('「新增一列」位於重置與儲存之間', async ({ page }) => {
+    test('沒有改動時不顯示「放棄變更」；改一格後出現，「新增一列」在它與儲存之間', async ({ page }) => {
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
+      await expect(page.getByTestId('rundown-reset')).toHaveCount(0)
+
+      await page.getByTestId('rundown-cell-note').first().fill('改一格')
 
       const reset = (await page.getByTestId('rundown-reset').boundingBox())!
       const add = (await page.getByRole('button', { name: /新增一列/ }).boundingBox())!
@@ -242,12 +198,12 @@ test.describe('vibe：當天流程角色區塊收合與指定列插入', () => {
   test.describe('矩陣表工具列（觸控裝置）', () => {
     test.use({ hasTouch: true })
 
-    test('沒有滑鼠停留時，點一下資訊圖示也會顯示填寫說明', async ({ page }) => {
+    test('沒有滑鼠停留時，點一下表頭資訊圖示也會顯示賓客欄說明', async ({ page }) => {
       await page.goto(RUNDOWN_PATH, { waitUntil: 'networkidle' })
-      const help = page.getByText(/勾選「賓客」欄的時段才會出現在賓客版流程頁/)
+      const help = page.getByText(/公開的時段才會出現在賓客版流程頁/)
       await expect(help).toHaveCount(0)
 
-      await page.getByRole('button', { name: '流程矩陣表填寫說明' }).tap()
+      await page.getByRole('button', { name: '賓客欄說明' }).tap()
 
       await expect(help.first()).toBeVisible()
     })

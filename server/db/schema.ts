@@ -237,6 +237,8 @@ export const rundownRoles = pgTable('rundown_roles', {
   roleId: text().primaryKey(),
   weddingId: text().notNull(),
   name: text().notNull(),
+  // 角色欄左右順序（issue #207）：後台矩陣、工作人員總覽、匯出大表共用；同值時依建立順序（seq）
+  position: integer().notNull().default(0),
   // (weddingId, name) 唯一：DB 層兜底併發建立同名角色（handler check-then-insert 之外）（issue #71）
 }, t => [uniqueIndex().on(t.weddingId, t.name)])
 
@@ -307,7 +309,7 @@ export const shortLinks = pgTable('short_links', {
   code: text().primaryKey(),
   weddingId: text().notNull(),
   kind: text().$type<ShortLinkKind>().notNull(),
-  // 賓客層級短碼（issue #176）才有值，婚禮層級存空字串——Postgres 唯一索引不把 NULL 當相等，
+  // 賓客層級短碼（issue #176）存 guestId、流程表角色版（issue #207）存 roleId，婚禮層級存空字串——Postgres 唯一索引不把 NULL 當相等，
   // 用 NULL 會讓婚禮層級的 (weddingId, kind) 失去唯一性，同一種連結每按一次複製就長一個新碼
   guestId: text().notNull().default(''),
   createdAt: text().notNull(),

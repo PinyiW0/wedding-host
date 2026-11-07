@@ -61,7 +61,7 @@ export {
   updateGuest,
 } from './guests.api'
 export { connectLineOa, getLineOa } from './line.api'
-export { getRoleSignedLink, getShortLink, getSignedLink, getStaffSignedLink } from './links.api'
+export { getRoleSignedLink, getRundownShortLink, getShortLink, getSignedLink, getStaffSignedLink } from './links.api'
 export {
   confirmPendingGuest,
   listPendingGuests,
@@ -95,6 +95,7 @@ export {
   listGuestSchedule,
   listRundownItems,
   listRundownRoles,
+  reorderRundownRoles,
   saveRundownTable,
   updateRundownRole,
 } from './rundown.api'

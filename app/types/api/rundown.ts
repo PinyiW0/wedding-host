@@ -20,6 +20,11 @@ export interface UpdateRundownRoleBody {
   name: string
 }
 
+// 角色欄順序（issue #207）：全部角色的 roleId，陣列順序即左右順序
+export interface ReorderRundownRolesBody {
+  roleIds: string[]
+}
+
 export interface RundownRoleUpdatedEvent {
   roleId: string
   name: string
