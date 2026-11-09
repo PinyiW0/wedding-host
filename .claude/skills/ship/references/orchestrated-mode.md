@@ -30,7 +30,7 @@
 | skill | 執行哪幾步 | 不做什麼 |
 |-------|-----------|---------|
 | `commit` | 步驟 1–4（盤點、分群、定 type/scope、寫 message） | 不執行步驟 5 的 `git commit`、不等確認、不印「要發 PR 就跑 `/pr`」 |
-| `pr` | 步驟 3、4（標題與內文）；issue 編號由編排層在 Phase 0 照步驟 2 解析好，寫進派工 prompt | 不執行步驟 2（編排層已解析；「AC 驗收提醒」也不需要，編排層有本輪實際驗收結果）；label／assignee／reviewer 由編排層預選填進草案（規則見 `../../new-issue/references/label-assignee.md`，不發 AskUserQuestion）；不執行步驟 5 的等待與步驟 6 |
+| `pr` | 步驟 3、4（標題與內文）；issue 編號由編排層在 Phase 0 照步驟 2 解析好，寫進派工 prompt。素材改用 merge-base 到工作區的完整 diff（含未追蹤的新增檔，直接讀、不 `git add -N`）：草案在 commit 之前產生，只看已提交內容會漏掉本輪改動。commit 分群與它同時產生，不拿來當素材。單獨呼叫 `/pr` 時維持已提交內容 | 不執行步驟 2（編排層已解析；「AC 驗收提醒」也不需要，編排層有本輪實際驗收結果）；label／assignee／reviewer 由編排層預選填進草案（規則見 `../../new-issue/references/label-assignee.md`，不發 AskUserQuestion）；不執行步驟 5 的等待與步驟 6 |
 | `verify-ac` | 步驟 1–3（前置檢查、取條目、逐條驗收給三態＋證據） | **不執行步驟 4 的自動修**、不執行步驟 5 的寫回 issue、「無法判定」不停下來 |
 | `pr-feedback` | 步驟 1–4（找 PR、四路抓留言、濾噪音、分類） | 步驟 5 的 AskUserQuestion 改為回傳分類結果（**分類結果進草案讓使用者勾，不是直接開始改**）；步驟 6 的 lint／gate／sdd-review 交編排層調度 |
 

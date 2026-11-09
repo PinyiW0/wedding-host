@@ -70,7 +70,7 @@ gh api --paginate 'repos/<owner>/<repo>/issues/<N>/comments?per_page=100'
 丟掉不報告，但在結尾一行帶過「另濾掉 N 則噪音」：
 
 - `isResolved: true`（已有人處理掉）
-- `isOutdated: true` 且讀本地檔案（PR 分支＝當前分支，可直接讀）確認該行內容已經跟留言引用的片段對不上——讀不到該行、或內容明顯不同才算噪音；讀起來還對得上，即使 `isOutdated` 是 true 也要照樣報告
+- `isOutdated: true` 且用 `git show <headRefOid>:<path>` 讀 PR 上已提交的內容（步驟 1 取得的 `headRefOid`；不讀工作區，本地還沒 commit 的修改不算修掉）確認該行內容已經跟留言引用的片段對不上——讀不到該行、或內容明顯不同才算噪音；讀起來還對得上，即使 `isOutdated` 是 true 也要照樣報告
 - 純肯定：LGTM、👍、「看起來不錯」
 - 部署預覽／coverage／CI 狀態類 bot 留言
 - 作者是使用者自己（步驟 1 取得的 login）且沒有問句

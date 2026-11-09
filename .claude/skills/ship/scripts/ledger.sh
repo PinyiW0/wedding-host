@@ -49,7 +49,9 @@ layer_pattern() {
     L1)  echo '.' ;;
     # L15 除了 composable/util/store 本身，還要含測試檔與被測對象 ——
     # fixer 修 unit 紅燈最常見的做法就是改 test/unit/ 裡那支，漏了就不會重驗。
-    L15) echo '^app/(composables|utils|stores)/|^app/api/|^server/|^test/unit/|^vitest\.config\.' ;;
+    # 被測對象不只 app/、server/：.claude/hooks/ 的兩支 guard、scripts/deploy-migrate.mjs，
+    # 以及 node-version-sync 讀的 .nvmrc／Dockerfile／package.json。app/ 整個納入（app/types 等也被 import），寧可多跑。
+    L15) echo '^app/|^server/|^scripts/|^test/unit/|^vitest\.config\.|^\.claude/hooks/|^\.nvmrc$|^Dockerfile|^package\.json$' ;;
     L3)  echo '^app/.*\.vue$|^app/stores/|^server/.*\.ts$' ;;
     # L5 不只 app/、server/：2026-08-20～09-29 的 136 則 Copilot 留言有 134 則落在 app/、server/ 以外，
     # 只看 app/server 等於讓 Copilot 當第一個 reviewer。scope 與 judgment-rubrics 第 5 節、CLAUDE.md 紅線同一份。

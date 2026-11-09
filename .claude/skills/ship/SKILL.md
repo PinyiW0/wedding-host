@@ -174,7 +174,7 @@ sh .claude/skills/ship/scripts/ledger.sh mark L1 green "<剛才 snapshot 拿到�
   沒有 L4 的話，改 skill 本身走一趟 `/ship` 看起來像全綠，其實制度內容沒被驗過。
   `.claude/ops/judgment-rubrics.md` 對這類改動要求的正是 read-back。
 - **L15 是本 repo 特有的一層**，不在五層表裡。`.github/workflows/pull_request.yml` 註解寫明「unit test 必須留在 CI，
-  這是唯一擋得住 composable/utils 迴歸的關卡」，而 pre-push 只跑 E2E。不在這裡先跑掉，就要等 PR 開完 CI 紅燈才知道。
+  這是唯一擋得住 composable/utils 迴歸的關卡」，而 pre-push 只跑 E2E。被測對象不只 app/、server/（`.claude/hooks/` 的兩支 guard、`scripts/`、`.nvmrc`／`Dockerfile`／`package.json` 也有 unit spec），只改這些同樣會觸發 L15；scope 以 `ledger.sh` 的 `layer_pattern` 為準。不在這裡先跑掉，就要等 PR 開完 CI 紅燈才知道。
 
 ### L2 用 dev 全量還是 production 全量
 
@@ -307,7 +307,7 @@ E2E 紅燈要分兩種：
 commit 分群與 PR 內文各派一個 subagent（sonnet）產生：
 
 - 分群：「讀 `../commit/SKILL.md`，執行步驟 1–4，**不要執行步驟 5 的 `git commit`、不要等確認**，把草案回傳。」
-- PR 內文：「讀 `../pr/SKILL.md` 步驟 3、4（issue 編號已由編排層解析：#<Phase 0 解析值>／無，不重解析；沒有就不寫 `Closes`），依 `git log origin/<default>..HEAD` 產繁中標題與內文，**不要執行步驟 2.5、5、6**。」
+- PR 內文：「讀 `../pr/SKILL.md` 步驟 3、4（issue 編號已由編排層解析：#<Phase 0 解析值>／無，不重解析；沒有就不寫 `Closes`），依 `git diff $(git merge-base origin/<default> HEAD)`（到工作區）加上 `git ls-files -o --exclude-standard` 列出的未追蹤新增檔（直接讀檔，**不要 `git add -N`**：分群 subagent 同時在讀 index，而且這裡加的不會進 `.claude/tmp/ship/intent-to-add.txt` 清單、事後還原不了）產繁中標題與內文——這時本輪改動還沒 commit，只看 `git log origin/<default>..HEAD` 會漏掉它們。分群草案與它同時產生、這時還不存在，不要等它，**不要執行步驟 2.5、5、6**。」
 
 label／assignee／reviewer 由主線**預選**後填進草案（規則見 `../new-issue/references/label-assignee.md` 的編排模式那節），
 不再各發一次 AskUserQuestion。猜不到就填「略過」，**不硬湊**。
@@ -370,7 +370,7 @@ Phase 0 到這裡中間隔了六層檢查、AC 驗收、自動修迴圈與一次
 git add <該群檔案> && git commit -m "..."     # 逐群，照 Phase 4 確認的分群
 git push -u origin <branch>                   # pre-push 只跑煙霧 spec；production 全量由 CI 的 e2e job 跑
 gh pr create --base <default> --title "..." --body-file .claude/tmp/ship/pr-body.md
-gh api --method POST repos/<o>/<r>/pulls/<N>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+gh api --method POST repos/<o>/<r>/pulls/<N>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'   # 草案 reviewer 是「略過」就不跑，改照 ../pr/SKILL.md 步驟 6「使用者明說不掛」那段處理
 gh pr view --web
 ```
 
