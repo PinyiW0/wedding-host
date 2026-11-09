@@ -196,21 +196,46 @@ API 邊界保護。
 > 對應 Feature: 批次匯入賓客 → Scenario: 成功批次匯入賓客
 
 ### 業務脈絡
-- 系統無既有資料，管理員上傳合法 Excel（guests-2026.xlsx）
+- 管理員下載匯入入口提供的範例檔，照範例填 3 位賓客，存成 guests-2026.xlsx（issue #205：原合約上傳假檔一律回 25，已改為真匯入）
 
 ### E2E 驗證流程
-1. 進入 `/weddings/wedding-001/guests`
-2. 觸發「批次匯入」
-3. 選擇 / 上傳檔案 guests-2026.xlsx（.xlsx）
+1. 進入 `/weddings/wedding-001/guests`，記下名單筆數
+2. 觸發「批次匯入」，下載範例檔
+3. 在範例檔填 3 位賓客（林小華、張美玲、黃志強），上傳 guests-2026.xlsx
 4. 提交匯入
+5. 重新整理頁面
 
 ### Verification 策略
-- API spy：`POST /api/v1/weddings/wedding-001/guests/import`（multipart 或 fileName payload）
-- UI：使用者能感知匯入結果（含匯入筆數 25，如「成功匯入 25 位賓客」），`getByText(/25/)` 出現於反饋區
+- API spy：`POST /api/v1/weddings/wedding-001/guests/import`，payload 含 fileName 與 3 位賓客（`guests` 陣列，瀏覽器解析 Excel 後送出）
+- UI：使用者能感知匯入結果（「成功匯入 3 位賓客」），名單多 3 筆
+- 持久：重新整理後名單仍多 3 筆、3 位賓客皆可識別
 
 ### 不再凍結
 - 上傳元件形式（file input / drag-drop）
 - 匯入結果呈現（toast / summary panel / 列表刷新）
+- 範例檔入口形式（按鈕 / 連結），但可見名稱需含「範例檔」
+
+---
+
+## Flow: 匯入檔案內容不是有效 Excel（field-validation）
+
+> 對應 Feature: 批次匯入賓客 → Scenario: 檔案內容不是有效 Excel
+
+### 業務脈絡
+- 副檔名是 .xlsx，內容是純文字（例如文字檔改副檔名）
+
+### E2E 驗證流程
+1. 進入 `/weddings/wedding-001/guests`，記下名單筆數
+2. 觸發「批次匯入」，選擇該檔案
+3. 提交匯入
+4. 重新整理頁面
+
+### Verification 策略
+- 使用者能看到錯誤訊息：含「匯入失敗」與「檔案內容無法讀取」
+- 名單筆數不變（重新整理後亦同）
+
+### 不再凍結
+- 前端先擋還是後端回錯（兩者皆可，但錯誤語意必須可見）
 
 ---
 
