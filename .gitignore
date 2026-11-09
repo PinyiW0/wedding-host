@@ -43,3 +43,6 @@ playwright-report/
 
 # Vercel CLI（含 project/org ID，不進版控）
 .vercel
+
+# review-loop eval 的執行產物（本地 /code-review 輸出與抓取率），cases.tsv 本身要進版控
+.claude/skills/review-loop/evals/runs/

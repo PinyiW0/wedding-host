@@ -1,7 +1,7 @@
 ---
 name: pr
 description: 把當前 feature 分支發成對 main 的 PR — push + 產繁中標題/內文草案 + gh pr create。一律先出草案待確認才開 PR；偵測未 commit 改動或人在 main 上會停下來引導，不越界。Use when 使用者要發 PR、開 PR、送出 pull request、或說「幫我發 PR」「開個 PR」時。
-argument-hint: "[reviewer / assignee / label / 補充說明(選填)]"
+argument-hint: "[reviewer / assignee / label / copilot / 補充說明(選填)]"
 ---
 
 # PR
@@ -20,6 +20,8 @@ argument-hint: "[reviewer / assignee / label / 補充說明(選填)]"
 ```
 
 `/pr` **不負責 commit**。偵測到有未 commit 改動時，停下來叫使用者先跑 `/commit`，不越界代勞。
+
+> 被 `/ship` 編排時，commit 與 PR 的先後由編排層統籌，`/pr` 自身仍不 commit。這條界線防的是 skill 互相代勞，不是禁止使用者授權的編排層排順序——判準見 [../ship/references/orchestrated-mode.md](../ship/references/orchestrated-mode.md)。
 
 ## 流程
 
@@ -151,6 +153,7 @@ Closes #2
 標題：<繁中標題>
 base：main  ←  <當前分支>
 assignee：<"@me" / 指定者 / 不指派>
+reviewer：<Copilot（預設）/ Copilot＋指定者 / 使用者明說不掛>
 <命中步驟 2「AC 驗收提醒」時，此處附那一行 ⚠️；未命中整行省略>
 
 內文：
@@ -168,16 +171,16 @@ gh pr view --web                   # 開瀏覽器
 ```
 
 - assignee **預設 `"@me"`**（發 PR 者即負責人；預設值與 `/new-issue` 相同）；使用者透過 `$ARGUMENTS` 指定其他人則改帶指定者，明說不指派則整個 `--assignee` 旗標拿掉。指定他人須為 repo collaborator，否則 `gh pr create` 會整個失敗——失敗時改不帶 assignee 先建 PR，成功後再 `gh pr edit <N> --add-assignee <人>` 補。
-- 使用者透過 `$ARGUMENTS` 指定了 reviewer / label 才加 `--reviewer <人>` / `--label <標籤>`（預設不帶；label 須 repo 已存在）。
-- **不預設 Copilot 做 code review**：絕不主動帶 `--reviewer` 指派 Copilot。建 PR 後檢查是否被 GitHub 帳號層級設定自動掛上 Copilot review request，有就移除：
+- 使用者透過 `$ARGUMENTS` 指定了 reviewer / label 才加 `--reviewer <人>` / `--label <標籤>`（label 須 repo 已存在）。被 `/ship` 編排時 label／assignee／reviewer 由編排層預選，規則見 [../new-issue/references/label-assignee.md](../new-issue/references/label-assignee.md)。
+- **預設掛 Copilot 做 code review**（2026-11-09 決定，issue #208；使用者明說不掛才略過）。Copilot reviewer 是 bot 帳號，`--reviewer` 對它解析常失敗，一律在 PR 建立後補 API call（`<N>` 取自 `gh pr create` 回傳 URL 結尾）：
 
   ```
-  gh pr view --json number,reviewRequests   # reviewRequests 出現 login 含 copilot 者 → 移除
-  gh api -X DELETE "repos/{owner}/{repo}/pulls/<PR編號>/requested_reviewers" \
-    -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+  gh api --method POST "repos/{owner}/{repo}/pulls/<N>/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
   ```
 
-  > 此設定不在 repo 內（skills / workflows / rulesets 皆無），源頭是 GitHub 帳號層級的「Automatic Copilot code review」；要根治請到 github.com/settings/copilot 關閉，本步驟為 repo 端防禦。
+  先 `gh pr view <N> --json reviewRequests` 看一下：GitHub 帳號層級的「Automatic Copilot code review」已自動掛上就不必再補。
+
+  **這行只涵蓋初次請求**：第一輪 review 結束後不會再自動觸發，這個 REST 端點也請不動（回 200、`requested_reviewers` 空、Copilot 不會來）。要 re-request 得走 GraphQL 的 `requestReviews(botIds:)`——見 `../review-loop/references/copilot-quirks.md` 第 1 節；後續輪次交給 `/review-loop`。
 
 ### 7. 收尾
 
@@ -186,6 +189,7 @@ gh pr view --web                   # 開瀏覽器
 ## 注意
 
 - base 固定 `main`（本專案 PR 一律 target main）。
+- reviewer 預設 Copilot；使用者明說不掛才略過。
 - 絕不在 main / master 上發 PR 或代 commit —— 該停就停，列選項問使用者。
 - `$ARGUMENTS` 有值 → 視為 reviewer / assignee / label / 內文補充提示，納入判斷。
 - 不確定（標題怎麼下、要不要拆 PR）→ 照樣列草案問使用者，不擅自決定。

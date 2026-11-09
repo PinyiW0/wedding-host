@@ -18,13 +18,13 @@ description: Gate 守門 — 跑 playwright.gate.config.ts（主 spec + vibe spe
 | 級 | 跑什麼 | 誰跑 |
 |---|---|---|
 | 煙霧 | `.husky/pre-push` 的 `SMOKE_PATTERN` 那一行（本專案 `specs/(00-auth\|00-hydration)`：管理員註冊＋逐 route 整頁載入） | `.husky/pre-push`；本檔預設模式一定帶 |
-| 定向 | 煙霧 ＋ 受影響的 spec（Step 2 三來源查法） | 本檔預設模式（白名單內）、`/verify-ac` 修正輪 |
-| dev 全量 | gate config 全部，本機 dev server | 本檔 `--full`（發 PR 前跑一次） |
-| production 全量 | gate config 全部，production build | CI `pull_request.yml` 的 `e2e` job（build 一次、4 shard 平行跑）；本機選配 `sh scripts/docker-gate.sh`（一次性 Postgres，不碰本機 5433） |
+| 定向 | 煙霧 ＋ 受影響的 spec（Step 2 三來源查法） | 本檔預設模式（白名單內）、review-loop／verify-ac／pr-feedback 修正輪、`/ship` 修復輪 |
+| dev 全量 | gate config 全部，本機 dev server | 本檔 `--full`（發 PR 前跑一次）；`/ship` L2（ledger 只認這級） |
+| production 全量 | gate config 全部，production build | CI `pull_request.yml` 的 `e2e` job（build 一次、4 shard 平行跑）；本機選配 `sh scripts/docker-gate.sh`（一次性 Postgres，不碰本機 5433；`/ship --prod-gate`） |
 
 **鐵律：只有整份 diff 都落在白名單內才定向，其餘一律全量。** 白名單 ＝ 本次 diff（merge-base 起、含未追蹤、濾掉 pre-push `SKIP_PATTERN`）**全部**落在 `app/pages/**`、`test/e2e/vibe/**`、`test/e2e/specs/**`，以及**模組專屬元件** `app/components/<seg>/**`（`app/pages/<seg>/` 目錄存在才算；本專案實測 53% 的 commit 只影響單一模組）。碰到任何其他檔（頂層或非模組目錄的 `app/components`、`server/`、layouts、composables、stores、helpers、config…）就是全量。AI 不判斷「要不要定向」，只查「白名單內的頁對哪幾支 spec」。
 
-**定向綠只代表選集，不算 gate 已驗**。commit 前跑定向即可；dev 全量由發 PR 前的 `/vibe-check --full` 跑一次，production 全量由 CI 跑。dev 全量與 production 全量不互相取代（hydration 警告只在 dev build 會印，`00-hydration` 在 production 驗不到這一項）。
+**定向綠只代表選集，不算 gate 已驗**。commit 前跑定向即可；dev 全量由發 PR 前的 `/vibe-check --full`（或 `/ship` L2）跑一次，production 全量由 CI 跑。dev 全量與 production 全量不互相取代（hydration 警告只在 dev build 會印，`00-hydration` 在 production 驗不到這一項）。
 
 ## 何時用
 
@@ -229,7 +229,7 @@ pre-push 與 CI `build-e2e` job 對此情形同樣放行（三處前置檢查一
 主 spec：45/45 passed ✅（含 N skipped 為 spec 自身 .skip）
 vibe spec：6/6 passed ✅（unstable/ 不計，守門排除）
 
-業務合約與既有 vibe 行為完整。dev 全量已驗；CI 會再跑一次 production 全量。
+業務合約與既有 vibe 行為完整。dev 全量已驗（被 `/ship` 呼叫時可 mark L2 green）；CI 會再跑一次 production 全量。
 ```
 
 **紅燈——先看失敗的 spec 在哪個資料夾，兩種性質完全不同**：
@@ -321,4 +321,4 @@ specs/ 與 vibe/ 同時紅時，A、B 兩區塊都要出，並提醒先處理 A�
 /vibe-e2e      依分層 pattern-driven 產生 vibe spec → 只跑本次新檔 → 回報
 ```
 
-三個 skill 各自獨立，使用者按順序呼叫。/vibe-check 不會自動呼叫下游，也不該被下游呼叫。
+三個 skill 各自獨立，使用者按順序呼叫。/vibe-check 不會自動呼叫下游，也不該被下游呼叫。`/ship` 以 Skill tool 帶 `--full` 呼叫本 skill 當 L2。
