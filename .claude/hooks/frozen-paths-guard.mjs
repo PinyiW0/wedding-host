@@ -511,7 +511,7 @@ function frozenRelOfUncached(word, base) {
 
 // 凍結目錄的「上層或本身」（含 root、含 glob）：token 指向 test/、test/e2e、spec/*、`.`、`..` 時，回傳它涵蓋、且實際存在的凍結目錄。
 // 只給 ancestorWrites 用——一般寫入動詞對上層目錄操作（`cp x .`、`ln -s y .`）多半是寫到別處，不能一律當寫入
-function ancestorTargetsOf(word, base) {
+function ancestorTargetsOf(word, base, { aboveProject = true } = {}) {
   if (!word || word.startsWith('-'))
     return []
   const expanded = word.replace(/^\$\{?CLAUDE_PROJECT_DIR\}?/, projectRoot).replace(/^~(?=\/|$)/, process.env.HOME || '~')
@@ -519,7 +519,7 @@ function ancestorTargetsOf(word, base) {
   for (const p of [realpathLoose(abs), abs]) {
     // 目標在專案目錄之上（`rm -rf ..`、`rm -rf ~/Desktop/…`）：candidateRoots 只往上找，這裡另外判斷專案目錄是否在它底下
     const up = relative(p, projectRoot)
-    if (!up.startsWith('..') && !isAbsolute(up)) {
+    if (aboveProject && !up.startsWith('..') && !isAbsolute(up)) {
       const hits = FROZEN.map(f => ({ root: projectRoot, rel: f })).filter(targetExists)
       if (hits.length)
         return hits
@@ -1092,7 +1092,9 @@ function bashFrozenWrites(command) {
       ancestorWrites(words, lexed.words, segBases, gitBases, operandWords(seg)).forEach(addTarget)
       if (upstreamWords.length && xargsTreeWrites(words, lexed.words)) {
         for (const { ws, bs } of upstreamWords)
-          bs.flatMap(b => ws.flatMap(w => ancestorTargetsOf(w, b))).forEach(addTarget)
+          // 不看「專案目錄之上」：上游的字多半是被列出內容的目錄（`ls /tmp | xargs rm` 刪的是 /tmp 底下的檔名、相對 cwd），
+          // 不是被刪的目錄本身；CI 的暫存目錄在 /tmp，專案（測試用假 repo）就在它底下，照算會誤擋（PR #212 CI）
+          bs.flatMap(b => ws.flatMap(w => ancestorTargetsOf(w, b, { aboveProject: false }))).forEach(addTarget)
       }
       upstreamWords.push({ ws: [...words, ...lexed.words], bs: segBases })
       if (!frozen.length)
