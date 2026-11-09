@@ -8,7 +8,7 @@ import type {
 } from '~/types/api/blessings'
 import type { ProjectionMediaType, UpdateProjectionSettingsBody } from '~/types/api/projection'
 import QRCode from 'qrcode'
-import { approveBlessing, getProjectionSettings, getSignedLink, listBlessings, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
+import { approveBlessing, getProjectionSettings, getSignedLink, listBlessings, listGuestDisplayNames, projectBlessing, rejectBlessing, updateProjectionSettings } from '~/api'
 import { blessingStatusMeta } from '~/utils/statusMeta'
 import { toYouTubeEmbed } from '~/utils/videoEmbed'
 
@@ -22,6 +22,16 @@ const { uploadImage } = useImageUpload()
 const { data: blessings } = await listBlessings(weddingId, { default: () => [] })
 
 const items = computed(() => blessings.value ?? [])
+
+// 專屬連結送出的祝福只帶 guestId，姓名要另查賓客對照表（同投影牆）
+const { data: guestNames } = await listGuestDisplayNames(weddingId, { default: () => [] })
+const guestNameById = computed(() => new Map((guestNames.value ?? []).map(g => [g.guestId, g.name])))
+
+function authorLabel(blessing: BlessingListItem) {
+  if (blessing.guestName)
+    return `${blessing.guestName} · 現場填寫`
+  return (blessing.guestId && guestNameById.value.get(blessing.guestId)) || '一位賓客'
+}
 
 // 投影即時推送：approve / 推到投影幕 / 更新投影設定 → 通知開著的投影牆即時更新
 const { broadcast } = useProjectionChannel(weddingId)
@@ -349,7 +359,7 @@ async function submitReject() {
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
                 <p class="text-caption uppercase tracking-wide text-ink-500">
-                  {{ blessing.guestName ? `${blessing.guestName} · 現場填寫` : `賓客 · ${blessing.guestId}` }}
+                  {{ authorLabel(blessing) }}
                 </p>
                 <div class="flex shrink-0 items-center gap-2">
                   <StatusBadge :color="blessingStatusMeta(blessing.status).color">

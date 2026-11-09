@@ -97,7 +97,7 @@ api_contract:
       fields: { guestId: string }
     ImportGuestsBody:
       file: guests.ts
-      fields: { fileName: string }
+      fields: { fileName: string, guests: CreateGuestBody[] }
     GuestsImportedEvent:
       file: guests.ts
       fields: { importedCount: number }

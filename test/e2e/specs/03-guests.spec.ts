@@ -200,10 +200,60 @@ test.describe('賓客名單（Admin 端）', () => {
 
   test.describe('規則：成功批次匯入賓客', () => {
     test('成功批次匯入賓客', async ({ page }) => {
-      // Given：進入賓客名單頁
+      // Given：進入賓客名單頁，記下目前名單筆數
       await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
+      const guestRows = page.locator('[data-testid^="guest-row-"]')
+      const before = await guestRows.count()
 
-      // When：觸發批次匯入並選擇合法 .xlsx
+      // When：觸發批次匯入，下載範例檔並照範例填 3 位賓客
+      await page.getByRole('button', { name: /批次匯入|匯入/ }).click()
+      const downloadEvent = page.waitForEvent('download')
+      await page.getByRole('button', { name: /範例檔/ }).click()
+      const download = await downloadEvent
+      const { default: ExcelJS } = await import('exceljs')
+      const book = new ExcelJS.Workbook()
+      await book.xlsx.readFile(await download.path())
+      const sheet = book.worksheets[0]!
+      sheet.addRow(['林小華', '男方', '葷食', '同事', '0911000001', 2, 0])
+      sheet.addRow(['張美玲', '女方', '素食', '大學同學', '0911000002', 1, 0])
+      sheet.addRow(['黃志強', '男方', '葷食', '', '', 1, 0])
+      await page
+        .getByTestId('file-upload-input')
+        .setInputFiles({
+          name: 'guests-2026.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: Buffer.from(await book.xlsx.writeBuffer()),
+        })
+
+      // 主要 outcome：API spy 驗證 POST .../guests/import，payload 含 fileName 與 3 位賓客
+      const apiCall = waitForApiCall(page, /\/guests\/import(\?|$)/, 'POST')
+      await page.getByRole('button', { name: /開始匯入|匯入|送出|確定/ }).click()
+      const request = await apiCall
+      expect(request.postDataJSON()).toMatchObject({
+        fileName: 'guests-2026.xlsx',
+        guests: [{ name: '林小華' }, { name: '張美玲' }, { name: '黃志強' }],
+      })
+
+      // Then：使用者看到匯入筆數 3，名單多 3 筆
+      await expect(page.getByText(/成功匯入 3 位賓客/).first()).toBeVisible()
+      await expect(guestRows).toHaveCount(before + 3)
+
+      // And：重新整理後匯入的賓客仍在名單上
+      await page.reload({ waitUntil: 'networkidle' })
+      await expect(guestRows).toHaveCount(before + 3)
+      for (const name of ['林小華', '張美玲', '黃志強'])
+        await expect(findEntity(page, new RegExp(name))).toBeVisible()
+    })
+  })
+
+  test.describe('規則：匯入檔案內容不是有效 Excel', () => {
+    test('檔案內容不是有效 Excel', async ({ page }) => {
+      // Given：進入賓客名單頁，記下目前名單筆數
+      await page.goto('/weddings/wedding-001/guests', { waitUntil: 'networkidle' })
+      const guestRows = page.locator('[data-testid^="guest-row-"]')
+      const before = await guestRows.count()
+
+      // When：選擇副檔名是 .xlsx、內容是純文字的檔案並匯入
       await page.getByRole('button', { name: /批次匯入|匯入/ }).click()
       await page
         .getByTestId('file-upload-input')
@@ -212,17 +262,14 @@ test.describe('賓客名單（Admin 端）', () => {
           mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           buffer: Buffer.from('mock xlsx content'),
         })
-
-      // 主要 outcome：API spy 驗證 POST .../guests/import，payload 含 fileName
-      const apiCall = waitForApiCall(page, /\/guests\/import(\?|$)/, 'POST')
       await page.getByRole('button', { name: /開始匯入|匯入|送出|確定/ }).click()
-      const request = await apiCall
-      expect(request.postDataJSON()).toMatchObject({
-        fileName: 'guests-2026.xlsx',
-      })
 
-      // Then：使用者能感知匯入結果（含匯入筆數 25）
-      await expect(page.getByText(/25/).first()).toBeVisible()
+      // Then：使用者看到匯入失敗，名單筆數不變（重新整理後亦同）
+      await expect(page.getByText(/匯入失敗/).first()).toBeVisible()
+      await expect(page.getByText(/檔案內容無法讀取/)).toBeVisible()
+      await expect(guestRows).toHaveCount(before)
+      await page.reload({ waitUntil: 'networkidle' })
+      await expect(guestRows).toHaveCount(before)
     })
   })
 
