@@ -119,17 +119,19 @@ request_review() {
   if ! out="$(gh api graphql -f prId="$pr_id" -f botId="$bot" -f query='
     mutation($prId:ID!,$botId:ID!){
       requestReviews(input:{pullRequestId:$prId, botIds:[$botId], union:true}){
-        pullRequest{ reviewRequests(first:10){ nodes{ requestedReviewer{
+        pullRequest{ reviewRequests(first:100){ nodes{ requestedReviewer{
           __typename ... on Bot { login } } } } }
       }
     }' --jq '
-      [ .data.requestReviews.pullRequest.reviewRequests.nodes[].requestedReviewer
-        | select(.__typename == "Bot") | .login ] | join(", ")')"; then
+      '"$COPILOT_LOGINS"' as $logins
+      | [ .data.requestReviews.pullRequest.reviewRequests.nodes[].requestedReviewer
+        | select(.__typename == "Bot" and (.login | IN($logins[]))) | .login ] | join(", ")')"; then
     die 1 "請 review 失敗（requestReviews mutation）。可重試。"
   fi
 
-  # mutation 成功但沒掛上 reviewer：不是可重試的錯誤，是要人去看的異常。
-  [ -n "$out" ] || die 3 "mutation 成功但 reviewRequests 是空的——請人工到 PR 頁面確認 Copilot 是否可用。"
+  # mutation 成功但沒掛上 Copilot：不是可重試的錯誤，是要人去看的異常。
+  # 與 bot_id 套同一份白名單：PR 上原本掛著別的 bot 時，不能把它當成 Copilot 已掛上。
+  [ -n "$out" ] || die 3 "mutation 成功但 reviewRequests 裡沒有 Copilot reviewer——請人工到 PR 頁面確認 Copilot 是否可用。"
   printf '%s\n' "已請 review：$out"
 }
 

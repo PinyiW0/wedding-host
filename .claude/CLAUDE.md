@@ -106,7 +106,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 ## 收尾與審查
 
-- 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md 或任何 .sh／.mjs（與 `ledger.sh` L5 同一份 scope）、有實質改動（非純格式）且尚未跑過 `/code-review` 時，在 `/verify-ac` 或發 PR 前**主動**執行（diff 含 `.md` 時另跑 `skills/review-loop/references/doc-impl-check.md` 的專項檢查），不必使用者提醒；放在驗收蓋章之前，避免事後改 code 讓已勾 AC 過期。完整分層見 `ops/judgment-rubrics.md` 第 5 節
+- 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md、任何位置的 osv-scanner.toml 或任何 .sh／.mjs（與 `ledger.sh` L5 同一份 scope）、有實質改動（非純格式）且尚未跑過 `/code-review` 時，在 `/verify-ac` 或發 PR 前**主動**執行（diff 含 `.md` 時另跑 `skills/review-loop/references/doc-impl-check.md` 的專項檢查），不必使用者提醒；放在驗收蓋章之前，避免事後改 code 讓已勾 AC 過期。完整分層見 `ops/judgment-rubrics.md` 第 5 節
 - 跑 `/ship` 時 eslint／typelint／`/vibe-check --full`／`/sdd-review`／`/code-review` 由它依 ledger 統一調度並記帳，不必手動逐一叫；手動路徑的義務不變
 - PR 預設掛 Copilot 審查（2026-11-09 決定，#208）。`/review-loop` 會自行 commit／push／在 PR 上回覆留言並重新請 review——啟動它就是對這三件事的授權；但它**永不 merge、永不 `--force` push**，要不要 merge 一律由使用者決定
 

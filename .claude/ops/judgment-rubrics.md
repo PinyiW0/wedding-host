@@ -63,7 +63,7 @@
 | 2 行為 | 做的事符合合約 | 修復輪：煙霧＋定向目標（`--reporter=line`）；`/ship` L2 與 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
 | 3 語意 | 框架慣例、邏輯安全 | `/sdd-review` | 動到 .vue/store/server 且改動非純格式 |
 | 4 制度 | 規範有消費點、路徑有效 | read-back（fresh subagent） | 動到 .claude/、spec/ui-config/ |
-| 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定）；文件與實作一致 | `/code-review`＋`.claude/skills/review-loop/references/doc-impl-check.md`（diff 含 `.md` 時） | 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md 或任何 .sh／.mjs（與 ledger.sh L5 同一份 scope）且改動非純格式，`/verify-ac` 或發 PR 前 |
+| 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定）；文件與實作一致 | `/code-review`＋`.claude/skills/review-loop/references/doc-impl-check.md`（diff 含 `.md` 時） | 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md、任何位置的 osv-scanner.toml 或任何 .sh／.mjs（與 ledger.sh L5 同一份 scope）且改動非純格式，`/verify-ac` 或發 PR 前 |
 
 **通過的定義是綠燈，不是「應該會過」**。沒跑就是沒驗。
 

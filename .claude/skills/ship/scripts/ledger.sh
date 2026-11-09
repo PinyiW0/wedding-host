@@ -57,7 +57,7 @@ layer_pattern() {
     # 只看 app/server 等於讓 Copilot 當第一個 reviewer。scope 與 judgment-rubrics 第 5 節、CLAUDE.md 紅線同一份。
     # 建置檔（Dockerfile、package.json、patches/）也在內：#190 只改建置檔，原本拿不到 /code-review。
     # README.md、docs/ 也在內：doc-impl-check 會讀整份 diff 的 .md，不納入的話只改 README 時指紋不變、沿用舊綠燈。
-    L5)  echo '^app/|^server/|^\.claude/|^\.github/|^\.husky/|^scripts/|^patches/|^docs/|^Dockerfile|^package\.json$|^README\.md$|\.sh$|\.mjs$' ;;
+    L5)  echo '^app/|^server/|^\.claude/|^\.github/|^\.husky/|^scripts/|^patches/|^docs/|^Dockerfile|^package\.json$|^README\.md$|\.sh$|\.mjs$|(^|/)osv-scanner\.toml$' ;;
     # L4 = judgment-rubrics 第 5 節的制度層，驗法是 fresh subagent read-back。
     # 漏了它，只改 .claude/ 下的 .md（例如改 skill 本身）時只剩 L1／L5，沒有一層驗規則有沒有消費點；
     # spec/ui-config/ 不在 L5 scope，只改其中 .md 時更是只剩 L1。
