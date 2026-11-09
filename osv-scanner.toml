@@ -1,0 +1,16 @@
+# OSV-Scanner 忽略清單（.github/workflows/osv-scanner.yml 掃 package-lock.json 時讀取；osv-scanner 對每個 lockfile 讀同目錄的 osv-scanner.toml）
+#
+# 每筆必填三欄：id（GHSA 或 CVE，別名會一併忽略）、reason、ignoreUntil（最多 180 天後）。
+# 到期後每週排程會再報，屆時重查上游有無修補版；PR 模式比的是 main 與 PR 分支的差異，到期不會讓無關 PR 變紅。
+# 只允許 id／ignoreUntil／reason 三個欄位；寫了別的欄位，osv-scanner 會丟掉整份設定（忽略全部失效），lint 也會擋。
+# 審 PR 時若這份檔有改動要特別看：改它就能讓新引入的漏洞不被報。
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4" # CVE-2026-93753 deepmerge mergeObject() prototype poisoning
+ignoreUntil = 2027-01-31
+reason = "low；上游 deepmerge 4.3.1 無修補版（2026-10-28 查）；經 nuxt → nitropack → @rollup/plugin-node-resolve 只在建置期使用，不進 production 映像檔"
+
+[[IgnoredVulns]]
+id = "GHSA-vjh5-4x84-xrqp" # CVE-2026-114132 Nuxt 大小寫變體路徑略過 route rules；4.x 修補版 4.6.2
+ignoreUntil = 2027-01-31
+reason = "誤報：公告的 OSV 資料把 nuxt 3.x 區段寫成只有 introduced 3.0.0、沒有上界，所以 4.6.3 被當成仍受影響；GitHub 公告頁的 4.x 範圍是 >=4.0.0 <4.6.2，本專案 nuxt 4.6.3 已含修補（2026-10-28 查）。只在 nuxt ≥ 4.6.2 成立：衍生專案同步前先確認版本，低於就不要帶這筆。到期後重查資料是否已修正"
