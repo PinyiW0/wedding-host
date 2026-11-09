@@ -7,7 +7,8 @@
 #   1  執行失敗（環境、API、資料異常）。**可重試**——呼叫端記錄後排下一輪，
 #      絕不可當成「沒有新 review」。
 #   2  參數或用法錯誤。呼叫端寫錯了，重試無用。
-#   3  需人工介入（缺 gh／jq、找不到 reviewer bot、撈到多個無法判斷、mutation 沒掛上 reviewer）。
+#   3  需人工介入（缺 gh／jq、找不到 reviewer bot、撈到多個無法判斷、mutation 後 reviewRequests 裡沒有白名單內的
+#      Copilot reviewer——只掛著其他 bot 也算這種）。
 #
 # 為什麼不用 pipefail：非 POSIX，dash 會在 set 那行就 Illegal option，
 # 而本檔一律以 `sh` 呼叫（對齊 ship/scripts/ledger.sh）。沒有 pipefail 時管線的結束碼

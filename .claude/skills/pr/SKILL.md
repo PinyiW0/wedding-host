@@ -181,6 +181,7 @@ gh pr view --web                   # 開瀏覽器
   先 `gh pr view <N> --json reviewRequests` 看一下：GitHub 帳號層級的「Automatic Copilot code review」已自動掛上就不必再補。
 
   使用者明說不掛時，同樣先看 `reviewRequests`：已被自動掛上 → 用 `gh api --method DELETE "repos/{owner}/{repo}/pulls/<N>/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` 移除，再看一次 `reviewRequests` 確認已不含 Copilot。REST 對 bot reviewer 常靜默無效（見上方 POST 的同類問題），移不掉就在收尾回報，請使用者到 PR 網頁手動移除。只略過 POST 的話，自動掛上的 Copilot 仍會來審。
+  `reviewRequests` 沒有 Copilot 也不保證它不會來：`../ship/SKILL.md` Phase 5「成功但沒效果」那段記錄過，repo 的 ruleset 開了自動 Copilot review 時，`requested_reviewers` 是空的、Copilot 照樣來審（`reviewRequests` 查詢本身在這種情況下會不會列出它，未實測）。所以同 repo 舊 PR 的 `reviewRequests` 也都是空的、Copilot 卻有 review 時，收尾明講「本 repo 可能由 ruleset 自動請 Copilot，要不掛得到 repo 設定關掉」，不要回報成「已不掛」。
 
   **這行只涵蓋初次請求**：第一輪 review 結束後不會再自動觸發，這個 REST 端點也請不動（回 200、`requested_reviewers` 空、Copilot 不會來）。要 re-request 得走 GraphQL 的 `requestReviews(botIds:)`——見 `../review-loop/references/copilot-quirks.md` 第 1 節；後續輪次交給 `/review-loop`。
 

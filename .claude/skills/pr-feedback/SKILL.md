@@ -24,16 +24,18 @@ disable-model-invocation: true
 ## 1. 找 PR
 
 ```sh
-gh pr view --json number,state,headRefName,headRefOid,url     # `$ARGUMENTS` 有編號則 gh pr view <N> --json number,state,headRefName,headRefOid,url
+gh pr view --json number,state,headRefName,headRefOid,isCrossRepository,url     # `$ARGUMENTS` 有編號則 gh pr view <N> --json …（欄位同左）
 gh repo view --json nameWithOwner -q .nameWithOwner # 拆成 <owner>/<repo>，步驟 2 全部指令要用
 gh api user --jq .login                             # 之後用來標「這則是你自己留的」
 ```
 
 無 PR、或 `state` 不是 `OPEN` → 停下說明，不往下跑。
 
-`$ARGUMENTS` 指定了編號，且 `headRefName` 不等於 `git branch --show-current` → 停下說明，引導到該 PR 分支的 worktree 再跑。之後判斷 outdated 與就地修改都讀目前工作區，分支不符會把仍有效的意見判成已修，或把修正寫進無關的分支。
+**PR 要跟目前工作區對得上**（本段是唯一出處，`../review-loop/SKILL.md` 前置檢查指回這裡）。之後判斷 outdated 與就地修改都讀目前工作區，對不上會把仍有效的意見判成已修，或把修正寫進無關的分支。三條依序查，任一條不符就停下說明：
 
-`headRefOid` 不等於 `git rev-parse HEAD` → 停下說明：本地落後就先 `git pull`，本地有沒 push 的 commit 就先 push，同步後再跑。分支名對得上、進度點不同，一樣會讓步驟 3 的 outdated 判斷讀到跟 PR 不同的內容。
+1. **分支來源**：`isCrossRepository` 是 true（fork 來的 PR）→ 停。fork 的分支可能跟本地分支同名，只比名字會放行
+2. **分支名**：`headRefName` 不等於 `git branch --show-current` → 停，引導到該 PR 分支的 worktree 再跑。沒帶編號時 gh 從目前分支解析，這條自然成立
+3. **進度點**：`headRefOid` 不等於 `git rev-parse HEAD` → 停：本地落後就先 `git pull`，本地有沒 push 的 commit 就先 push，同步後再跑。分支名對得上、進度點不同，一樣會讓步驟 3 的 outdated 判斷讀到跟 PR 不同的內容
 
 ## 2. 抓留言（四路，欄位與用途都不同）
 

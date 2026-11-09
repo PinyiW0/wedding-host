@@ -211,7 +211,7 @@ sh .claude/skills/ship/scripts/ledger.sh mark L1 green "<剛才 snapshot 拿到�
 | 紅燈類型 | 處置 |
 |---------|------|
 | L1 eslint 可自動修 | 主線 `npx eslint . --fix`（`.claude/rules/code-quality.md`：`--fix` 僅為修復手段，不作驗證依據） |
-| L1 typecheck、L15 unit 紅 | 派 fixer subagent（sonnet） |
+| L1 typecheck、L15 unit 紅 | 派 fixer subagent（sonnet）。例外：紅的 spec 測的是 fixer 不可動的檔（`.claude/hooks/`、`scripts/`、`.nvmrc`／`Dockerfile`／`package.json`，例如 frozen-paths-guard、deploy-migrate、node-version-sync 這幾支）→ **不派**，fixer 唯一能改的是 `test/unit/` 那支 spec，等於放寬門檻；列進 Phase 4 草案「需你確認」區 |
 | L2 `test/e2e/specs/` 紅 | 對照 `.flow.md` 的 invariant 找出破壞點 → 派 fixer（sonnet）改 **UI**（修的是 `app/`，不是凍結的 spec） |
 | L2 `test/e2e/vibe/` 紅 | **不修**，停下來給四個選項（見上方停點表第 2 列） |
 | L3／L5 的「必修」類 finding | 派 fixer subagent（sonnet） |

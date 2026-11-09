@@ -19,7 +19,7 @@ At most 5 Low findings per review. If there are more, add one summary line with 
 
 - **Frozen paths:** `test/e2e/specs/`, `spec/gherkin-feature/`, `spec/e2e-flows/`. These change only through the spec workflow; existing files are blocked by a hook. Do not suggest edits there.
 - **Generated or binary files:** `package-lock.json`, `server/db/migrations/meta/`, `docs/demo/`, `docs/screenshots/`.
-- **What CI already enforces:** ESLint (`npm run eslint`, which also runs `scripts/visual-hierarchy-check.mjs`), typecheck (`npm run typelint`), unit tests, E2E results, and OSV-Scanner (new vulnerabilities in `package-lock.json`). Do not repeat a finding that a failing CI check would already show.
+- **What CI already enforces:** ESLint (`npm run eslint`, which also runs `scripts/visual-hierarchy-check.mjs`), unit tests, E2E results, and OSV-Scanner (new vulnerabilities in `package-lock.json`). Do not repeat a finding that a failing CI check would already show. CI does **not** run typecheck (`npm run typelint` runs only locally), so type errors are in scope.
 
 ## Already decided — do not raise again
 

@@ -39,7 +39,7 @@ disable-model-invocation: true
 | `gh auth status` | 停 |
 | 不在 default branch 上 | 停 |
 | 工作區乾淨（`git status --porcelain` 空） | 停，引導先跑 `/commit`。本 skill 只 commit 迴圈內自己產生的修正 |
-| `gh pr view <PR編號> --json number,state,url,headRefName` 存在、`state=OPEN`，且 `headRefName` 等於 `git branch --show-current`（沒帶 PR 編號時去掉 `<PR編號>`，gh 從目前分支解析，分支比對自然成立） | PR 不存在或不是 OPEN → 停，引導先跑 `/pr`。分支不符 → 停，引導到該 PR 分支的 worktree 再跑：不擋的話會在目前分支改檔、commit／push，卻回覆到指定的 PR。起手與續跑都在任何本地審查或 push 之前查 |
+| `gh pr view <PR編號> --json number,state,url,headRefName,isCrossRepository` 存在、`state=OPEN`，且 PR 跟目前工作區對得上：判準照 `../pr-feedback/SKILL.md` 步驟 1「PR 要跟目前工作區對得上」的第 1、2 條（唯一出處，不在這裡另寫一份）。第 3 條（進度點）不適用：本 skill 起手會自己 push 本地 commit（沒帶 PR 編號時去掉 `<PR編號>`） | PR 不存在或不是 OPEN → 停，引導先跑 `/pr`。對不上 → 停，引導到該 PR 分支的 worktree 再跑：不擋的話會在目前分支改檔、commit／push，卻回覆到指定的 PR。起手與續跑都在任何本地審查或 push 之前查 |
 | `sh .claude/skills/review-loop/scripts/copilot.sh bot-id` 解得出 id | 停。先讓 Copilot review 過任一個 PR（開 PR 時帶 REST `requested_reviewers` 可觸發**初次** review，見 quirks 第 1 節），之後 re-request 才有 id 可用 |
 | 狀態檔 `.claude/tmp/review-loop/pr-<N>.md`（這列不是 fail 條件，是分流） | **不存在 → 新建，走第 2 節起手**。**已存在 → 照下方「續跑」，絕不覆蓋**：輪次上限是這隻 skill 唯一的總量安全閥，覆蓋等於重置它 |
 | Bash 已預先核准（`.claude/settings*.json` 的 `permissions.allow` 含 Bash） | 停下說明。每輪要跑 `git push`、`gh api` mutation，逐一跳權限詢問時無人可按——寧可現在講清楚，不要半夜靜靜卡住 |
