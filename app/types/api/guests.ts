@@ -119,8 +119,10 @@ export interface GuestRestoredEvent {
   guestId: string
 }
 
+// 瀏覽器先把 Excel 解析成逐列賓客，後端逐列驗證後一次寫入（issue #205）
 export interface ImportGuestsBody {
   fileName: string
+  guests: CreateGuestBody[]
 }
 
 export interface GuestsImportedEvent {
