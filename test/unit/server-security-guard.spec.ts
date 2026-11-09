@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -294,5 +294,26 @@ describe('server-security-guard：豁免要全部命中才消耗（PR #212 /code
     // Assert
     expect(result.status).toBe(0)
     expect(existsSync(sentinel)).toBe(false)
+  })
+
+  it('豁免檔刪不掉（資料夾唯讀）→ 擋下，不讓同一份豁免重複使用（PR #212 Copilot review）', () => {
+    // Arrange：.claude/tmp 設成唯讀，消耗時 rmSync 會失敗
+    const tmpDirPath = join(repoM, '.claude/tmp')
+    mkdirSync(tmpDirPath, { recursive: true })
+    const sentinel = join(tmpDirPath, 'server-security-allow.json')
+    writeFileSync(sentinel, JSON.stringify({ reason: '測試誤報', files: [HANDLER] }))
+    chmodSync(tmpDirPath, 0o555)
+
+    try {
+      // Act
+      const result = runGuard(HANDLER)
+
+      // Assert
+      expect(result.status).toBe(2)
+      expect(existsSync(sentinel)).toBe(true)
+    }
+    finally {
+      chmodSync(tmpDirPath, 0o755) // 還原權限，afterEach 才刪得掉
+    }
   })
 })

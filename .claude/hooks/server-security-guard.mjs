@@ -81,9 +81,9 @@ function main() {
     .filter(h => h.violations.length > 0)
   // 先全部檢查、全部豁免才消耗（同 frozen-paths-guard 的 tryConsumeSentinel）：逐筆邊查邊消耗的話，
   // 一筆有豁免、另一筆沒有時，有豁免的那筆白白被用掉，重試又要重寫一次（PR #212 /code-review）
-  const blocked = violating.filter(h => !isAllowed(h.targetRoot, h.rel))
-  if (!blocked.length)
-    violating.forEach(h => consumeAllowSentinel(h.targetRoot, h.rel))
+  // 全部豁免時才消耗；消耗失敗（sentinel 寫不回去、刪不掉）的那筆照樣擋：放行的話留下的豁免能反覆使用（PR #212 Copilot review）
+  const unallowed = violating.filter(h => !isAllowed(h.targetRoot, h.rel))
+  const blocked = unallowed.length ? unallowed : violating.filter(h => !consumeAllowSentinel(h.targetRoot, h.rel))
   if (blocked.length) {
     console.error(
       `server 安全機械偵測（檔案已寫入，請立即修正）：\n${blocked.flatMap(h => h.violations).map(v => `- ${v}`).join('\n')}\n`
