@@ -114,7 +114,7 @@ disable-model-invocation: true
    | 有 `pending` | 本輪照常處理 review 留言；共識判定（第 5 節）在 CI 跑完前不成立 |
    | `cancel`（被 workflow 的 concurrency 取消，因為又 push 了一次） | 當「等新的 run」，不是紅燈，不計入煞車與問題指紋 |
    | 任一 `e2e (shard N/4)` 的 `fail` | **列為本輪「必修」**（一個 shard 紅就算，不等其他 shard），與 Copilot 留言一起走 4–9 步：讀該 shard 的 job log（或下載 `merge-e2e-report` 合併後的 artifact `playwright-report-gate`）找紅的 spec；修法照 `../vibe-check/SKILL.md` Step 4 分流——`specs/` 紅＝修 UI 不改 spec，`vibe/` 紅＝歸「待使用者決定」（鐵律 4）。**不重跑 CI 等它變綠**：CI 跑的 `playwright.gate.config.ts` 沿用 `playwright.config.ts` 的 `retries`（CI 下重試幾次以該檔為準），重試用完仍紅才會 `fail`，紅就是紅 |
-   | 其他 check 的 `fail`（lint／typecheck／unit、`build-e2e`、`merge-e2e-report`） | 同上列為必修 |
+   | 其他 check 的 `fail`（`build`：unit、build、eslint 都在這個 job 裡；`build-e2e`、`merge-e2e-report`。CI 不跑 typelint，型別檢查只靠第 7 步本機跑） | 同上列為必修 |
 
 2. **空輪**＝第 1 步回空陣列，且第 1b 步沒有新 `fail`。空輪不走第 3–10 步，只做下面其中一條就結束：
    - CI 已跑完（不是 `pending`、也不是 `cancel`）→ 用不帶基準線的 `copilot.sh reviews <PR編號>` 抓最新一則非 quota 的 review（帶基準線的第 1 步會回空陣列），照第 5 節判共識、照第 6 節判「待決定」（留言是否已處理看狀態檔的「已處理 comment id」「已處理 body 項目」與「待使用者決定」）。成立就照該節收工或停下，不要只看靜默計時白等 90 分（上一輪 CI 還在跑而不能收工的，在這裡收）

@@ -15,7 +15,13 @@
 #   ledger.sh round <key>                    累加該 key 的修正輪次；超過上限回 exit 2
 #   ledger.sh fresh                          作廢整份 ledger（環境有變、想強制重跑時用）
 #   ledger.sh close                          一趟 /ship 送出完成時歸零輪次帳（停下交還時由使用者決定）
+#   ledger.sh l2                             印出 L2（dev 全量）該不該跑：yes／no
 set -eu
+
+# 一律在 repo 根目錄跑：git diff --name-only 印的是根目錄相對路徑，
+# 在子目錄跑會讓 [ -f ] 全判成 DELETED、指紋跟內容脫鉤，還會在子目錄另生一份 ledger。
+top=$(git rev-parse --show-toplevel) || { echo "ledger.sh：不在 git repo 內" >&2; exit 1; }
+cd "$top"
 
 DIR=".claude/tmp/ship"
 LEDGER="$DIR/ledger.tsv"
@@ -97,8 +103,8 @@ scope_fp() {
   # --no-renames：git 預設開 rename detection，改名只列新路徑。scope 內的檔搬到 scope 外時
   # 舊路徑會漏掉，該層沿用舊綠燈。關掉後改名拆成「刪舊＋加新」，兩條路徑都進指紋。
   files=$(
-    { git diff "$base" --name-only --no-renames 2>/dev/null || true
-      git ls-files -o --exclude-standard 2>/dev/null || true
+    { git -c core.quotePath=false diff "$base" --name-only --no-renames 2>/dev/null || true
+      git -c core.quotePath=false ls-files -o --exclude-standard 2>/dev/null || true
     } | sort -u | grep -E "$pattern" 2>/dev/null || true
   )
   [ -n "$files" ] || { echo "EMPTY"; return 0; }
@@ -125,8 +131,8 @@ l2_should_run() {
   # 只看 git diff 是看不到的，會讓 gate 被靜默略過，然後在 push 時才炸 —— 那正是要消滅的情況。
   # --no-renames 也要一致（理由見 scope_fp）：改名的舊路徑可能正好命中 FORCE_TEST_PATTERN。
   changed=$(
-    { git diff "$base" --name-only --no-renames 2>/dev/null || true
-      git ls-files -o --exclude-standard 2>/dev/null || true
+    { git -c core.quotePath=false diff "$base" --name-only --no-renames 2>/dev/null || true
+      git -c core.quotePath=false ls-files -o --exclude-standard 2>/dev/null || true
     } | sort -u
   )
   [ -n "$changed" ] || { echo no; return 0; }
@@ -273,5 +279,5 @@ case "${1:-}" in
   close)  if [ -f "$ROUNDS" ]; then mv "$ROUNDS" "$ROUNDS_PREV"; echo "輪次帳已歸零（上一趟留在 $ROUNDS_PREV 供診斷）"; else echo "本趟沒有修正輪次，無需歸零"; fi ;;
   fresh)  rm -f "$LEDGER"; echo "ledger 已作廢，下輪全部重跑（輪次上限不受影響，那是安全閥不是快取）" ;;
   l2)     l2_should_run ;;
-  *)      sed -n '2,15p' "$0"; exit 1 ;;
+  *)      sed -n '2,18p' "$0"; exit 1 ;;
 esac

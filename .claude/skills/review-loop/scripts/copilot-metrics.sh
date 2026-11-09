@@ -203,6 +203,8 @@ cmd_since() {
     die 1 "列 PR 失敗（gh pr list）。可重試。"
   fi
   [ -n "$nums" ] || die 1 "找不到 $1 之後建立的 PR（gh pr list 回空）。日期太新、或 repo 沒 PR。"
+  # gh 由新到舊回傳，碰到上限會靜默截掉最舊的；寧可報錯，也不輸出不完整的 baseline
+  [ "$(printf '%s\n' "$nums" | wc -l | tr -d ' ')" -lt 500 ] || die 2 "$1 之後的 PR 達 500 筆上限、最舊的會被截掉。改用較新的日期分段查。"
   slug="$(repo_slug)" || exit $?
   header
   for n in $(printf '%s\n' "$nums" | sort -n); do
