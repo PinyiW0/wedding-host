@@ -6,8 +6,9 @@
 |------|------|------|
 | **可自行改** | `.claude/ops/*` 的錯字、失效路徑修正、補充正反例；`memory/`（使用者層記憶，不隨 repo）依記憶機制回寫 | 改完必做第 3 節的路由驗證 |
 | **改前先出草案等確認** | `.claude/CLAUDE.md` 本體、`.claude/rules/*`、`.claude/skills/*`、`spec/ui-config/*` | 這些是多方消費的 SSOT，先列 diff 草案給使用者 |
+| **改前先出草案等確認；無人值守 skill 只能提案** | `.github/copilot-instructions.md`、`.github/instructions/*`（Copilot 審查政策檔） | 政策檔在 PR 的 head branch 生效，誰改它誰就能讓 Copilot 不再提某類問題，而本 repo 是 public。`/review-loop` 只能把候補列在收尾通知，由使用者決定寫不寫進去 |
 | **動前必問、預設不動（凍結區）** | 路徑清單以 `.claude/rules/frozen-paths.md` 為準（該檔 SSOT，hook 強制擋，此處不重列） | 見 `rules/frozen-paths.md`；不得為繞過而自寫 sentinel |
-| **動前必問、預設不動（其他）** | `~/.claude/`（全域層，影響所有專案）；`.claude/settings*.json`；任何 `.env*`；`playwright.config.ts`、`playwright.gate.config.ts`（守門合約，`vibe-check`／`vibe-e2e` 兩個 skill 亦各自明訂不可動） | 這幾項不在 frozen-paths hook 管轄內，無技術強制，靠本協議與 skill 內的紅線一起守 |
+| **動前必問、預設不動（其他）** | `~/.claude/`（全域層，影響所有專案）；`.claude/settings*.json`；任何 `.env*`；`playwright.config.ts`、`playwright.gate.config.ts`（守門合約；`vibe-check` 明訂兩個都不可動，`vibe-e2e` 明訂 `playwright.config.ts` 不可動、並以「只寫 `test/e2e/vibe/`」間接涵蓋 gate config） | 這幾項不在 frozen-paths hook 管轄內，無技術強制，靠本協議與 skill 內的紅線一起守 |
 
 任何等級的修改都遵守：改 tracked 檔前確認 git 狀態可還原（乾淨 tree 即可，git 就是備份）；untracked 檔先 `cp` 備份到 scratchpad。
 
@@ -45,8 +46,11 @@
 
 ## 5. 定期健檢（每次大版本升級或每月一次，擇早）
 
+**第 0 步（主線自己做）**：分身的工具清單與主線不同（例如沒有 Workflow／ScheduleWakeup），不能拿分身自己看到的 schema 代表主線，所以主線先把當前 session 的 Agent／Workflow tool schema（`model`、`effort`、`subagent_type`、`isolation` 等參數與接受值）、系統宣告的模型清單、可用的 subagent 類型，逐字抄成基準檔（路徑自訂，建議放 `.claude/tmp/` 下並標日期；該目錄不進版控，基準檔只供當次健檢）。本 session 沒有的工具（例如沒有 Workflow），基準檔照實寫「本 session 無」，不要補值。派工時把基準檔路徑寫進**本次審查 prompt** 的「事實查核」列（prompt 照 [delegation-templates.md](delegation-templates.md) 第 5 節範本填，範本檔本身不改）。分身只拿基準檔比對，基準檔沒有的值一律回報「查不到」，不可憑記憶補。
+
 派一個 fresh subagent（sonnet）跑審查範本（[delegation-templates.md](delegation-templates.md) 第 5 節），對象是整個 `.claude/ops/` + `CLAUDE.md`：
 
 - 路徑全部有效？
-- 模型名／參數與當前 harness 實際值一致？（用當前 session 的 tool schema 查證，不憑記憶）
+- 模型名／參數與基準檔一致？（分身只比對基準檔，不自行查證、不憑記憶）
 - 有沒有規則在實務中從沒被用到？（候選刪除，列給使用者決定）
+- review-loop 的跨 PR 目標有沒有達標？跑 `sh .claude/skills/review-loop/scripts/copilot-metrics.sh since <上次健檢日>`，對照 `review-loop/SKILL.md` 第 8 節「跨 PR 目標」。evals（`review-loop/evals/README.md`）只在 `/code-review` 焦點、`.github/copilot-instructions.md` 或第 8 節目標有改動時才重跑

@@ -5,10 +5,10 @@
 
 ## 1. 何時升級模型
 
-**判準**：升級的訊號是「錯的方式」不是「錯的次數」。同一種錯重複出現 = 模型能力不足，升級；每次錯得不一樣 = 任務定義不清，先修 prompt 再說（升級也救不了爛 prompt）。
+**判準**：升級的訊號是「錯的方式」不是「錯的次數」。第 1 輪失敗後就判型，不等錯第二次（升級那次計入 2 輪，見 [model-dispatch.md](model-dispatch.md) 第 4 節）：能力盲點（框架語意、規範沒讀懂），重跑會再犯 = 模型能力不足，升級；一次性失誤或 prompt 沒講清楚 = 任務定義不清，先修 prompt 再說（升級也救不了爛 prompt）。
 
-- 正例：sonnet 兩次都把 `useFetch` 的 `data`（shallowRef）當深層響應式用，錯法相同 → 這是框架知識盲點，帶失敗軌跡升 opus
-- 反例：sonnet 第一次找錯檔案、第二次改錯位置，錯法不同 → 檢查交辦 prompt 發現沒給驗收條件，補上後 sonnet 一次過。升級 opus 是浪費
+- 正例：sonnet 把 `useFetch` 的 `data`（shallowRef）當深層響應式用 → 這是框架知識盲點，同一份 prompt 重跑會再犯 → 第 2 輪帶失敗軌跡升 opus
+- 反例：sonnet 找錯檔案 → 檢查交辦 prompt 發現沒給驗收條件，是 prompt 的問題 → 補上後第 2 輪 sonnet 一次過。升級 opus 是浪費
 
 ## 2. 何時算真的完成（完成定義分型）
 
@@ -28,13 +28,13 @@
 1. 需要動凍結區才能達成目標（路徑清單以 `.claude/rules/frozen-paths.md` 為準，此處不重列——hook 會擋，別寫 sentinel 繞過）
 2. 需要動 `maintenance.md` 第 1 節「動前必問」清單內的檔（`~/.claude/`、`.claude/settings*.json`、任何 `.env*` 等）
 3. 大幅重寫或刪除非本任務建立的既有檔案（順手小修不算）；vibe spec 的刪改一律停
-4. 動作不可逆或對外（push --force、對外發佈、寄送、刪除遠端資源）
+4. 動作不可逆或對外（push --force、對外發佈、寄送、刪除遠端資源）。記錄使用者已裁決決策的 issue 留言（[model-dispatch.md](model-dispatch.md) 第 7 節）不算新的對外動作，不必再停
 5. 兩份規範互相打架且無明確優先序
 6. 重試已達 2 輪上限、且換路選項會改變任務範圍
 
-**不停清單**（不要問，直接做）：可逆的、任務範圍內的、有慣例可循的。「要不要我繼續？」式的提問是浪費使用者時間。
+**不停清單**（不要問，直接做）：可逆的、任務範圍內的、有慣例可循的。「要不要我繼續？」式的提問是浪費使用者時間。**範圍外的發現**（不論與任務是否相關，含分身回報的「附帶發現：」）只在回報列為提案，不自動做——「範圍內」是不停清單的邊界，不是順手的藉口。
 
-> 優先序：UI 逐功能實作時，`rules/ui-conventions.md` 的「每個功能完成後等使用者確認」優先於本清單——那是流程節點，不是「要不要繼續」式的廢問。
+> 優先序：UI 逐功能實作時，`.claude/rules/ui-conventions.md` 的「每個功能完成後等使用者確認」優先於本清單——那是流程節點，不是「要不要繼續」式的廢問。
 
 - 正例：vibe 目標與 Business Invariant 衝突 → 停，說明哪條 invariant 擋住什麼，列三個選項
 - 反例：改完 A 檔發現 B 檔有同樣問題，B 在任務範圍內 → 不用問「要不要順便修 B」，直接修並在回報中說明
@@ -60,14 +60,14 @@
 | 層 | 驗什麼 | 工具 | 不可省略的情況 |
 |----|--------|------|----------------|
 | 1 語法/型別 | 寫的東西合法 | `npm run eslint` + `npm run typelint` | 任何程式碼改動 |
-| 2 行為 | 做的事符合合約 | 修正輪：煙霧＋定向目標（`--reporter=line`）；`/vibe-check`：白名單內定向、白名單外 dev 全量；發 PR 前 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
+| 2 行為 | 做的事符合合約 | 修復輪：煙霧＋定向目標（`--reporter=line`）；`/ship` L2 與 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
 | 3 語意 | 框架慣例、邏輯安全 | `/sdd-review` | 動到 .vue/store/server 且改動非純格式 |
 | 4 制度 | 規範有消費點、路徑有效 | read-back（fresh subagent） | 動到 .claude/、spec/ui-config/ |
-| 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定） | `/code-review` | 動到 app/、server/ 且改動非純格式，`/verify-ac` 或發 PR 前 |
+| 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定）；文件與實作一致 | `/code-review`＋`.claude/skills/review-loop/references/doc-impl-check.md`（diff 含 `.md` 時） | 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md 或任何 .sh／.mjs（與 ledger.sh L5 同一份 scope）且改動非純格式，`/verify-ac` 或發 PR 前 |
 
 **通過的定義是綠燈，不是「應該會過」**。沒跑就是沒驗。
 
-**定向綠不得寫成 gate 已驗**——只有 dev 全量（`/vibe-check --full`）與 CI production 全量的綠燈算層 2 已驗。分級判準的單一來源是 `.claude/skills/vibe-check/SKILL.md`，此處不重列。
+**定向綠不得寫成 gate 已驗**——只有 dev 全量（`/vibe-check --full`）與 CI production 全量的綠燈算層 2 已驗；`/ship` 的 ledger 只認 dev 全量。分級判準的單一來源是 `.claude/skills/vibe-check/SKILL.md`，此處不重列。
 
 - 正例：改了 3 個 .vue 檔 → 跑 eslint + typelint + `/vibe-check`（白名單內定向、白名單外 dev 全量），全綠後回報「已驗證」並附輸出摘要，且寫明是定向綠還是全量綠
 - 反例：「改動很小，照理不影響測試」→ 跳過 gate 直接 commit。「照理」不是驗證
