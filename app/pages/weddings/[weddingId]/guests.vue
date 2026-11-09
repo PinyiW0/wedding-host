@@ -33,6 +33,7 @@ import {
   saveGuestCategories,
   updateGuest,
 } from '~/api'
+import { buildGuestTemplate, EXCEL_EXTENSION, readGuestWorkbook } from '~/utils/guestImport'
 import { matchConfidenceLabel, suggestMatches } from '~/utils/guestMatch'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
 
@@ -632,43 +633,77 @@ async function confirmRemove() {
   }
 }
 
-// === 批次匯入 ===
+// === 批次匯入（issue #205）：瀏覽器解析 Excel → 逐列送後端 ===
 const isImportOpen = ref(false)
 const isImporting = ref(false)
 const importError = ref('')
+// 逐列錯誤只列前幾筆，避免整份檔案的錯誤把視窗撐爆
+const importErrorDetails = ref<string[]>([])
 const importResult = ref<number | null>(null)
-const selectedFileName = ref('')
+const selectedFile = shallowRef<File | null>(null)
+
+function resetImportFeedback() {
+  importError.value = ''
+  importErrorDetails.value = []
+  importResult.value = null
+}
 
 function openImport() {
-  importError.value = ''
-  importResult.value = null
-  selectedFileName.value = ''
+  resetImportFeedback()
+  selectedFile.value = null
   isImportOpen.value = true
 }
 
 function onFileSelected(payload: { file: File, name: string, dataUrl: string }) {
-  importError.value = ''
-  importResult.value = null
-  selectedFileName.value = payload.name
+  resetImportFeedback()
+  selectedFile.value = payload.file
 }
 
 function onFileError(message: string) {
   importError.value = message
 }
 
+async function downloadImportTemplate() {
+  try {
+    const blob = await buildGuestTemplate()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '賓客名單範例.xlsx'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+  catch {
+    toast.add({ title: '範例檔下載失敗，請稍後再試', color: 'error' })
+  }
+}
+
 async function confirmImport() {
   if (isImporting.value)
     return
-  if (!selectedFileName.value) {
+  const file = selectedFile.value
+  if (!file) {
     importError.value = '請先選擇檔案'
     return
   }
   isImporting.value = true
-  importError.value = ''
+  resetImportFeedback()
   try {
-    const body: ImportGuestsBody = { fileName: selectedFileName.value }
+    // 副檔名不對交給後端回合約錯誤訊息；副檔名對了才解析內容
+    const parsed = EXCEL_EXTENSION.test(file.name)
+      ? await readGuestWorkbook(file)
+      : { guests: [], errors: [] }
+    if (parsed.errors.length) {
+      importError.value = '匯入失敗，名單沒有任何變動'
+      importErrorDetails.value = parsed.errors.length > 5
+        ? [...parsed.errors.slice(0, 5), `另有 ${parsed.errors.length - 5} 列有問題`]
+        : parsed.errors
+      return
+    }
+    const body: ImportGuestsBody = { fileName: file.name, guests: parsed.guests }
     const result = await importGuests(weddingId.value, body)
     importResult.value = result.importedCount
+    selectedFile.value = null
     toast.add({
       title: `成功匯入 ${result.importedCount} 位賓客`,
       color: 'success',
@@ -1353,7 +1388,15 @@ async function confirmImport() {
             variant="soft"
             :title="importError"
             class="mb-4"
-          />
+          >
+            <template v-if="importErrorDetails.length" #description>
+              <ul class="mt-1 space-y-0.5">
+                <li v-for="detail in importErrorDetails" :key="detail">
+                  {{ detail }}
+                </li>
+              </ul>
+            </template>
+          </UAlert>
 
           <UAlert
             v-if="importResult !== null"
@@ -1364,6 +1407,22 @@ async function confirmImport() {
             :title="`成功匯入 ${importResult} 位賓客`"
             class="mb-4"
           />
+
+          <div class="mb-4 flex items-start justify-between gap-4">
+            <p class="text-body text-ink-500 dark:text-neutral-400">
+              用範例檔填寫，一列一位賓客；姓名與男女方必填。
+            </p>
+            <UButton
+              icon="i-heroicons-arrow-down-tray"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              class="shrink-0"
+              @click="downloadImportTemplate"
+            >
+              下載範例檔
+            </UButton>
+          </div>
 
           <FileUpload
             accept=".xlsx,.xls"

@@ -2,7 +2,7 @@
 <!--
   通用檔案選擇 / 拖放元件（enabled_features: fileUpload）
   本專案無通用 /api/upload 端點，各頁面 API 合約不同：
-    - 賓客批次匯入：以 { fileName } JSON 呼叫 import API
+    - 賓客批次匯入：父層用 File 解析 Excel，再以 { fileName, guests } 呼叫 import API
     - 祝福照片 / 謝卡圖片：以 dataUrl 處理
   因此本 wrapper 只負責「取得使用者選擇的檔案」，由父層決定如何上送。
 -->
