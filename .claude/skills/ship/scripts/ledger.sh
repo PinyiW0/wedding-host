@@ -198,7 +198,10 @@ cmd_plan() {
     l2st=$(printf '%s' "$l2rec" | cut -f1)
     l2old=$(printf '%s' "$l2rec" | cut -f2)
     l2how=$(printf '%s' "$l2rec" | cut -f3)
-    if [ "$l2old" = "$l2fp" ] && { [ "$l2st" = skipped ] || { [ "$l2st" = green ] && [ "$l2how" = full ]; }; }; then
+    if [ "$l2fp" = NOBASE ]; then
+      # 同上方各層：算不出 base 時兩輪都是 NOBASE，比對會誤判成「內容未變」
+      printf '  L2   ● 要跑（算不出 merge-base，不沿用任何綠燈）\n'
+    elif [ "$l2old" = "$l2fp" ] && { [ "$l2st" = skipped ] || { [ "$l2st" = green ] && [ "$l2how" = full ]; }; }; then
       printf '  L2   ✓ 沿用上輪結果：%s（內容未變，fp=%s）\n' "$l2st" "$l2fp"
     elif [ "$l2old" = "$l2fp" ] && [ "$l2st" = targeted ]; then
       printf '  L2   ● 要跑（上輪只跑定向、尚未 dev 全量；fp=%s）\n' "$l2fp"
