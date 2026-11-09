@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -262,5 +262,37 @@ describe('server-security-guard：本專案的兩條誤報豁免（issue #208）
 
     // Assert
     expect(result.status).toBe(0)
+  })
+})
+
+describe('server-security-guard：豁免要全部命中才消耗（PR #212 /code-review）', () => {
+  it('同一次編輯有兩個 server/api 命中、只豁免其中一個 → 擋下，且豁免不被用掉', () => {
+    // Arrange：server/api/alias 是指向 server/api/items 的 symlink，編輯路徑與實體路徑各算一個命中
+    symlinkSync(join(repoM, 'server/api/items'), join(repoM, 'server/api/alias'))
+    mkdirSync(join(repoM, '.claude/tmp'), { recursive: true })
+    const sentinel = join(repoM, '.claude/tmp/server-security-allow.json')
+    writeFileSync(sentinel, JSON.stringify({ reason: '測試誤報', files: [HANDLER] }))
+
+    // Act
+    const result = runGuard('server/api/alias/index.post.ts')
+
+    // Assert
+    expect(result.status).toBe(2)
+    expect(JSON.parse(readFileSync(sentinel, 'utf8')).files).toEqual([HANDLER])
+  })
+
+  it('兩個命中都豁免 → 放行，兩筆一起消耗', () => {
+    // Arrange
+    symlinkSync(join(repoM, 'server/api/items'), join(repoM, 'server/api/alias'))
+    mkdirSync(join(repoM, '.claude/tmp'), { recursive: true })
+    const sentinel = join(repoM, '.claude/tmp/server-security-allow.json')
+    writeFileSync(sentinel, JSON.stringify({ reason: '測試誤報', files: [HANDLER, 'server/api/alias/index.post.ts'] }))
+
+    // Act
+    const result = runGuard('server/api/alias/index.post.ts')
+
+    // Assert
+    expect(result.status).toBe(0)
+    expect(existsSync(sentinel)).toBe(false)
   })
 })

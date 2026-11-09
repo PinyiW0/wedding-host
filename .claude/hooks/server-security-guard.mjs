@@ -76,9 +76,14 @@ function main() {
   // 天然不在範圍內），命中即 exit 2；utils／middleware 等只吃摘要注入。
   // 同一個 root＋相對路徑只偵測一次（三條路徑常解到同一處），豁免依各自的 root 消耗，不重複消耗
   const apiHits = [...new Map(hits.filter(h => h.rel.startsWith('server/api/')).map(h => [`${h.targetRoot}\n${h.rel}`, h])).values()]
-  const blocked = apiHits
+  const violating = apiHits
     .map(h => ({ ...h, violations: detect(h.abs, h.rel) }))
-    .filter(h => h.violations.length > 0 && !consumeAllowSentinel(h.targetRoot, h.rel))
+    .filter(h => h.violations.length > 0)
+  // 先全部檢查、全部豁免才消耗（同 frozen-paths-guard 的 tryConsumeSentinel）：逐筆邊查邊消耗的話，
+  // 一筆有豁免、另一筆沒有時，有豁免的那筆白白被用掉，重試又要重寫一次（PR #212 /code-review）
+  const blocked = violating.filter(h => !isAllowed(h.targetRoot, h.rel))
+  if (!blocked.length)
+    violating.forEach(h => consumeAllowSentinel(h.targetRoot, h.rel))
   if (blocked.length) {
     console.error(
       `server 安全機械偵測（檔案已寫入，請立即修正）：\n${blocked.flatMap(h => h.violations).map(v => `- ${v}`).join('\n')}\n`
@@ -140,14 +145,31 @@ function detect(abs, rel) {
   return violations
 }
 
-// 誤報豁免 sentinel：比中一次即從清單移除（清空刪檔）
-function consumeAllowSentinel(projectDir, rel) {
+// 誤報豁免 sentinel：讀清單（不存在或壞掉視同空清單）
+function readAllow(projectDir) {
   const sentinel = resolve(projectDir, '.claude/tmp/server-security-allow.json')
   if (!existsSync(sentinel))
-    return false
+    return null
   try {
     const allow = JSON.parse(readFileSync(sentinel, 'utf8'))
-    const files = Array.isArray(allow?.files) ? allow.files : []
+    return { sentinel, allow, files: Array.isArray(allow?.files) ? allow.files : [] }
+  }
+  catch {
+    return null // sentinel 壞掉視同不存在
+  }
+}
+
+function isAllowed(projectDir, rel) {
+  return Boolean(readAllow(projectDir)?.files.includes(rel))
+}
+
+// 比中一次即從清單移除（清空刪檔）
+function consumeAllowSentinel(projectDir, rel) {
+  const read = readAllow(projectDir)
+  if (!read)
+    return false
+  const { sentinel, allow, files } = read
+  try {
     const idx = files.indexOf(rel)
     if (idx === -1)
       return false
@@ -159,7 +181,7 @@ function consumeAllowSentinel(projectDir, rel) {
     return true
   }
   catch {
-    return false // sentinel 壞掉視同不存在
+    return false // 寫回失敗視同沒消耗
   }
 }
 

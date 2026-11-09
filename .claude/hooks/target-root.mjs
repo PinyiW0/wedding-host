@@ -26,17 +26,44 @@ export function sessionProjectRoot() {
 
 // 解 symlink，但目標不存在（新檔、glob 字串）時也要解：找最近一個存在的祖先 realpath，再接回其餘路徑。
 // 只在目標存在時才 realpath 的話，經 symlink 寫的 glob／新檔會跟專案目錄（已 realpath）對不上而判成「在專案外」
-export function realpathLoose(abs) {
-  const rest = []
-  for (let dir = abs; ; dir = dirname(dir)) {
+// 每一層的 realpath 結果依目錄快取（失敗記 null）：Bash 分支對每個 token × 每個基準都會呼叫，
+// 長 heredoc 的上千個 token 共用同幾層祖先，不快取時同一層會反覆 realpath（PR #212 /code-review：2000 行約 1.5 秒）
+const realpathCache = new Map()
+function realpathOrNull(dir) {
+  if (!realpathCache.has(dir)) {
+    let real = null
     try {
-      return join(realpath(dir), ...rest.reverse())
+      real = realpath(dir)
     }
     catch {}
-    if (dirname(dir) === dir)
-      return abs
-    rest.push(basename(dir))
+    realpathCache.set(dir, real)
   }
+  return realpathCache.get(dir)
+}
+
+// 由上往下解：上一層不存在時這一層一定不存在，直接接回檔名、不再 realpath。
+// 長 heredoc 的 token 多半是互不相同、上層也不存在的假路徑，這樣每個 token 至多 realpath 一次
+const looseCache = new Map()
+function loose(abs) {
+  if (!looseCache.has(abs)) {
+    const parent = dirname(abs)
+    let r
+    if (parent === abs) {
+      const real = realpathOrNull(abs)
+      r = { path: real ?? abs, exists: real !== null }
+    }
+    else {
+      const p = loose(parent)
+      const real = p.exists ? realpathOrNull(abs) : null
+      r = real !== null ? { path: real, exists: true } : { path: join(p.path, basename(abs)), exists: false }
+    }
+    looseCache.set(abs, r)
+  }
+  return looseCache.get(abs)
+}
+
+export function realpathLoose(abs) {
+  return loose(abs).path
 }
 
 function isInside(root, abs) {
@@ -110,7 +137,8 @@ export function candidateRoots(abs, projectRoot) {
   const roots = []
   if (common) {
     for (let dir = abs; !(inside && dir === projectRoot); dir = dirname(dir)) {
-      if (hasDotGit(dir) && gitCommonDir(dir) === common)
+      // 不存在的目錄不可能有 `.git`：先用 loose 的快取判斷，省掉每個假路徑各層的 existsSync
+      if (loose(dir).exists && hasDotGit(dir) && gitCommonDir(dir) === common)
         roots.push(dir)
       if (dirname(dir) === dir)
         break

@@ -154,6 +154,20 @@
 // 保留每個候選 root 的 `server/` 命中，`server/api/x/.git` 偽造 gitdir 不再讓內層 root 蓋掉外層 `server/api/`；第 3 次 review 補成
 // 每個 `server/api/` 命中各偵測一次 ⑪heredoc 內文逐行的 shellWords 字也收進該段路徑候選（`xargs rm <<'EOF'` 內文是含空白的路徑）。
 //
+// 2026-11-09（issue #208，PR #212 /code-review）：matchFrozen 只認「等於或在凍結目錄底下」的路徑，對凍結目錄「上層」
+// 的整棵操作全部放行：`rm -r test/e2e`、`mv test/e2e x`、`git checkout HEAD~3 -- spec`、`git checkout HEAD~3 -- .`、
+// `git restore --source=X .`、`cp -r /tmp/x/. test/e2e/`，一次刪掉或覆蓋整個凍結區。修法：ancestorWrites 對會整棵覆蓋的
+// 操作（rm、mv 的來源、git 寫入子指令的引數、遞迴 cp 複製「目錄內容」時的目的地）另查上層，命中就把底下實際存在的凍結
+// 目錄當目標。不併進 matchFrozen：一般寫入動詞對上層的操作多半是寫到別處（`cp x .`、`mv /tmp/x .`、`ln -s y .`），
+// 一律當寫入會誤擋日常指令。代價：`git checkout -- .`、`git restore .` 這類「全部還原」在專案根目錄也會被擋，要走 sentinel。
+// /code-review 第二輪（同日）：①glob（`rm -rf spec/*`、`git checkout X -- 'spec/*'`）展開後才是凍結目錄，改逐段比對 glob
+// ②專案目錄之上（`rm -rf ..`、`rm -rf ~/Desktop/…`）candidateRoots 只往上找，另判專案目錄是否在目標底下 ③`cp -r /tmp/specs test/e2e`
+// 寫到的是「目的地/來源檔名」，`--archive` 漏認 ④`mv -t <dir>` 的來源在最後、`mv x . 2>/dev/null` 的重導向被當成目的地 ⑤只動 index
+// 的 `git restore --staged`、`git rm --cached` 與 `git -C <別處>` 誤擋 ⑥`echo spec | xargs rm -rf` 上游的字沒看上層。
+// 修法：coversFrozen 逐段比 glob；mv／cp 的來源與目的地改用去掉重導向後的 shellWords 判斷（verbOperands 認 -t）；
+// git 只看子指令之後的引數、有 -C 時只對 -C 目錄解析；管線下游是 xargs rm／mv／git 寫入時，上游各段的字也看上層。
+// `find <上層> -delete`、`rsync --delete` 仍屬已知極限第 27、28 條。
+//
 // 已知極限（本 hook 是純文字靜態解析，非執行期分析，以下手法擋不住）：
 //   1. 先把腳本寫到 /tmp 等非凍結路徑，再另開一條指令執行該腳本檔
 //   2. 腳本檔案本身帶 shebang、直接以 `./script.py` 執行（指令原文看不到直譯器詞）
@@ -231,7 +245,7 @@
 //      其他 worktree（issue #199 /code-review 第 2 輪）
 // 這些只能靠 Bash 權限策略或人審補位。
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { normalize, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { candidateRoots, realpathLoose, sessionProjectRoot } from './target-root.mjs'
 
 // 凍結清單以本陣列為準（一律小寫）；增刪時須同步 rules/frozen-paths.md（frontmatter paths + 表格）
@@ -451,8 +465,17 @@ function baseRoot(base) {
   return candidateRoots(base, projectRoot)[0] ?? projectRoot
 }
 
-// 判斷單一 token（相對路徑以 base 解析）是否指向凍結路徑，回傳 { root, rel }，否則 null
+// 判斷單一 token（相對路徑以 base 解析）是否指向凍結路徑，回傳 { root, rel }，否則 null。
+// 依（base, token）快取：同一條指令裡同一個字常在 tokenize／shellWords／heredoc 內文重複出現，每次都要走 fs（PR #212 /code-review）
+const frozenRelCache = new Map()
 function frozenRelOf(word, base) {
+  const key = `${base}\0${word}`
+  if (!frozenRelCache.has(key))
+    frozenRelCache.set(key, frozenRelOfUncached(word, base))
+  return frozenRelCache.get(key)
+}
+
+function frozenRelOfUncached(word, base) {
   // 空字串（shellWords 為了旗標對位保留的 `""`）不是路徑：resolve(base, '') 會變成 base 本身，base 在凍結目錄時整個目錄被誤擋
   if (!word)
     return null
@@ -484,6 +507,130 @@ function frozenRelOf(word, base) {
   // 不能讓它蓋掉子字串比對猜中的既有檔（PR #207 review）
   const guessed = substringFrozen(expanded, base)
   return guessed && (!firstHit || targetExists(guessed)) ? guessed : firstHit
+}
+
+// 凍結目錄的「上層或本身」（含 root、含 glob）：token 指向 test/、test/e2e、spec/*、`.`、`..` 時，回傳它涵蓋、且實際存在的凍結目錄。
+// 只給 ancestorWrites 用——一般寫入動詞對上層目錄操作（`cp x .`、`ln -s y .`）多半是寫到別處，不能一律當寫入
+function ancestorTargetsOf(word, base) {
+  if (!word || word.startsWith('-'))
+    return []
+  const expanded = word.replace(/^\$\{?CLAUDE_PROJECT_DIR\}?/, projectRoot).replace(/^~(?=\/|$)/, process.env.HOME || '~')
+  const abs = resolve(base, expanded)
+  for (const p of [realpathLoose(abs), abs]) {
+    // 目標在專案目錄之上（`rm -rf ..`、`rm -rf ~/Desktop/…`）：candidateRoots 只往上找，這裡另外判斷專案目錄是否在它底下
+    const up = relative(p, projectRoot)
+    if (!up.startsWith('..') && !isAbsolute(up)) {
+      const hits = FROZEN.map(f => ({ root: projectRoot, rel: f })).filter(targetExists)
+      if (hits.length)
+        return hits
+    }
+    for (const root of candidateRoots(p, projectRoot)) {
+      const rel = relative(root, p).toLowerCase()
+      if (rel.startsWith('..'))
+        continue
+      const hits = FROZEN.filter(f => coversFrozen(rel, f))
+        .map(f => ({ root, rel: f }))
+        .filter(targetExists)
+      if (hits.length)
+        return hits
+    }
+  }
+  return []
+}
+
+// rel（可含 glob 片段）是否涵蓋凍結目錄 f：逐段比對，rel 是 f 本身或它的上層。
+// `spec/*`、`test/e2e/*`、`spec/e2e-*` 展開後就是凍結目錄，只比字串會放行（PR #212 /code-review）
+function coversFrozen(rel, f) {
+  if (rel === '')
+    return true
+  const g = rel.split('/')
+  const s = f.split('/')
+  return g.length <= s.length && g.every((seg, i) => {
+    if (!/[*?[]/.test(seg))
+      return seg === s[i]
+    try {
+      return new RegExp(`^${seg.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`).test(s[i])
+    }
+    catch {
+      return true // 寫壞的 [ 字元類：寧可誤擋
+    }
+  })
+}
+
+const REDIRECT_WORD = /^\d*(?:[<>]|&>)/
+// 指令動詞之後的位置參數（去掉旗標與 `2>/dev/null` 這類重導向字），以及 -t／--target-directory 指定的目的地
+function verbOperands(w, verb) {
+  const at = commandIndices(w).find(i => baseName(w[i]) === verb)
+  const rest = at === undefined ? [] : w.slice(at + 1)
+  let target = null
+  const ops = []
+  for (let i = 0; i < rest.length; i++) {
+    const x = rest[i]
+    if (x === '-t' || x === '--target-directory') {
+      target = rest[++i] ?? null
+      continue
+    }
+    if (x.startsWith('--target-directory=')) {
+      target = x.slice('--target-directory='.length)
+      continue
+    }
+    if (x.startsWith('-') || REDIRECT_WORD.test(x))
+      continue
+    ops.push(x)
+  }
+  return target ? { sources: ops, dest: target } : { sources: ops.slice(0, -1), dest: ops.at(-1) ?? null }
+}
+
+// 整棵刪除、搬走、還原、覆蓋凍結目錄（issue #208、PR #212 /code-review）：`rm -r test/e2e`、`rm -rf spec/*`、`rm -rf ..`、
+// `mv spec x`、`mv -t /tmp test/e2e`、`git checkout HEAD~3 -- spec`、`git restore --source=X .`、`cp -r /tmp/specs test/e2e`。
+// matchFrozen 只認「等於或在凍結目錄底下」，這些形狀的 token 是凍結目錄的上層（或展開後才是凍結目錄）而全數放行。
+// 只對會整棵覆蓋的操作看：rm 的全部引數（rmdir 刪不掉非空目錄，不用看）；mv 的來源（目的地不算，`mv /tmp/x .` 放行）；
+// git 寫入子指令之後的引數（只動 index 的 `restore --staged`、`rm --cached` 不算；有 `git -C` 時只對 -C 的目錄解析）；
+// 遞迴 cp 實際寫到的位置（來源是「目錄內容」`x/`、`x/.`、`x/*` → 目的地本身，否則 → 目的地/來源檔名）
+// 段落去掉重導向（`2>/dev/null`、`> out`、`2>&1`）後再照 shell 規則拆字：mv／cp 判斷來源與目的地用，
+// 否則 fd 數字與重導向目標會被當成最後一個引數（假目的地）
+const REDIRECT_SPAN = /(^|\s)\d*(?:&>>?|>>?&?|<)\s*(?:"[^"]*"|'[^']*'|[^\s;&|<>]+)/g
+function operandWords(seg) {
+  return shellWords(seg.replace(REDIRECT_SPAN, '$1')).words
+}
+
+function ancestorWrites(words, lexedWords, segBases, gitBases, opLexed = lexedWords) {
+  const atBases = (args, bases) => bases.flatMap(b => args.flatMap(w => ancestorTargetsOf(w, b)))
+  const of = (w) => {
+    const verbs = commandVerbs(w)
+    if (verbs.includes('rm'))
+      return atBases(w, segBases)
+    // mv／cp 的來源與目的地用 shellWords 的拆法判斷：tokenize 會把 `2>/dev/null` 拆成 `2`、`/dev/null`，最後一個字變成假目的地
+    const opWords = verb => (commandVerbs(opLexed).includes(verb) ? opLexed : w)
+    if (verbs.includes('mv'))
+      return atBases(verbOperands(opWords('mv'), 'mv').sources, segBases)
+    const g = gitWordsOf(w, lexedWords)
+    const sub = runsGit(g) ? gitSubcmd(g) : null
+    if (sub && GIT_WRITE_SUBCMDS.has(sub)) {
+      const indexOnly = (sub === 'restore' && g.includes('--staged') && !g.includes('--worktree') && !g.includes('-W'))
+        || (sub === 'rm' && g.includes('--cached'))
+      // 只看子指令之後的引數：`-C /tmp` 這類全域旗標的值不是要還原的路徑
+      return indexOnly ? [] : atBases(g.slice(gitSubcmdIndex(g) + 1), gitBases.length ? gitBases : segBases)
+    }
+    if (verbs.includes('cp') && w.some(x => /^-[a-z]*[ra]/i.test(x) || x === '--recursive' || x === '--archive')) {
+      const { sources, dest } = verbOperands(opWords('cp'), 'cp')
+      if (!dest)
+        return []
+      const writes = sources.map(s => /\/(?:\.|\*)?$/.test(s) ? dest : join(dest, basename(s)))
+      return atBases(writes, segBases)
+    }
+    return []
+  }
+  return [...of(words), ...of(lexedWords)]
+}
+
+// 管線下游 xargs 的整棵操作（`echo spec | xargs rm -rf`）：上游的字由 stdin 變成下游的引數，上游各字也要看上層
+function xargsTreeWrites(words, lexedWords) {
+  if (!commandVerbs(words).includes('xargs'))
+    return false
+  const g = gitWordsOf(words, lexedWords)
+  return [words, lexedWords].some(w => commandVerbs(w).some(v => v === 'rm' || v === 'mv'))
+    || (runsGit(g) && GIT_WRITE_SUBCMDS.has(gitSubcmd(g)))
 }
 
 // 落不了地的 token（帶未知變數前綴、dd 的 of= 等）：子字串比對，寧可誤擋
@@ -785,10 +932,10 @@ const GIT_VALUE_FLAGS = new Set(['-C', '-c', '--work-tree', '--git-dir', '--name
 
 // git 的子指令只認緊接 git 之後的第一個非旗標 token（吃值旗標會多跳一個 token），
 // 否則 `git commit -m "… restore …"` 的訊息內文會被當成 git restore。
-function gitWriteSubcmd(words) {
+function gitSubcmdIndex(words) {
   const gi = gitIndex(words)
   if (gi === -1)
-    return false
+    return -1
   for (let i = gi + 1; i < words.length; i++) {
     if (GIT_VALUE_FLAGS.has(words[i])) {
       i++
@@ -796,9 +943,16 @@ function gitWriteSubcmd(words) {
     }
     if (words[i].startsWith('-'))
       continue
-    return GIT_WRITE_SUBCMDS.has(words[i])
+    return i
   }
-  return false
+  return -1
+}
+function gitSubcmd(words) {
+  const i = gitSubcmdIndex(words)
+  return i === -1 ? null : words[i]
+}
+function gitWriteSubcmd(words) {
+  return GIT_WRITE_SUBCMDS.has(gitSubcmd(words))
 }
 
 // 管線下游 xargs 段專用的寫入判斷：就地改檔工具必須在指令位置、-i 旗標必須在它之後。hasWriteVerb 的
@@ -892,9 +1046,12 @@ function bashFrozenWrites(command) {
     quotePieces(head).forEach(w => lexedWords.add(w))
     let bodyAt = 0
     let upstream = [] // 同一條管線裡前面各段比中的凍結 token（issue #165）
+    let upstreamWords = [] // 同一條管線裡前面各段的字與基準，下游是 xargs rm／mv／git 寫入時才拿來看上層（PR #212 /code-review）
     for (const { text: seg, piped } of splitPipelineSegments(head)) {
-      if (!piped)
+      if (!piped) {
         upstream = []
+        upstreamWords = []
+      }
       const words = tokenize(seg)
       const lexed = shellWords(seg)
       lexed.words.forEach(w => lexedWords.add(w))
@@ -932,6 +1089,12 @@ function bashFrozenWrites(command) {
       if (upstream.length && commandVerbs(words).includes('xargs') && xargsWrites(words, lexed.words))
         upstream.forEach(addTarget)
       upstream.push(...frozen)
+      ancestorWrites(words, lexed.words, segBases, gitBases, operandWords(seg)).forEach(addTarget)
+      if (upstreamWords.length && xargsTreeWrites(words, lexed.words)) {
+        for (const { ws, bs } of upstreamWords)
+          bs.flatMap(b => ws.flatMap(w => ancestorTargetsOf(w, b))).forEach(addTarget)
+      }
+      upstreamWords.push({ ws: [...words, ...lexed.words], bs: segBases })
       if (!frozen.length)
         continue
       // `git -C "/a b" rm`、`xargs -I "x y" rm`：tokenize 把引號內的字拆成子指令位置，寫入判斷也要看 shellWords 的拆法

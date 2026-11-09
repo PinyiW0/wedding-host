@@ -1600,3 +1600,73 @@ describe('frozen-paths-guard：跨 worktree 補洞（issue #206）', () => {
     expect(result.status).toBe(2)
   })
 })
+
+describe('frozen-paths-guard：整棵刪除／搬走／還原凍結目錄的上層（issue #208）', () => {
+  it.each([
+    ['rm -r test/e2e'],
+    ['rm -rf test'],
+    ['rm -rf .'],
+    ['mv test/e2e test/e2e2'],
+    ['git mv test/e2e x'],
+    ['git rm -r spec'],
+    ['cp -r /tmp/x/. test/e2e/'],
+    ['git checkout HEAD~3 -- spec'],
+    ['git checkout HEAD~3 -- test'],
+    ['git checkout HEAD~3 -- .'],
+    ['git restore --source=HEAD~3 .'],
+    ['cd app/types && rm -rf ../..'],
+    // PR #212 /code-review 第二輪：glob、專案目錄之上、mv -t、cp 目錄進上層、--archive、管線 xargs
+    ['rm -rf spec/*'],
+    ['rm -rf test/e2e/*'],
+    ['git checkout HEAD~3 -- \'spec/*\''],
+    ['rm -rf ..'],
+    ['mv -t /tmp test/e2e'],
+    ['cp -r /tmp/specs test/e2e'],
+    ['cp -r /tmp/test .'],
+    ['cp --archive /tmp/x/. test/e2e/'],
+    ['echo spec | xargs rm -rf'],
+  ])('%s → 擋下', (command) => {
+    // Act
+    const result = runGuard(command)
+
+    // Assert
+    expect(result.status).toBe(2)
+  })
+
+  it.each([
+    ['cp /tmp/foo.txt .'],
+    ['mv /tmp/x .'],
+    ['ln -s ../x .'],
+    ['cp -r app /tmp/bak'],
+    ['rm -rf node_modules .nuxt'],
+    ['rm -f app/types/x.ts'],
+    ['git checkout -b feature/x'],
+    ['git checkout main'],
+    ['git stash push -m wip'],
+    ['git diff -- spec'],
+    ['ls test'],
+    ['mv /tmp/x . 2>/dev/null'],
+    ['cp -r /tmp/foo .'],
+    ['rm -rf spec/report/*'],
+    ['git restore --staged .'],
+    ['git rm -r --cached .'],
+    ['git -C /usr checkout -- .'],
+    ['echo spec | xargs ls'],
+  ])('%s → 放行（上層目錄只是目的地或唯讀）', (command) => {
+    // Act
+    const result = runGuard(command)
+
+    // Assert
+    expect(result.status).toBe(0)
+  })
+
+  it('擋下訊息列出上層底下實際存在的凍結目錄', () => {
+    // Act
+    const result = runGuard('rm -rf spec')
+
+    // Assert
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain('spec/e2e-flows')
+    expect(result.stderr).toContain('spec/gherkin-feature')
+  })
+})
