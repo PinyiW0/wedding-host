@@ -7,8 +7,12 @@
 // frozen-allow.json 分開（語意不同：一個授權修改、一個豁免誤報）。
 // 為什麼用 hook 不用 rules/server-security.md 的 paths：paths 觸發規則在 subagent 內
 // 不注入（2026-07-06 實測），只有 hook 對主對話與所有 subagent 都生效。
+//（2026-11-04 複測：同目錄下含 subagent 仍擋；跨 worktree 見本次修法——issue #199 起 `server/` 前綴與豁免
+// sentinel 都對「目標所在的 worktree」判斷（只收同 repo 的 worktree，見 target-root.mjs），從主目錄 session
+// 改另一個 worktree 的 server 檔也會偵測）
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
+import { candidateRoots, realpathLoose, sessionProjectRoot } from './target-root.mjs'
 
 // 摘要與 .claude/rules/server-security.md 的 8 條表格同步；改表格時須同步本陣列
 const RULE_SUMMARY = [
@@ -50,29 +54,44 @@ function main() {
   if (!filePath)
     process.exit(0)
 
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()
-  const abs = resolve(projectDir, filePath)
-  const rel = relative(projectDir, abs)
-  if (!(rel.startsWith('server/') && rel.endsWith('.ts')))
+  // 三條路徑都看，任一落在 server/api/ 就偵測（PR #205 review）：
+  // - 編輯時的路徑（不解 symlink）：server/api 底下的檔或子目錄指向 repo 外時，只有它還在 repo 內
+  // - 解過父目錄 symlink 的路徑：server/utils/x 指向 server/api/、或 worktree 經別名路徑進來
+  // - 連檔名一起解的路徑：repo 外的檔名 symlink 指向 server/api/ 的檔
+  const projectDir = sessionProjectRoot()
+  const editPath = resolve(input?.cwd || projectDir, filePath)
+  const realPath = join(realpathLoose(dirname(editPath)), basename(editPath))
+  // 候選 root：同 repo 的 worktree（另一個 worktree 時不是 projectDir）＋專案目錄，每個落在 server/ 下的都收。
+  // 機械偵測對每個 `server/api/` 命中各跑一次：`server/api/x/.git` 的 gitdir 指回本 repo 時，內層 root 的 `server/utils/…`
+  // 或 `server/api/index.get.ts`（相對路徑沒有動態參數）會遮掉外層的違規（PR #207 review）
+  const hits = [editPath, realPath, realpathLoose(editPath)].flatMap(p =>
+    candidateRoots(p, projectDir)
+      .map(root => ({ abs: p, targetRoot: root, rel: relative(root, p) }))
+      .filter(h => h.rel.startsWith('server/') && h.rel.endsWith('.ts')),
+  )
+  if (!hits.length)
     process.exit(0)
 
   // 機械偵測只跑 server/api/** handler 檔（server/mock/data/** 種子資料 spread 複製合法，
-  // 天然不在範圍內），命中即 exit 2；utils／middleware 等只吃摘要注入
-  if (rel.startsWith('server/api/')) {
-    const violations = detect(abs, rel)
-    if (violations.length > 0 && !consumeAllowSentinel(projectDir, rel)) {
-      console.error(
-        `server 安全機械偵測（檔案已寫入，請立即修正）：\n${violations.map(v => `- ${v}`).join('\n')}\n`
-        + `完整判準與正確寫法讀 .claude/rules/server-security.md。`
-        + `若確認誤報，向使用者說明後寫 .claude/tmp/server-security-allow.json`
-        + `（{ "reason": "...", "files": ["${rel}"] }）再重試，比中一次即消耗。`,
-      )
-      process.exit(2)
-    }
+  // 天然不在範圍內），命中即 exit 2；utils／middleware 等只吃摘要注入。
+  // 同一個 root＋相對路徑只偵測一次（三條路徑常解到同一處），豁免依各自的 root 消耗，不重複消耗
+  const apiHits = [...new Map(hits.filter(h => h.rel.startsWith('server/api/')).map(h => [`${h.targetRoot}\n${h.rel}`, h])).values()]
+  const blocked = apiHits
+    .map(h => ({ ...h, violations: detect(h.abs, h.rel) }))
+    .filter(h => h.violations.length > 0 && !consumeAllowSentinel(h.targetRoot, h.rel))
+  if (blocked.length) {
+    console.error(
+      `server 安全機械偵測（檔案已寫入，請立即修正）：\n${blocked.flatMap(h => h.violations).map(v => `- ${v}`).join('\n')}\n`
+      + `完整判準與正確寫法讀 .claude/rules/server-security.md。若確認誤報，向使用者說明後寫：\n${
+        blocked.map(h => `- ${resolve(h.targetRoot, '.claude/tmp/server-security-allow.json')}（{ "reason": "...", "files": ["${h.rel}"] }）`).join('\n')
+      }\n再重試，比中一次即消耗。`,
+    )
+    process.exit(2)
   }
 
   // 首次觸碰某檔時注入 8 條摘要（每 session 每檔一次，控噪音）
-  if (markFirstTouch(projectDir, input?.session_id, rel)) {
+  // 記錄 key 用 session 目錄到實體路徑的相對路徑：不同 worktree 的同名檔各算一次，同一檔經別名進來不重複
+  if (markFirstTouch(projectDir, input?.session_id, relative(projectDir, realPath))) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
