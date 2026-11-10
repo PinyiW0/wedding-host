@@ -78,6 +78,17 @@ checkbox 跨 session、跨 worktree、換人執行都查得到，不必靠對話
 
 使用者要直接發就照發，**不追問、不阻擋**。`/pr` 仍不 commit、不代勞修改——要驗要修都是 `/verify-ac` 的事。解析不到編號、或 issue 無 AC 段 → 整段跳過，不提。
 
+### 2.5 決定 label 與 assignee（與 `/new-issue` 共用政策）
+
+依共用政策 [../new-issue/references/label-assignee.md](../new-issue/references/label-assignee.md) 選定：
+
+- **label**：從 repo 現有清單讓使用者複選（附「略過」）、不自動對應、不預選；**`/pr` 不自創 label、不 `gh label create`**（與 `/new-issue` 的差異見該檔）。
+- **assignee**：預設 `@me`，多人 repo 才用 AskUserQuestion 問、單人 repo 不問。
+
+> **編排模式下這兩項不發 AskUserQuestion**，改由 `/ship` 預選後標在唯一停點的草案上（標 `←預選`），使用者一句話就能改。預選規則見同一檔的「編排模式」一節。
+
+選定結果放進步驟 5 草案的 `label：`／`assignee：` 欄。reviewer 規則見步驟 6。
+
 ### 3. 產生標題 + 內文草案（全繁中）
 
 **標題**：綜觀本分支所有 commit，摘一句**繁中**標題講清楚這個 PR 做了什麼 —— 不直接照搬英文 commit subject。
@@ -152,7 +163,8 @@ Closes #2
 擬發 PR：
 標題：<繁中標題>
 base：main  ←  <當前分支>
-assignee：<"@me" / 指定者 / 不指派>
+label：<所選 label（可多個）或「略過」>
+assignee：<@me / 所選協作者 / 不指派>
 reviewer：<Copilot（預設）/ Copilot＋指定者 / 使用者明說不掛>
 <命中步驟 2「AC 驗收提醒」時，此處附那一行 ⚠️；未命中整行省略>
 
@@ -166,12 +178,12 @@ reviewer：<Copilot（預設）/ Copilot＋指定者 / 使用者明說不掛>
 
 ```
 git push -u origin <branch>        # 沒 upstream 才需 -u；已有就 git push
-gh pr create --base main --title "<標題>" --body "<內文>" --assignee "<assignee>"
+gh pr create --base main --title "<標題>" --body "<內文>" --assignee "<assignee>" --label "<label>"
 gh pr view --web                   # 開瀏覽器
 ```
 
-- assignee **預設 `"@me"`**（發 PR 者即負責人；預設值與 `/new-issue` 相同）；使用者透過 `$ARGUMENTS` 指定其他人則改帶指定者，明說不指派則整個 `--assignee` 旗標拿掉。指定他人須為 repo collaborator，否則 `gh pr create` 會整個失敗——失敗時改不帶 assignee 先建 PR，成功後再 `gh pr edit <N> --add-assignee <人>` 補。
-- 使用者透過 `$ARGUMENTS` 指定了 reviewer / label 才加 `--reviewer <人>` / `--label <標籤>`（label 須 repo 已存在）。被 `/ship` 編排時 label／assignee／reviewer 由編排層預選，規則見 [../new-issue/references/label-assignee.md](../new-issue/references/label-assignee.md)。
+- assignee／label 帶步驟 2.5 選定的；「不指派」／「略過」則拿掉對應旗標。多 label 重複 `--label`；指派他人失敗的補救見[共用政策](../new-issue/references/label-assignee.md)。
+- 使用者透過 `$ARGUMENTS` 指定了 reviewer 才加 `--reviewer <人>`。被 `/ship` 編排時 reviewer 也由編排層預選，規則見[共用政策](../new-issue/references/label-assignee.md)「編排模式」一節。
 - **預設掛 Copilot 做 code review**（2026-11-09 決定，issue #208；使用者明說不掛才略過）。Copilot reviewer 是 bot 帳號，`--reviewer` 對它解析常失敗，一律在 PR 建立後補 API call（`<N>` 取自 `gh pr create` 回傳 URL 結尾）：
 
   ```
@@ -192,6 +204,7 @@ gh pr view --web                   # 開瀏覽器
 ## 注意
 
 - base 固定 `main`（本專案 PR 一律 target main）。
+- label 預設讓使用者從 repo 現有 label 挑選（可複選、附略過），不自動對應、不預選、不自創；assignee 預設 `@me`，多人 repo 才問、單人 repo 不問（政策見[共用政策](../new-issue/references/label-assignee.md)）。
 - reviewer 預設 Copilot；使用者明說不掛才略過。
 - 絕不在 main / master 上發 PR 或代 commit —— 該停就停，列選項問使用者。
 - `$ARGUMENTS` 有值 → 視為 reviewer / assignee / label / 內文補充提示，納入判斷。

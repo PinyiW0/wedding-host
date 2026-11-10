@@ -17,7 +17,7 @@ metadata:
 - Prefer `<script setup lang="ts">` over `<script>`
 - For performance, prefer `shallowRef` over `ref` if deep reactivity is not needed
 - Always use Composition API over Options API
-- Discourage using Reactive Props Destructure
+- Discourage using Reactive Props Destructure（props 解構：本專案不用，預設值一律走 withDefaults）
 
 ## Core
 
