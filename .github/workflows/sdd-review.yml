@@ -1,7 +1,7 @@
 name: SDD Review
 
 # Phase 1（MVP）：PR 開啟/更新時，對 diff 跑 /sdd-review，結果只「留言」不自動改 code。
-# 補的是 AI 語意層（框架慣例 + server 邏輯安全）；eslint/typecheck 由 pull_request.yml 負責，不重複。
+# 補的是 AI 語意層（框架慣例 + server 邏輯安全）；eslint 由 pull_request.yml 負責，不重複。CI 不跑 typecheck（只在本機 npm run typelint），型別問題不算重複。
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -45,8 +45,8 @@ jobs:
           # 直接複用既有的 /sdd-review skill（pr 模式：完整推敲 authz / 敏感資料）
           prompt: |
             這是 PR 自動審查。對本次 PR 的 diff 執行 /sdd-review（pr 模式）：
-            - 只查 eslint/typecheck/playwright 漏網的死角：框架語意慣例 + server 邏輯安全
-            - 不重複 lint / 型別 / spec 合規的工作
+            - 只查 eslint/playwright 漏網的死角（CI 不跑 typecheck，型別問題也在範圍內）：框架語意慣例 + server 邏輯安全
+            - 不重複 lint / spec 合規的工作
             - 以 .claude/skills/sdd-review/references/checks.md 為檢查依據
             - 安全類（authz / 敏感資料外洩）完整推敲，一律列「必修」
             把報告（必修 / 建議 / 通過 + Verdict）以一則 PR 留言輸出。

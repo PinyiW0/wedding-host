@@ -1,0 +1,206 @@
+name: osv-scanner
+
+# 漏洞掃描（OSV-Scanner）
+# - PR：比「main 的掃描結果 vs PR 分支的掃描結果」，只報這個 PR 新引入的漏洞；既有公告不會讓無關 PR 變紅
+# - 每週排程（default branch）／手動（可選任何分支）：遞迴掃整個 repo 的 lockfile（目前只有根目錄的 package-lock.json），新公告在這裡浮現；結果上 Security › Code scanning
+# 忽略清單是 osv-scanner.toml（IgnoredVulns 每筆要有 reason 與 ignoreUntil；PackageOverrides 設 ignore 的要有 reason 與 effectiveUntil；到期日最多 180 天後。由 ignore-list-lint 檢查每一份 osv-scanner.toml）。
+# 要不要上傳 SARIF 到 Code scanning 由 visibility job 自動判斷：public repo 上傳；private repo（需 GitHub Code Security 授權）與查不到時不上傳。
+# 想覆寫就設 repo variable OSV_UPLOAD_SARIF（true／false），不用改這個檔。
+# 紅綠燈由 fail-on-vuln（預設 true）決定、與上傳無關，仍可設為 branch protection 的必要檢查（check 名稱 pr-scan / osv-scan）；也要加 ignore-list-lint，它紅燈才擋得住缺到期日的忽略條目。
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * 1' # 每週一 01:30 UTC＝台北 09:30
+  workflow_dispatch:
+
+# 同一個 PR 連續 push 只留最後一次 run（與 pull_request.yml 同一套邏輯）；
+# 排程固定跑 default branch，手動跑則跑你選的分支（選非 main 時結果記在該分支、不取代 main 的告警）；兩者都不砍進行中的 run，否則手動一按會把進行中的全量砍掉；
+# 但同一組只留一個排隊中的 run，連按兩次手動時前一個排隊的會被取消
+concurrency:
+  group: osv-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # 算出要不要上傳 SARIF。兩層保護：這個 step 本身不失敗（任何錯誤：沒有 gh、API 失敗、權限不足，都落到 unknown 而不上傳）；
+  # 下游掃描 job 再加 !cancelled()，visibility 真的失敗時掃描照跑、只是不上傳。
+  # 兩層都在是因為少了 !cancelled() 時，needs 失敗會讓掃描 job 被 skip，而必要檢查遇到 skipped 會當成通過，等於漏洞掃描被繞過
+  visibility:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      upload: ${{ steps.calc.outputs.upload }}
+    steps:
+      - id: calc
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OVERRIDE: ${{ vars.OSV_UPLOAD_SARIF }}
+        run: |
+          upload=false
+          v=$(printf '%s' "$OVERRIDE" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          case "$v" in
+            true) upload=true ;;
+            false) upload=false ;;
+            *)
+              [ -n "$v" ] && echo "::warning::OSV_UPLOAD_SARIF=$OVERRIDE 不是 true／false，改用自動判斷"
+              private=$(gh api "repos/$GITHUB_REPOSITORY" -q .private 2>/dev/null || echo unknown)
+              [ "$private" = "false" ] && upload=true
+              ;;
+          esac
+          echo "upload=$upload" >> "$GITHUB_OUTPUT"
+          echo "upload-sarif = $upload"
+          exit 0
+
+  # 忽略清單的機械守門（python3 tomllib 真解析），檢查 repo 內每一份 osv-scanner.toml（osv-scanner 對每個 lockfile 讀同目錄那份）：
+  # 每筆 [[IgnoredVulns]] 要有 id、reason、ignoreUntil（日期；缺＝永久忽略，osv-scanner 不會擋），
+  # 每筆 [[PackageOverrides]] 要指名 name（非空，不准 nameIsRegex），設了 ignore 的還要有 effectiveUntil（日期）與 reason；
+  # 欄位名稱不分大小寫比對，出現白名單以外的欄位也擋（osv-scanner 遇到未知欄位會丟掉整份設定）；
+  # 到期日最多 180 天後，避免寫成 9999-12-31 變相永久忽略；已過期的不擋（每週排程會再報）；
+  # PR 改到這些檔時標 warning，因為同一個 PR 可以一邊引入漏洞一邊把它加進忽略清單，pr-scan 看不出來
+  ignore-list-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # 只有 PR 的 warning step 需要 base 的歷史
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+      - name: Check every ignore entry has expiry date and reason
+        run: |
+          mapfile -t files < <(git ls-files -- 'osv-scanner.toml' '**/osv-scanner.toml')
+          [ "${#files[@]}" -gt 0 ] || { echo "no osv-scanner.toml, nothing to check"; exit 0; }
+          python3 - "${files[@]}" <<'PY'
+          import sys, tomllib, datetime
+          limit = datetime.date.today() + datetime.timedelta(days=180)
+          errors = []
+          def has_text(v):
+              return isinstance(v, str) and v.strip() != ""
+          def is_date(v):
+              return isinstance(v, datetime.date)
+          def as_date(v):
+              return v.date() if isinstance(v, datetime.datetime) else v
+          def too_late(v):
+              return as_date(v) > limit
+          def entries(path, data, key, label):
+              v = data.get(key, [])
+              if not isinstance(v, list):
+                  errors.append((path, f"{label} 要寫成 [[{label}]]（陣列表格），不是 [{label}]"))
+                  return []
+              good = [e for e in v if isinstance(e, dict)]
+              if len(good) != len(v):
+                  errors.append((path, f"{label} 的每個元素都要是表格（[[{label}]]）"))
+              return good
+          # osv-scanner（BurntSushi/toml）欄位名稱不分大小寫，所以解析後 key 一律轉小寫再比對
+          def lower(o):
+              if isinstance(o, dict):
+                  return {k.lower(): lower(v) for k, v in o.items()}
+              if isinstance(o, list):
+                  return [lower(v) for v in o]
+              return o
+          # 白名單對照 osv-scanner v2.7.0 internal/config/config.go 的 toml tag
+          TOP = {"ignoredvulns": "IgnoredVulns", "packageoverrides": "PackageOverrides", "goversionoverride": "GoVersionOverride", "scangomodversion": "ScanGoModVersion"}
+          VULN = {"id", "ignoreuntil", "reason"}
+          PKG = {"name", "version", "ecosystem", "group", "ignore", "vulnerability", "license", "effectiveuntil", "reason", "nameisregex"}
+          SUB = {"vulnerability": {"ignore"}, "license": {"ignore", "override"}}
+          def unknown(path, where, d, allowed):
+              for k in d:
+                  if k not in allowed:
+                      errors.append((path, f"{where} 有未知欄位 {k}：osv-scanner 遇到未知欄位會丟掉整份設定（忽略清單全部失效）"))
+          total = 0
+          for path in sys.argv[1:]:
+              try:
+                  with open(path, "rb") as f:
+                      data = lower(tomllib.load(f))
+              except tomllib.TOMLDecodeError as ex:
+                  errors.append((path, f"TOML 語法錯誤：{ex}"))
+                  continue
+              unknown(path, "頂層", data, TOP)
+              vulns = entries(path, data, "ignoredvulns", "IgnoredVulns")
+              for i, e in enumerate(vulns, 1):
+                  unknown(path, f"IgnoredVulns 第 {i} 筆", e, VULN)
+                  if not has_text(e.get("id")):
+                      errors.append((path, f"IgnoredVulns 第 {i} 筆缺 id"))
+                  if not has_text(e.get("reason")):
+                      errors.append((path, f"IgnoredVulns 第 {i} 筆缺 reason"))
+                  d = e.get("ignoreuntil")
+                  if not is_date(d):
+                      errors.append((path, f"IgnoredVulns 第 {i} 筆缺 ignoreUntil（或不是日期）"))
+                  elif too_late(d):
+                      errors.append((path, f"IgnoredVulns 第 {i} 筆 ignoreUntil 超過上限 {limit}（最多 180 天後）"))
+              overrides = entries(path, data, "packageoverrides", "PackageOverrides")
+              for i, e in enumerate(overrides, 1):
+                  unknown(path, f"PackageOverrides 第 {i} 筆", e, PKG)
+                  for sub, allowed in SUB.items():
+                      if sub in e:
+                          if isinstance(e[sub], dict):
+                              unknown(path, f"PackageOverrides 第 {i} 筆的 {sub}", e[sub], allowed)
+                          else:
+                              errors.append((path, f"PackageOverrides 第 {i} 筆的 {sub} 要是表格"))
+                  # name 空字串會套用到所有套件，所以一律要指名；也不准用正規式（.* 一次忽略全部，編不過則整份設定作廢）
+                  if not has_text(e.get("name")):
+                      errors.append((path, f"PackageOverrides 第 {i} 筆缺 name（空字串會套用到所有套件）"))
+                  if e.get("nameisregex") is not None and e.get("nameisregex") is not False:
+                      errors.append((path, f"PackageOverrides 第 {i} 筆不准用 nameIsRegex（正規式可能一次忽略全部，編不過會讓整份設定作廢）"))
+                  ignored = any(
+                      isinstance(src, dict) and src.get("ignore") is True
+                      for src in (e, e.get("vulnerability"), e.get("license"))
+                  )
+                  if not ignored:
+                      continue
+                  d = e.get("effectiveuntil")
+                  if not is_date(d):
+                      errors.append((path, f"PackageOverrides 第 {i} 筆設了 ignore 卻缺 effectiveUntil（或不是日期）"))
+                  elif too_late(d):
+                      errors.append((path, f"PackageOverrides 第 {i} 筆 effectiveUntil 超過上限 {limit}（最多 180 天後）"))
+                  if not has_text(e.get("reason")):
+                      errors.append((path, f"PackageOverrides 第 {i} 筆設了 ignore 卻缺 reason"))
+              print(f"{path}: {len(vulns)} IgnoredVulns + {len(overrides)} PackageOverrides checked")
+              total += 1
+          for path, m in errors:
+              print(f"::error file={path}::{m}")
+          if errors:
+              sys.exit(1)
+          print(f"{total} file(s) OK")
+          PY
+      - name: Warn when a PR changes the ignore list
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          rc=0
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD" -- 'osv-scanner.toml' '**/osv-scanner.toml') || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::無法比對忽略清單改動（git diff exit ${rc}）"
+          else
+            printf '%s\n' "$changed" | while IFS= read -r f; do
+              if [ -n "$f" ]; then echo "::warning file=${f}::本 PR 改動了忽略清單，審查時確認每筆的理由與到期日"; fi
+            done
+          fi
+          exit 0
+
+  # reusable workflow 一律釘 commit SHA（非可變 tag）：tag 可被上游移動，惡意版本會在持有 secrets 的 job 內執行。升版時連同註解的版本號一起更新。
+  pr-scan:
+    needs: visibility
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+    with:
+      # fork PR 的 GITHUB_TOKEN 唯讀，上傳 Code scanning 會失敗變成假紅燈，所以只在同 repo 分支的 PR 上傳
+      # （比對 full_name 而非 fork == false：fork 已刪除時 head.repo 為 null，後者會誤判成可上傳）
+      upload-sarif: ${{ needs.visibility.outputs.upload == 'true' && github.event.pull_request.head.repo.full_name == github.repository }}
+
+  scheduled-scan:
+    needs: visibility
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+    with:
+      upload-sarif: ${{ needs.visibility.outputs.upload == 'true' }}

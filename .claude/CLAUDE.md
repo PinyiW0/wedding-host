@@ -104,6 +104,12 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 ---
 
+## 收尾與審查
+
+- 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md、任何位置的 osv-scanner.toml 或任何 .sh／.mjs（與 `ledger.sh` L5 同一份 scope）、有實質改動（非純格式）且尚未跑過 `/code-review` 時，在 `/verify-ac` 或發 PR 前**主動**執行（diff 含 `.md` 時另跑 `skills/review-loop/references/doc-impl-check.md` 的專項檢查），不必使用者提醒；放在驗收蓋章之前，避免事後改 code 讓已勾 AC 過期。完整分層見 `ops/judgment-rubrics.md` 第 5 節
+- 跑 `/ship` 時 eslint／typelint／`/vibe-check --full`／`/sdd-review`／`/code-review` 由它依 ledger 統一調度並記帳，不必手動逐一叫；手動路徑的義務不變
+- PR 預設掛 Copilot 審查（2026-11-09 決定，#208）。`/review-loop` 會自行 commit／push／在 PR 上回覆留言並重新請 review——啟動它就是對這三件事的授權；但它**永不 merge、永不 `--force` push**，要不要 merge 一律由使用者決定
+
 ## 可用指令
 
 | 指令 | 用途 | 前置條件 |
@@ -111,7 +117,11 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | `/new-issue` | 建 GitHub issue（固定四段 body，含驗收標準 checklist）+ 綁 `feature/#N-` linked 分支 | 無 |
 | `/verify-ac` | 對照 issue AC 逐條驗收，未過自動修（上限 2 輪），結果勾回 issue | issue 有 `## 驗收標準`、編號可解析 |
 | `/commit` | 依 SDD 階段分群產生 Conventional Commits（列草案待確認） | 有工作區改動 |
-| `/pr` | push → PR 草案 → `gh pr create`（分支含 `#N` → 自動 Closes #N） | 已有 commit |
+| `/pr` | push → PR 草案 → `gh pr create`（分支含 `#N` → 自動 Closes #N；預設掛 Copilot） | 已有 commit |
+| `/ship` | **收尾一條龍**：六層關卡（紅燈自動修）→ AC 驗收 → commit → PR，只停一次 | 有改動、不在 main |
+| `/review-loop` | push 後自動請 Copilot review、輪詢、修「必修」、回覆，直到共識才通知（不 merge） | PR 已開、工作區乾淨 |
+| `/pr-feedback` | 爬 PR review 留言，分類報告後就地改（不 commit／push／發言） | PR 已開 |
+| `/code-review` | 審本地 diff 抓正確性／重用／簡化／效能 bug（Claude Code 內建） | 有未提交或未合併的改動 |
 | `/sdd-status` | 唯讀盤點 SDD 管線七站進度（每站標完成／部分／未開始＋判定依據），建議下一步 | 無 |
 | `/feature-to-flow` | Feature → `.flow.md`（business invariant + UX-agnostic E2E 流程） | `.feature` 已放入 `spec/gherkin-feature/` |
 | `/feature-to-api` | Feature → 型別定義 + Mock API | `.flow.md` 已放入 `spec/e2e-flows/` |
@@ -143,7 +153,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 | Hook | 事件 | 作用 |
 |------|------|------|
-| `hooks/frozen-paths-guard.mjs` | PreToolUse（Edit/Write/NotebookEdit/Bash） | 擋下凍結區**既有檔**的修改；新增全新檔放行。授權通道：`.claude/tmp/frozen-allow.json` |
+| `hooks/frozen-paths-guard.mjs` | PreToolUse（Edit/Write/NotebookEdit/Bash） | 擋下凍結區**既有檔**的修改；新增全新檔放行。以目標檔所在的 worktree 判斷（同 repo 另一個 worktree 一樣擋，共用 `hooks/target-root.mjs`）。授權通道：目標 worktree 的 `.claude/tmp/frozen-allow.json` |
 | `hooks/server-security-guard.mjs` | PostToolUse（Edit/Write） | 編輯 `server/**/*.ts` 時注入安全 8 條摘要；對 `server/api/**` 機械偵測巢狀 IDOR 與 mass assignment。誤報豁免：`.claude/tmp/server-security-allow.json` |
 
 > rules 的 frontmatter `paths` 觸發只在主對話生效、subagent 內不注入，所以凍結與 server 安全兩條靠 hook 當實際防線。
