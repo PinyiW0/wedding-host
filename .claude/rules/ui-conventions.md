@@ -26,7 +26,7 @@ paths:
 | 使用非指定 icon 集 | 使用 `ui-config.yaml > icons.collection` |
 | 查詢頁面沒有搜尋框 | `query.searchBox.enabled` 為 true 時必須有 |
 | 密碼欄位沒有眼睛切換 | 檢查 `form.password.showToggle` |
-| 跳過確認步驟直接做多個功能 | 每個功能完成後都要等用戶確認 |
+| 跳過確認步驟直接做多個功能 | 每個功能完成後都要等用戶確認（模組扇出模式除外，見 `.claude/skills/feature-to-ui/references/phase-5-fanout.md`，確認點在模組層） |
 | 不載入 `/nuxt-ui` 就開始寫組件 | 先載入 skill 確認組件 API |
 | 定義 local interface | 必須 import `~/types/api/` |
 | 自創字級（`text-[13px]` 任意值、未定義具名 token） | 依 `.claude/rules/visual-hierarchy.md` 字級三層規則 |

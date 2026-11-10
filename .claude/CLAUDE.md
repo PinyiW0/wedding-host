@@ -47,22 +47,7 @@ npm run db:create-admin  # 建立管理者帳號
 
 ## 框架知識 Skill 與裁決
 
-已安裝 Anthony Fu 的 `vue` / `nuxt` / `pinia` skill（`.claude/skills/`），寫對應程式碼時會自動觸發，提供框架正確語法與踩坑提醒。與本專案慣例衝突時，**一律以下列裁決為準**：
-
-- **Pinia store 採 `@pinia/nuxt` 預設 auto-import** — `app/stores/` 下的 store 直接使用、不需手動 import（與 `pinia` skill 一致）
-- **本專案是 Nuxt 4** — `nuxt` skill 基於 3.x（整體相容），目錄結構與設定以 Nuxt 4 官方為準
-  - data fetching 兩處需注意：`useFetch`/`useAsyncData` 的 `data` 是 `shallowRef`（深層 mutate 不觸發響應、預設值 `undefined`）；`immediate: false` 時初始 `status` 是 `'idle'` 非 `'pending'`
-- **本專案 auth 無 refresh token** — `feature-to-api/references/auth-scaffold.md` 是**新專案 scaffold 用**的範本，教的是 access + refresh 雙 token（`/auth/refresh`、single-flight refresh、401→refresh→retry）。本專案認證是**單一 JWT（7 天）**，`server/api/v1/auth/` 只有 `login.post.ts`，沒有 refresh 端點也不打算加。改既有 auth 時不得照該檔補 refresh 機制——那是憑空造一個不存在的東西。該檔僅在未來 scaffold 全新專案時參考
-- **`frontend-design` skill（Anthropic 官方，裝在 `~/.claude/skills/`）不得改動既定色票** — 該 skill 把「暖奶油底（近 `#F4F1EA`）＋高對比襯線＋陶土色點綴」「拉寬全大寫眉標」「中間點資訊列（`A · B · C`）」「近黑 `#111` 代替純黑」「`→` 附在連結文字後」「每區塊 fade-and-slide-up 進場」列為 AI 生成味。本專案的 Editorial Luxe token（`cream #F4EFE6`、Cormorant、`gold`、`ink #111111`）與公開頁既有寫法**六項全中**，但那是已上線、新人看過的既定方向。裁決：
-  - 色票與字體家族以 `app/assets/css/main.css` 的 `@theme` 為準，該 skill 不得新增或替換 token
-  - 採納範圍限「模板套件感」那一類：眉標、中間點、`→`、每區塊進場動畫、統一圓角卡片格線
-  - 改**既有**公開頁的視覺方向前先問使用者；**新**畫面可自由採用該 skill 的主張
-  - 它主張的「一個畫面只花一次大膽」與 `spec/ui-config/creative-direction.md` §4「一頁最多一個主動效」同向，可直接套用
-
-> 維持與官方同步：
-> - 升級框架 major/minor 時，重跑 `npx skills add antfu/skills --skill=vue --skill=nuxt --skill=pinia` 重抓快照
-> - 定期回查 antfu 是否已出 **Nuxt 4** 版 skill（目前上游仍為 3.x），有則直接替換以消除版本落差
-> - 已對齊：vue skill(3.5) ↔ vue 3.5.x、pinia skill(3.0.4) ↔ pinia 3.0.x；唯 nuxt 落後一個 major
+`vue`／`nuxt`／`pinia` skill 與本專案慣例衝突時的裁決（Nuxt 4、withDefaults、auth 無 refresh token、`frontend-design` 不得改色票）見 [rules/framework-skills.md](rules/framework-skills.md)。
 
 ---
 
@@ -88,19 +73,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 ## Vibe UI 守則（v2）
 
-**主 spec 真理是 `test/e2e/specs/*.spec.ts`**——跑 `npx playwright test` 就知道有沒踩線。業務合約定義於對應的 `spec/e2e-flows/*.flow.md` 的 **Business Invariants** 段。
-
-修改 `app/pages/`、`app/components/`、`app/layouts/` 時，必須遵守：
-
-- **不得破壞 Business Invariants**：實體必須可被使用者識別（用業務語意如 username、playerName、deviceId）、業務狀態文字必須保留語意（「連線中」「已斷線」「進行中」「已結束」「建立成功」「已刪除」等）、業務操作必須可被觸發（不一定要按鈕，但要有可達路徑）
-- **不得修改** `test/e2e/specs/`（主 spec 凍結，SSOT 政策）
-- **不得修改** `spec/gherkin-feature/`、`spec/e2e-flows/`（主 spec 來源凍結）
-- **vibe 完 commit 前必跑** `/vibe-check`（白名單內定向、其餘 dev 全量；發 PR 前 `--full` 強制 dev 全量；production 全量由 CI 跑；pre-push 只跑煙霧）。分級判準見 `.claude/skills/vibe-check/SKILL.md`
-- vibe spec（`test/e2e/vibe/`）不凍結，但刪改去留是使用者的決定——紅燈時列選項詢問，不可擅自刪改
-
-可以自由改：顏色、間距、字體、icon、layout、按鈕位置與形式（toolbar / icon-only / menu）、modal vs inline form、列表呈現（table / card / list）、折疊、動畫、新增 testid（建議 `vibe-*` 前綴）、新增頁面與互動。字級與按鈕尺寸預設值見 `.claude/rules/visual-hierarchy.md`——使用者未明確指示改動時維持預設。使用者要求「好看一點」「有質感」「換風格」時，先讀 `spec/ui-config/creative-direction.md` 確認風格方向再動手；加動畫時遵守其 §4 動效規範。
-
-如果你發現非破壞合約無法達成 vibe 目標，**停下來問使用者**，不要擅自改主 spec。
+改 `app/pages/`、`app/components/`、`app/layouts/` 時不得破壞 Business Invariants、不得改凍結區、commit 前必跑 `/vibe-check`；可自由改的範圍與 vibe spec 去留政策見 [rules/vibe-ui.md](rules/vibe-ui.md)。
 
 ---
 
@@ -142,6 +115,8 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | 程式碼品質驗證 | [rules/code-quality.md](rules/code-quality.md) | 修改 app/、server/ 程式碼時 |
 | UI 實作規範 | [rules/ui-conventions.md](rules/ui-conventions.md) | 修改 pages/、components/、layouts/ 時 |
 | 視覺層級規範 | [rules/visual-hierarchy.md](rules/visual-hierarchy.md) | 修改 pages/、components/、layouts/ 時 |
+| Vibe UI 守則 | [rules/vibe-ui.md](rules/vibe-ui.md) | 修改 pages/、components/、layouts/ 時 |
+| 框架知識 Skill 與裁決 | [rules/framework-skills.md](rules/framework-skills.md) | 每次（無 `paths`；auth、CSS 色票等裁決不限 .vue） |
 | 主 spec 凍結 | [rules/frozen-paths.md](rules/frozen-paths.md) | 修改 test/e2e/specs/、spec/gherkin-feature/、spec/e2e-flows/ 時（hook 強制） |
 | Server 安全慣例 | [rules/server-security.md](rules/server-security.md) | 修改 server/**/*.ts 時（hook 強制） |
 | 前端安全慣例 | [rules/frontend-security.md](rules/frontend-security.md) | 修改 app/ 頁面、stores、composables、middleware、plugins、nuxt.config.ts 時 |
@@ -158,7 +133,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 
 > rules 的 frontmatter `paths` 觸發只在主對話生效、subagent 內不注入，所以凍結與 server 安全兩條靠 hook 當實際防線。
 >
-> 未回灌 nuxt4-template 的 `framework-skills.md`、`vibe-ui.md`：內容已由本檔「框架知識 Skill 與裁決」「Vibe UI 守則（v2）」兩段涵蓋，且本專案版本較新（多 Nuxt 4 裁決與 vibe spec 去留政策），搬過來只會製造兩份真理。`i18n` 相關 rules 本專案不適用，不搬。
+> `i18n` 相關 rules 本專案不適用，不搬。
 
 ---
 

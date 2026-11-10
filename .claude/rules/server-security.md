@@ -6,7 +6,7 @@ paths:
 # Server 安全慣例
 
 每條規則各對應一個實際專案被打穿的漏洞（wedding-host 全站安全審查），不是假想威脅。
-mock 端點一律適用——實際專案會把 mock 演化成 production server，查詢過濾、欄位投影、輸入驗證這些 pattern 會存活下來。
+mock 端點一律適用——實際專案會把 mock 演化成 production server，查詢過濾、欄位投影、輸入驗證這些 pattern 會存活下來。（本專案已是真 JWT 認證，`server/middleware/auth.ts` 把操作者掛在 `event.context.authUser`，需要登入的路由用 `server/utils/auth.ts` 的 `getRequestUser(event)` 取即可（enforced 模式未登入已被 middleware 擋成 401）；公開、分享、賓客／工作人員／角色簽章路由，以及 landingOpen 放行的請求，`authUser` 可能是 `undefined`（middleware 對這幾類路由驗完簽章或放行後就提早 return，不掛 `authUser`），`getRequestUser` 會退回預設管理員，這類路由要記操作者時改讀 `event.context.authUser`，沒有登入者就記 `null`，不可退回管理員，也不要因此回 401 擋掉合法匿名請求；這類路由做權限判斷時，用 `!!event.context.authUser` 判斷有沒有登入者，不可用 `getRequestUser`（匿名會被當成管理員而通過檢查）；模板的 `requireAuth`／`MOCK_AUTH` 守衛本專案沒有，不要照抄。）
 
 ## 禁止事項
 
@@ -19,7 +19,7 @@ mock 端點一律適用——實際專案會把 mock 演化成 production server
 | 5 | 把 body/query 的 `xxxId` 當操作者身分（冒用） | 操作者身分只取自 auth context 或已驗證的簽名憑證；公開端點自報的身分欄位忽略或 400 |
 | 6 | 回應整筆吐出或黑名單刪欄位 | 白名單挑欄位出去；密碼雜湊、token、審核理由、內部備註不進任何回應；公開／匿名端點只回已發布狀態資料的公開層欄位 |
 | 7 | 密鑰寫死、dev 預設值成為 production fallback | secret 一律走 env（runtimeConfig）；production 啟動守衛擋 dev 預設值（本專案：`server/plugins/00.security-guard.ts`） |
-| 8 | 錯誤訊息洩漏內部細節或資料存在性 | `statusMessage` 用固定訊息，不帶 stack／DB 原文；歸屬檢查失敗回 404，不讓外人探測資源存在 |
+| 8 | 錯誤訊息洩漏內部細節或資料存在性 | `statusMessage`（本專案慣例）與 `message` 都用固定訊息，不帶 stack／DB 原文（本專案現況見 `.claude/skills/feature-to-api/references/openapi-conventions.md` §4 開頭註記）；歸屬檢查失敗回 404，不讓外人探測資源存在 |
 
 ## 一行示例（最常踩的三條）
 
@@ -36,8 +36,10 @@ mockTasks.push({ taskId: crypto.randomUUID(), projectId, title: body.title, prio
 
 // [X] 5：信任 body 自報身分
 const authorId = body.memberId
-// [O] 5：身分取自 auth context
-const authorId = event.context.authUser.accountId
+// [O] 5：身分取自 auth context——需要登入的路由
+const authorId = getRequestUser(event).userId
+// [O] 5：公開／簽章路由（匿名合法）：沒有登入者就記 null，不退回預設管理員
+const authorId = event.context.authUser?.userId ?? null
 ```
 
 ## 消費地圖
