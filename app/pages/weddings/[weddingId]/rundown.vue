@@ -702,11 +702,12 @@ const { exportItems } = useRundownExport({
                 <span v-if="hiddenRoleCount > 0" class="text-ink-300">隱藏 {{ hiddenRoleCount }}</span>
               </UButton>
               <template #content>
-                <div class="w-72 p-3">
-                  <p class="mb-2 px-1 text-caption text-ink-500">
+                <!-- 最高不超過視窗剩下的空間，角色多時清單自己捲（issue #213） -->
+                <div class="flex max-h-(--reka-popover-content-available-height) w-72 flex-col p-3">
+                  <p class="mb-2 shrink-0 px-1 text-caption text-ink-500">
                     勾選要顯示的角色欄；按住把手上下拖曳，或聚焦把手後按上下方向鍵，調整左右順序（順序所有人共用）
                   </p>
-                  <ul>
+                  <ul class="min-h-0 overflow-y-auto">
                     <li
                       v-for="(role, idx) in roles"
                       :key="role.roleId"
@@ -737,7 +738,7 @@ const { exportItems } = useRundownExport({
                       />
                     </li>
                   </ul>
-                  <div class="mt-2 flex items-center justify-between border-t border-line px-1 pt-2">
+                  <div class="mt-2 flex shrink-0 items-center justify-between border-t border-line px-1 pt-2">
                     <span class="text-caption text-ink-300">
                       {{ roleFilter === ALL_ROLES ? `顯示 ${(roles?.length ?? 0) - hiddenRoleCount} 欄` : '篩選單一角色時一律顯示該角色' }}
                     </span>
@@ -1082,7 +1083,8 @@ const { exportItems } = useRundownExport({
     <!-- title 給螢幕報讀用：自訂 #content 時 NuxtUI 會把它放進隱藏的 DialogTitle，版面不變 -->
     <UModal v-model:open="isRolesModalOpen" title="工作人員角色">
       <template #content>
-        <div class="flex max-h-dvh flex-col p-6">
+        <!-- min-h-0：讓這層跟著彈窗的最大高度縮，角色清單在中間捲動，底部的「新增角色／完成」固定看得到（issue #213） -->
+        <div class="flex min-h-0 flex-col p-6">
           <h3 class="text-body-l font-semibold text-ink dark:text-paper">
             工作人員角色
           </h3>
