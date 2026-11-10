@@ -3,7 +3,7 @@ name: vibe-e2e
 description: Vibe E2E 產生與執行 — 依當下 git diff 對互動/結構 hunk 套 pattern 模板自動產生 test/e2e/vibe/*.spec.ts，並用 playwright.vibe.config.ts 跑 vibe spec。Use when /vibe-check 綠燈、想驗證 vibe 新增的互動或結構行為有沒有破。
 ---
 
-# Vibe E2E — 產生並執行 vibe spec（v2）
+# Vibe E2E — 產生並執行 vibe spec
 
 ## 目的
 
@@ -54,7 +54,7 @@ description: Vibe E2E 產生與執行 — 依當下 git diff 對互動/結構 hu
 git diff <base> -- app/pages/ app/components/ app/layouts/
 ```
 
-分類規則（grep pattern、sub-pattern mapping、邊界 case）見 [`../vibe-setup/classification.md`](../vibe-setup/classification.md)，與 `vibe-setup` 共用。
+分類規則（grep pattern、sub-pattern mapping、邊界 case）見 [`../vibe-setup/references/classification.md`](../vibe-setup/references/classification.md)，與 `vibe-setup` 共用。
 
 **只處理「互動」與「結構」hunk**，純 visual 略過。
 
@@ -211,7 +211,7 @@ vibe 改動的互動/結構驗證通過，可以 commit。
 | 沒有語意 role/name 線索，UI 既有 testid **不在白名單** | **不可使用**——產 `.skip` + WARNING：「孤兒 testid 候選，請先決定要納入合約還是改用語意 anchor」 |
 | 沒有語意 role/name 線索，UI 也沒任何 testid | **不可自己創 `vibe-xxx`**——產 `.skip` + TODO：「此 element 缺合約定位手段，請補 .flow.md 或加語意 anchor」 |
 
-> **與舊版的差別**：舊版 fallback 是「自己創 `vibe-{描述}` testid 並要 UI 補上」——這個路徑會把任意 vibe 階段的 testid 漂白進合約。新版禁止此路徑，未授權 testid 必須先走 flow.md → spec 重生流程。
+> 不自創 `vibe-*` testid 的理由：那會把任意 vibe 階段的 testid 漂白進合約。未授權 testid 必須先走 flow.md → spec 重生流程。
 
 ---
 

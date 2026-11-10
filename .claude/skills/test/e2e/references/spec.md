@@ -8,9 +8,9 @@
 
 ---
 
-## ⚠️ v2 抽象化原則（先讀）
+## ⚠️ 抽象化原則（先讀）
 
-v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**」。`.flow.md` 已用 v2 風格描述 business invariants 與 Selector 策略，spec.ts **必須對齊該風格**，不可越權加 testid 斷言或硬鎖具體值。
+`.spec.ts` 以 **business outcome** 為主導，testid 只是 fallback。`.flow.md` 用同一風格描述 business invariants 與 Selector 策略，spec.ts **必須對齊該風格**，不可越權加 testid 斷言或硬鎖具體值。
 
 定位優先序：
 
@@ -53,6 +53,9 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 ### 輸入
 
 ```
+必讀（共用事實，見 Step 0）：
+0. spec/report/contract-facts.md — 不存在時，先執行 Step 0 合約事實盤點再繼續
+
 必讀（結構來源）：
 1. spec/e2e-flows/{NN}-{name}.flow.md  — 操作流程文件（測試結構）
 2. spec/e2e-flows/_common.flow.md      — 共用步驟
@@ -83,7 +86,7 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 1. **一個 `.flow.md` 對應一個 `.spec.ts`**
 2. **不使用 quickpickle / Gherkin**：直接生成 Playwright `test.describe` / `test` 結構
 3. **共用操作從 helpers import**：login / selectOption / confirmDelete 不在 spec 內定義
-4. **Selector 策略以 `.flow.md` 為準（v2）**：flow 的「Selector 策略」/「Verification 策略」段授權使用哪些 locator 類型。flow 沒寫 testid 就不寫 testid 斷言；flow 用 invariant 表達就用 role/text/API spy 驗證。**禁止越權**：例如 flow 寫「sighting-001 可被識別」，spec 不得改寫成「`sighting-row-sighting-001` 包含 14 欄 testid 斷言」
+4. **Selector 策略以 `.flow.md` 為準**：flow 的「Selector 策略」/「Verification 策略」段授權使用哪些 locator 類型。flow 沒寫 testid 就不寫 testid 斷言；flow 用 invariant 表達就用 role/text/API spy 驗證。**禁止越權**：例如 flow 寫「sighting-001 可被識別」，spec 不得改寫成「`sighting-row-sighting-001` 包含 14 欄 testid 斷言」
 5. **每個 spec 獨立可執行**：透過 `test.beforeEach` reset mock data + 清理多餘實體，確保初始狀態符合 Feature Background
 6. **⚠️ 初始狀態以 Feature Background 為準**：每個 feature 的 `Background:`（逐檔形式為該 `.dsl.feature` 檔、大檔形式為對應的 `Feature:` 區塊）定義了該 feature 的初始狀態。Mock 全集是所有 feature 的 Background 合併，可能包含不屬於該 feature 的實體。Spec 必須確保測試開始時的狀態與 Feature Background 一致（見 Step 2c-2d）
 7. **spec 是生成物，禁止手動編輯**：`.flow.md` 更新時，spec 全量重新生成。green 階段**禁止修改 spec**，只能修改 UI/mock/API。如果 spec 有問題，修 flow 再重新生成
@@ -93,6 +96,91 @@ v2 起，`.spec.ts` 從「testid 主導」改為「**business outcome 主導**�
 ---
 
 ## 執行步驟
+
+### Step 0：合約事實盤點（首次執行時）
+
+**目的**：envelope 形狀、ID pattern、登入方式、種子總表、testid 慣例來源這五類事實橫跨所有 feature 共用。第一次盤點後存成一份檔，之後的 spec（含批次 `batch` 與 Phase 5 模組級扇出）直接讀取引用，不重查。
+
+**檢查**：先確認檔案存不存在，再比對 `route-map.yaml` 有沒有變過（用 hash 判斷，不用「感覺應該沒變」）：
+
+```bash
+mkdir -p spec/report
+if [ -f spec/report/contract-facts.md ]; then
+  echo "contract-facts.md 存在"
+else
+  echo "contract-facts.md 不存在（本專案第一次跑 /test e2e spec）"
+fi
+if [ -f spec/report/route-map.yaml ]; then
+  node -e "console.log(require('crypto').createHash('md5').update(require('fs').readFileSync('spec/report/route-map.yaml')).digest('hex'))"
+else
+  echo "none"   # 本專案未走 route-map 產出流程（未跑過 /feature-to-api 或非 OpenAPI 模式），route_map_hash 直接填 none
+fi
+```
+
+把上面指令算出的 hash（或 `none`）拿去比對 contract-facts.md 內的 `route_map_hash` 欄位：
+
+- **檔案不存在**（本專案第一次跑 `/test e2e spec`）：依下方模板逐欄盤點，來源：
+  - envelope 形狀 → `spec/report/route-map.yaml > api_contract.response_conventions`（若 `/feature-to-api` 已產出）；沒有則讀 `server/api/**/*.ts` 的實際回應結構
+  - ID pattern → `server/mock/data/*.ts` 各實體 ID 的產生方式
+  - 登入方式 → `test/e2e/helpers/actions.ts` 的 `login()` 實作 + `server/api/**/auth/**`
+  - 種子總表（帳號／初始資料） → `server/mock/data/*.ts` 全部初始資料
+  - testid 慣例來源 → SSOT 指標見上方「抽象化原則」第 5 點連結，加上本專案實際使用的 testid 前綴清單
+  - 把上面指令算出的 hash（或 `none`）填進 `route_map_hash` 欄位，寫入 `spec/report/contract-facts.md`（格式見下方模板），完成後再進入 Step 1
+- **檔案存在且 hash 相同**：直接讀取引用。Step 2 交叉比對時**只查本 feature 特有的部分**（Feature Background、本 feature 的錯誤訊息），上述五類共用事實不重查
+- **檔案存在但 hash 不同**（route-map.yaml 之後又變動過，如新增端點或角色；或原本 `route_map_hash` 是 `none`、現在 route-map.yaml 第一次出現）：route-map.yaml 是 API 合約的來源，五類共用事實可能已經過期——逐欄重新核對，改過的地方更新、其餘保留，核對完把新算出的 hash 寫回 `route_map_hash`
+
+**contract-facts.md 格式模板**（欄位固定，依實際盤點結果填入儲存格）：
+
+```markdown
+# spec/report/contract-facts.md
+# 由 /test e2e spec 首次執行時盤點產生；之後的 spec／batch／扇出直接讀取引用，不重查
+# 更新時機：Sync 模式偵測到共用事實變動時
+
+generated_at: <日期>
+route_map_hash: <md5，算法見上方 Step 0「檢查」指令>
+
+## Envelope 形狀
+
+| 項目 | 值 | 來源 |
+|---|---|---|
+| 模式（A 全 envelope／B 裸回） | | |
+| list 回應結構 | | |
+| single 回應結構 | | |
+| action 回應結構 | | |
+| error 回應結構 | | |
+
+## ID Pattern
+
+| 實體 | ID 格式 | 範例值 | 來源檔 |
+|---|---|---|---|
+
+## 登入方式
+
+| 項目 | 值 |
+|---|---|
+| 登入端點 | |
+| Token 存放位置 | |
+| 登入 helper | |
+
+## 種子總表
+
+### 帳號
+
+| 帳號 | 角色 | 登入方式 | 用途 |
+|---|---|---|---|
+
+### 初始資料
+
+| 實體集合 | 初始筆數 | 來源 mock 檔 |
+|---|---|---|
+
+## testid 慣例來源
+
+| 項目 | 值 |
+|---|---|
+| SSOT 檔案 | .claude/skills/feature-to-flow/references/testid-conventions.md |
+| 本專案實際前綴清單 | |
+```
 
 ### Step 1：讀取 .flow.md
 
@@ -204,7 +292,7 @@ grep "createError" server/api/{相關路徑}/*.ts
 ⚠️ 校正表：
 - flow 實體名稱 "{flow值}" → 實際 mock: "{mock值}"
 - flow 錯誤訊息 "{flow訊息}" → 實際 API: "{api訊息}"
-- testid: 僅當 flow「Selector 策略」授權時使用，值取自 flow 定義（v2：testid 是 fallback，不是預設）
+- testid: 僅當 flow「Selector 策略」授權時使用，值取自 flow 定義（testid 是 fallback，不是預設）
 - toast 文字: 直接使用 flow 定義（UI 必須實作此文字）
 - ⚠️ Background 衝突: mock 多餘實體 "{name}" 與建立操作衝突 → 需清理
 ```
@@ -219,7 +307,7 @@ grep "createError" server/api/{相關路徑}/*.ts
 
 ---
 
-## .spec.ts 結構（v2）
+## .spec.ts 結構
 
 ```typescript
 // test/expect 走 ../helpers（掛 hydration 守門 fixture），不直接 import @playwright/test
@@ -267,7 +355,7 @@ test.describe('規則：{Rule 名稱}', () => {
 })
 ```
 
-> **v2 範例對照**：見本檔「Flow → Playwright 轉換規則（v2）」與「特殊操作轉換（v2 為主，testid 為 fallback）」段的實例。
+> **範例對照**：見本檔「Flow → Playwright 轉換規則」與「特殊操作轉換（語意 anchor 為主，testid 為 fallback）」段的實例。
 
 ---
 
@@ -316,7 +404,7 @@ await expect(page.getByText({FEEDBACK}.{SUCCESS_KEY})).toBeVisible()
 
 > **為什麼**：當 UI 端 invariant 文字也 import 同份常數，TypeScript 在 compile time 就能保證 UI 與 spec 對齊，無須 runtime 驗證。vibe iteration 階段「改錯字」這類紅燈消除大半。
 
-### 交叉比對規則（TDD 模式，v2）
+### 交叉比對規則（TDD 模式）
 
 | 資料類型 | 來源 | 說明 |
 |---------|------|------|
@@ -328,28 +416,28 @@ await expect(page.getByText({FEEDBACK}.{SUCCESS_KEY})).toBeVisible()
 | 統計數值 | 從 mock data 手動計算 | 不可省略；用 contains 不用 exact（vibe 可能加單位/格式） |
 | testid（**fallback only**） | `.flow.md` 明示時用 | flow 沒寫 testid，spec 就不寫；flow 用 `data-favorited` 等 attribute 時才用 testid |
 
-> **TDD 原則（v2）**：spec 在 UI 之前生成。flow 描述 business invariant、Verification 策略、Selector 策略，spec 對齊翻譯。UI 實作時必須通過這些 invariant，但**怎麼通過（layout / 措辭 / testid 命名）由 UI 自由決定**。
+> **TDD 原則**：spec 在 UI 之前生成。flow 描述 business invariant、Verification 策略、Selector 策略，spec 對齊翻譯。UI 實作時必須通過這些 invariant，但**怎麼通過（layout / 措辭 / testid 命名）由 UI 自由決定**。
 
-### Strict Mode Violation 防範（v2）
+### Strict Mode Violation 防範
 
-`getByText` / 寬鬆 `getByRole` 都可能匹配多個元素。**v2 預設用 scope 而非 testid 收窄**。
+`getByText` / 寬鬆 `getByRole` 都可能匹配多個元素。**預設用 scope 而非 testid 收窄**。
 
 ```typescript
 // ❌ toast 文字與 Badge 重複 → strict mode violation
 await expect(page.getByText('狀態文字', { exact: true })).toBeVisible()
 
-// ✅ v2：限定在 role=alert / status
+// ✅ 限定在 role=alert / status
 await expect(page.getByRole('alert').getByText('狀態文字')).toBeVisible()
 
 // ❌ 找實體時可能多個 row 含同文字
 await expect(page.getByText('陳小明')).toBeVisible()
 
-// ✅ v2：用 findEntity + 範圍內驗證
+// ✅ 用 findEntity + 範圍內驗證
 const entity = findEntity(page, /陳小明/)
 await expect(entity).toBeVisible()
 await expect(entity.getByText(/130/)).toBeVisible()  // 該實體範圍內的 speed 值
 
-// ✅ v2 替代：`.first()` 配 regex（明確接受多匹配但只驗第一個）
+// ✅ 替代做法：`.first()` 配 regex（明確接受多匹配但只驗第一個）
 await expect(page.getByText(/陳小明/).first()).toBeVisible()
 ```
 
@@ -362,11 +450,11 @@ await expect(page.getByTestId('sighting-favorite-button-sighting-001')).toHaveAt
 
 ---
 
-## Flow → Playwright 轉換規則（v2）
+## Flow → Playwright 轉換規則
 
-### 操作動詞轉換（v2）
+### 操作動詞轉換
 
-| Flow 動詞 | v2 首選（role/text） | testid fallback（僅 flow 明示時用） |
+| Flow 動詞 | 首選（role/text） | testid fallback（僅 flow 明示時用） |
 |-----------|---------------------|----------------------------------|
 | `進入 {頁面}` / `前往 {頁面}` | `await page.goto('/path', { waitUntil: 'networkidle' })` | 同 |
 | `觸發「{意圖}」` | `await page.getByRole('button', { name: /<intent regex>/ }).click()` | `page.getByTestId('id').click()` |
@@ -377,9 +465,9 @@ await expect(page.getByTestId('sighting-favorite-button-sighting-001')).toHaveAt
 | `等待跳轉到 {頁面}` | `await page.waitForURL('**/path')` | 同 |
 | `勾選 / 取消勾選「{描述}」` | `await findEntity(page, /<name>/).getByRole('checkbox').check()` | 見「批次勾選」fallback |
 
-### 驗證詞轉換（v2）
+### 驗證詞轉換
 
-| Flow 驗證詞 | v2 首選 | testid fallback |
+| Flow 驗證詞 | 首選 | testid fallback |
 |------------|--------|----------------|
 | `API spy: POST/DELETE/PUT {url}` | `page.waitForRequest(req => /<url-regex>/.test(req.url()) && req.method() === '<method>')` | — |
 | `→ 使用者收到反饋` | `expect(getFeedbackElement(page)).toBeVisible()`（role=alert / status / 語意文字） | `expect(getByTestId('toast-xxx')).toBeVisible()` |
@@ -392,7 +480,7 @@ await expect(page.getByTestId('sighting-favorite-button-sighting-001')).toHaveAt
 
 **重要**：flow 用 regex 語意（如「匯出.*單次」）就在 spec 用 regex；flow 用精確文字（如錯誤訊息「帳號不存在」）才用 exact。**不可自行升級為 exact**。
 
-### v2 helper 模式
+### helper 模式
 
 下列 helper 應放在 `test/e2e/helpers/`（首次使用時建立、之後共用）：
 
@@ -444,7 +532,7 @@ export function waitForApiCall(page: Page, pathRegex: RegExp, method: string) {
 
 ---
 
-## 特殊操作轉換（v2 為主，testid 為 fallback）
+## 特殊操作轉換（語意 anchor 為主，testid 為 fallback）
 
 ### API spy（destructive / async outcome 主要驗證手段）
 
@@ -461,7 +549,7 @@ expect(request.postDataJSON()).toMatchObject({ /* expected payload */ })
 
 **URL regex 通則**：用 `/\/<endpoint>(\?|$)/` 容版本路徑（`/api/v1/exports`、`/api/v2/exports` 皆過）。**禁止寫死 `/api/exports`** 字面值（會被 server 升版打掛）。
 
-### 列表中定位特定實體（v2）
+### 列表中定位特定實體
 
 ```typescript
 // 用 role + 語意 name 找實體（不限 row / article / listitem 形式）
@@ -475,7 +563,7 @@ testid fallback（僅 flow 明示 testid 時用）：
 const row = page.getByTestId('{entity}-list').locator('tbody tr', { hasText: '{item-name}' })
 ```
 
-### 行內驗證（v2）
+### 行內驗證
 
 ```typescript
 const entity = findEntity(page, /<name>/)
@@ -487,19 +575,19 @@ await expect(entity.getByRole('button', { name: /取消收藏/ })).toBeVisible()
 ### 批次勾選
 
 ```typescript
-// v2：role-based
+// role-based
 await findEntity(page, /<item-name>/).getByRole('checkbox').check()
 ```
 
-### 確認彈窗（v2）
+### 確認彈窗
 
 ```typescript
 await maybeConfirm(page)
 ```
 
-**舊 `confirmDelete(page, 'entity')`** 仍可用於 flow 明示 testid 的 entity，但 v2 預設用 `maybeConfirm`（dialog scope + 動詞 regex）。
+`confirmDelete(page, 'entity')` 仍可用於 flow 明示 testid 的 entity，但預設用 `maybeConfirm`（dialog scope + 動詞 regex）。
 
-### 反饋驗證（v2）
+### 反饋驗證
 
 ```typescript
 await expect(getFeedbackElement(page)).toBeVisible()
@@ -514,7 +602,7 @@ await page.goto('/items', { waitUntil: 'networkidle' })
 await expect(findEntity(page, /<deleted-name>/)).not.toBeVisible()
 ```
 
-### USelect / 下拉選單（v2）
+### USelect / 下拉選單
 
 ```typescript
 // 優先用 role
@@ -560,7 +648,7 @@ export async function loginAs(page: Page, role: keyof typeof ROLE_ACCOUNTS) {
 | `endpoints`（受限端點） | 「{受限角色} 呼叫 {端點} → 被拒」 | API spy 抓 **403**：`page.waitForResponse(r => /<path-regex>/.test(r.url()) && r.status() === 403)`；或 UI 端語意反饋（`getFeedbackElement` / 無權限文字） |
 | `protected_routes`（受保護路由） | 「{受限角色} 直接打 {path} → 被導離」 | `await page.goto(path)` 後 `await page.waitForURL('**/403')`（或首頁）；**不**斷言看得到受保護內容 |
 | `ownership`（列表 ACL） | 同一列表，全權角色 vs 受限角色筆數不同 | 兩個 test 各自 `loginAs`，斷言可見實體集合依角色推算（見 Step 2b） |
-| `object_ownership`（單筆 BOLA / **OWASP API #1**） | 「{受限角色} 帶**他人 id** 打 {`/{id}` 端點} → 被拒」 | API spy 抓 **403**（`notfound: true` 時 **404**）：`page.waitForResponse(r => /<path-with-OTHER-id>/.test(r.url()) && [403, 404].includes(r.status()))`。關鍵是「**同端點、換成不屬於自己的 object id**」——這正是 BOLA 攻擊面，**必測** |
+| `object_ownership`（單筆 BOLA / **OWASP API #1**） | 「{受限角色} 帶**他人 id** 打 {`/{id}` 端點} → 被拒」 | API spy 抓 **404**（route-map 條目設 `deny_status: 403` 時 **403**）：`page.waitForResponse(r => /<path-with-OTHER-id>/.test(r.url()) && [403, 404].includes(r.status()))`。關鍵是「**同端點、換成不屬於自己的 object id**」——這正是 BOLA 攻擊面，**必測** |
 
 ```ts
 // 範例：受限角色被端點擋（403）
@@ -590,7 +678,7 @@ test('observer 無法編輯他人建立的 note（單筆歸屬）', async ({ pag
 ```
 
 > ⚠️ **拒絕場景 ≠ 不可達場景**：受限角色「被擋」是可觀察、可測的（上方），**必須產**。下方 Skip 規則的「API 層已過濾、UI 根本無法觸發」指的是連入口與路由都不存在、URL 也拼不出來的死路；**不含** BOLA——「帶他人 id 打 `/{id}`」永遠拼得出 URL、是真實攻擊面，`object_ownership` 命中時**必測、不可 skip**。
-> ⚠️ 403/404 statusMessage、守門目標路徑、以及「屬於他人的 object id」以 mock（`requireRole` / `requireOwnership`）、`rbac.global.ts`、mock 種子的實際值為準（交叉比對 Step 2b / 2e）。
+> ⚠️ 403/404 狀態碼、守門目標路徑、以及「屬於他人的 object id」以 mock（`requireRole` / `requireOwnership`）、`rbac.global.ts`、mock 種子的實際值為準（交叉比對 Step 2b / 2e）。
 
 ### 巢狀資源 scope 層（**無條件**，不需 rbac）
 
@@ -657,7 +745,7 @@ test.skip('帳號鎖定後重新登入', async () => {
 ## ESLint / Lint Gate
 
 - 生成後必跑 `npm run eslint` + `npm run typelint`，零錯誤才算完成（CLAUDE.md 紅線）
-- import 排序遵守 perfectionist 規則；test/expect 從 `../helpers` 匯入（見「.spec.ts 結構（v2）」範本）
+- import 排序遵守 perfectionist 規則；test/expect 從 `../helpers` 匯入（見「.spec.ts 結構」範本）
 - 指令順序、`--fix` 禁忌與常見問題（未使用 import、未使用參數加 `_` 前綴）見 [green.md](green.md) 的「Lint Gate（必須通過）」段
 
 ---
@@ -673,7 +761,7 @@ test.skip('帳號鎖定後重新登入', async () => {
 - [ ] 設定/狀態類 scenario 含「寫入 → `page.reload()` → 斷言仍在」持久性斷言（見「持久性斷言」段）
 - [ ] `npm run eslint` + `npm run typelint` 零錯誤
 
-### v2 抽象化合規
+### 抽象化合規
 - [ ] **flow 沒寫 testid 的地方，spec 也沒用 testid**（沒越權）
 - [ ] **destructive / async outcome 用 API spy 驗證**（不只靠 UI 斷言）
 - [ ] **API URL 用 regex（`/\/<endpoint>(\?|$)/`）容版本路徑**，不寫死 `/api/exports`
@@ -682,7 +770,7 @@ test.skip('帳號鎖定後重新登入', async () => {
 - [ ] **反饋元素用 `getFeedbackElement(page)`** 或 `getByRole('alert' / 'status')`
 - [ ] **實體查找用 `findEntity(page, /<name>/)`**，不寫死 row layout
 - [ ] **flow 用 regex 語意的，spec 也用 regex**；flow 用 exact 文字（如錯誤訊息）的，spec 才用 exact
-- [ ] **v2 helper 已 export 到 `test/e2e/helpers/`**（findEntity / maybeConfirm / getFeedbackElement / waitForApiCall）
+- [ ] **helper 已 export 到 `test/e2e/helpers/`**（findEntity / maybeConfirm / getFeedbackElement / waitForApiCall）
 
 ### 既有規則（仍生效）
 - [ ] 所有語法規則已遵守（見「Playwright 必遵守規則 > 語法規則」表）
