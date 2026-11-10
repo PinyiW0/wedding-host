@@ -1,72 +1,116 @@
 ---
 name: skill-creator-new
 description: |
-  Skill 建立與優化工具。Use when 需要新增 Skill、優化現有 Skill、建立 Skill 規範、或檢查 Skill 標準。
+  建立新 skill，或審查既有 skill 的寫法品質並改寫。Use when 使用者要新增 skill、優化或精簡既有 skill、
+  檢查某個 skill 寫得好不好，或問 skill 該怎麼寫、description 該怎麼下。
 ---
 
 # Skill Creator
 
-協助建立符合標準的 Skill，或優化現有 Skill。
+建立與優化是同一件事的兩端，共用同一套判準：**skill 只寫模型不知道的事，並依任務的容錯空間決定管多緊。**
 
-<rules>
-**執行規則（CRITICAL）**：
+寫太少，模型不知道這裡的慣例與地雷；寫太多，模型忙著遵守儀式而不動腦。兩種失敗都常見，後者更難察覺——它看起來很完整。
 
-當看到 `<action>AskUserQuestion({...})</action>` 時：
-1. **必須**使用 AskUserQuestion 工具，傳入函數參數
-2. **禁止**將問題內容輸出為文字或 Markdown
-3. **必須**等待用戶回答後，執行「回答後處理」邏輯
-</rules>
+## 先問：這值得做成 skill 嗎
 
-## Workflow
+- 重複做過 3–5 次以上的流程 → 值得
+- 模型不具備的專屬知識（團隊慣例、函式庫地雷、內部 API 形狀） → 值得
+- 有副作用、順序錯就出事的操作 → 值得，且屬低容錯（見判準 2）
+- 一次性任務、或模型本來就做得好的事 → 不值得。寫進 CLAUDE.md，或當下直接講
 
-```mermaid
-flowchart TD
-    START[開始] --> JUDGE{判斷模式}
-    JUDGE -->|新增| A[Mode A: 建立]
-    JUDGE -->|優化| B[Mode B: 優化]
-    A --> DONE[完成]
-    B --> DONE
-```
+## 五個判準
 
-## Mode Contract
+建立時照著寫，優化時照著審。
 
-| Mode | 詳細流程 | Input | Output | Checkpoint |
-|------|----------|-------|--------|------------|
-| Mode A | [mode-a.md](references/mode-a.md) | 用戶需求 | SKILL.md + references/ | 通過檢查清單 |
-| Mode B | [mode-b.md](references/mode-b.md) | Skill 名稱 | 更新後的文件 | 通過檢查清單 |
+### 1. 只寫模型不知道的事
 
----
+每段寫完自問：這是模型已經會的嗎？會的就刪。教 Markdown 語法、教工具怎麼呼叫、教通用最佳實踐，都在消耗 context 並稀釋真正重要的內容。
 
-## 流程控管
+skill 的價值密度 ＝ 模型不知道的事 ÷ 總行數。加字容易，加密度難。
 
-### 判斷模式
+### 2. 依容錯空間決定約束強度
 
-根據用戶意圖判斷：
-- **新增**：用戶要建立新 Skill → Mode A
-- **優化**：用戶要檢查/優化現有 Skill → Mode B
+不是每一段都該一樣嚴，判準是「做錯的代價」：
 
-### Mode 完成後
+| 容錯空間 | 寫法 | 例 |
+|---|---|---|
+| 高——多種做法都對 | 給方向與判準，讓模型自己選 | 「元件怎麼拆以可讀性為準」 |
+| 中——有偏好但允許變化 | 給模式，細節放手 | 「確認框用 UModal，props 自行決定」 |
+| 低——順序錯就爆，或格式要被機器解析 | 寫死步驟／精確格式，只留必要參數 | 「1. 停 server → 2. migration → 3. seed → 4. 重啟」；JSON 欄位名 |
 
-更新 Skill 文件，回報完成狀態。
+錯了能輕鬆重來的放手，代價高的鎖死。**把高容錯的段落也寫成鐵則是最常見的過度設計**——它讓模型把力氣花在遵守形式，而不是把事做對。
 
----
+### 3. 解釋為什麼，不要堆 MUST
 
-<rules>
-**必須**（MUST）：
-- 選項按可能性高至低排序
-- 每個 Phase 結束時展示摘要並確認
-- 確認類問題使用 AskUserQuestion
+滿篇全大寫的 ALWAYS／NEVER、每條都標 CRITICAL，是設計出問題的訊號：全部都重要等於都不重要，模型無從分辨。改成說清楚理由——模型理解了為什麼，才有辦法在你沒預料到的情境做對。
 
-**禁止**（MUST NOT）：
-- 不要跳過 Checkpoint
-- 不要產出超過 500 行的 SKILL.md
-</rules>
+判準 2 的低容錯段落是例外，那裡精確本身就是價值。
 
-## 參考文件
+### 4. description 決定生死
 
-| 文件 | 說明 |
-|------|------|
-| [official-spec.md](references/official-spec.md) | Claude Code 官方規格（含檢查規則）|
-| [custom-spec.md](references/custom-spec.md) | 協作型 Skill 規格（含檢查規則）|
-| [general-spec.md](references/general-spec.md) | 通用 Skill 規格（含檢查規則）|
-| [templates.md](references/templates.md) | 五種類型模板 |
+description 是模型判斷「要不要載入這個 skill」的唯一依據。body 寫得再好，沒被觸發就等於不存在。
+
+公式：**{做什麼}。Use when {什麼情境／使用者會怎麼說}。**
+
+- 寫使用者實際會講的話，不寫抽象功能分類
+- 該觸發沒觸發 → 補具體觸發語；不該觸發卻觸發 → 加負面觸發詞界定不適用場景
+- 用第三人稱描述能力，不寫「我可以幫你……」
+
+### 5. 分層載入，不要什麼都塞主檔
+
+| 載入時機 | 內容 | 限制 |
+|---|---|---|
+| 永遠在 context | frontmatter（name＋description） | 極短 |
+| 觸發時載入 | SKILL.md body | < 500 行 |
+| 用到才載入 | references／scripts／assets | 無上限 |
+
+references 只放一層、全部從 SKILL.md 直連——巢狀引用（SKILL.md → a.md → b.md）時模型常只預覽開頭就往下走，讀不全。超過 100 行的 reference 檔開頭加目錄，理由同上。腳本放 scripts/ 用執行的，原始碼不進 context。
+
+細節見 [authoring-guide.md](references/authoring-guide.md)。
+
+## 建立新 skill
+
+1. 弄清楚要解決什麼問題、誰在什麼情境會用、哪些部分是模型不知道的
+2. **一次提出完整草案**讓使用者確認：目錄結構、description 草稿、各檔放什麼、哪些段落走高／低容錯。不要把設計拆成一題一題的選單問使用者——那是把設計外包出去，而且先定殼會反過來限制內容
+3. 確認後寫檔，寫完跑「完成前自檢」
+4. 回報檔案清單與行數、description 草稿、哪些地方刻意留白交給模型判斷
+
+## 優化既有 skill
+
+讀完全部檔案（含 references），用五個判準做**語意審查**，重點看：
+
+- 有沒有在教模型已知的事
+- 高容錯處是否被寫成鐵則；互動確認點是否多到打斷流程
+- description 是否真的觸發得到目標情境
+- 是否儀式性重複——每個檔案都有一份沒資訊的 contract、線性流程圖、或「做完這步做下一步」的同義反覆
+- 引用的外部事實是否過期：官方欄位、路徑、指令是否還存在（不確定就去查官方文件，別憑印象）
+
+上面看的是「這些話該不該留」。還有三類問題不在敘事層，得另外查——它們最常被漏掉，因為文件讀起來很順：
+
+- **範例程式碼能不能跑**：欄位名前後一致嗎？跟同一個 skill 其他檔的型別、命名慣例對得上嗎？範例會被整段照抄，錯的範例比沒有範例更糟
+- **檔案之間有沒有打架**：同一條原則是不是只有一半檔案遵守；同樣寫成「已知落差」的註記，有的其實早就修好了
+- **文件對自己的描述是否還成立**：「待補」「暫時這樣」「見 issue #N」這類自我註記會過期，而外部事實過期看得出來、自我註記過期看不出來（它描述的是文件自己，讀起來永遠合理）。逐條回去對現況——issue 關閉不等於內容改好了，要直接讀當下的檔案
+
+再加上「完成前自檢」的硬規則。問題**一次列完**，每條附 `檔案:行號` 與建議處置，讓使用者一次裁決，再動手改。
+
+**格式合規不等於品質**：機械檢查得到的只是及格線；真正的問題——這個流程有沒有必要、這條約束會不會壓縮模型判斷——只能靠讀懂內容判斷。一個滿分通過格式檢查的 skill 仍可能整體是過度設計。
+
+## 完成前自檢
+
+這幾條可機械驗證，不通過就修：
+
+- [ ] `name`：kebab-case、≤64 字元、不含 `anthropic` 或 `claude`
+- [ ] `description`：非空、≤1024 字元、第三人稱，且說清楚做什麼＋何時用
+- [ ] SKILL.md body < 500 行（觸發即全載，超過就把細節下放 references/）
+- [ ] references 只有一層：全部由 SKILL.md 直連，reference 檔之間不互相引用
+- [ ] 超過 100 行的 reference 檔開頭有目錄
+- [ ] 所有相對連結指向實際存在的檔案
+- [ ] 放對照資料的 reference 檔標了來源與驗證日期
+- [ ] `scripts/` 每個子命令、`references/` 每份檔案都能在 SKILL.md 指出呼叫或載入位置；指不出來就補呼叫點，用不到就刪掉——不能放著當死碼。判準與正反例見 [authoring-guide.md](references/authoring-guide.md#消費點驗證)
+
+## 參考
+
+| 文件 | 內容 |
+|---|---|
+| [authoring-guide.md](references/authoring-guide.md) | frontmatter 欄位速查、description 正反例與觸發除錯、分層載入細節、消費點驗證、過度設計徵狀表 |
+| [templates.md](references/templates.md) | 五種常見 skill 類型的骨架 |
