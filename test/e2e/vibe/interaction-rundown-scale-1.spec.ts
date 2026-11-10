@@ -122,19 +122,37 @@ for (const viewport of VIEWPORTS) {
         expect(Math.abs((await add.boundingBox())!.y - before)).toBeLessThan(1)
       })
 
-      test('清單捲到底，最後一個角色的連結、編輯、移除都點得到', async ({ page }) => {
+      test('清單捲到底，最後一個角色能複製連結、改名、移除', async ({ page, context }) => {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+        const renamed = `${LAST_ROLE}改`
         await page.getByRole('button', { name: /工作人員角色/ }).click()
         const dialog = roleDialog(page)
-        await scrollToBottom(dialog.getByRole('list'))
+        const list = dialog.getByRole('list')
+        await scrollToBottom(list)
 
-        await expectReachable(dialog.getByRole('button', { name: `複製 ${LAST_ROLE} 的連結` }))
-        await expectReachable(dialog.getByRole('button', { name: `編輯 ${LAST_ROLE}` }))
-        const remove = dialog.getByRole('button', { name: `移除 ${LAST_ROLE}` })
+        // 複製連結：拿到 /s/ 短網址
+        const copy = dialog.getByRole('button', { name: `複製 ${LAST_ROLE} 的連結` })
+        await expectReachable(copy)
+        await copy.click()
+        await expect(page.getByText(`已複製「${LAST_ROLE}」的連結`).first()).toBeVisible()
+        expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/s\/[a-z2-9]{8}$/)
+
+        // 改名：清單出現新名稱
+        const edit = dialog.getByRole('button', { name: `編輯 ${LAST_ROLE}` })
+        await expectReachable(edit)
+        await edit.click()
+        await page.getByTestId('rundown-role-name').fill(renamed)
+        await page.getByTestId('rundown-role-submit').click()
+        await expect(page.getByTestId('rundown-role-form')).toHaveCount(0)
+        await expect(dialog.getByRole('listitem', { name: renamed })).toBeAttached()
+
+        // 移除：清單少一個
+        await scrollToBottom(list)
+        const remove = dialog.getByRole('button', { name: `移除 ${renamed}` })
         await expectReachable(remove)
-
         await remove.click()
         await dialog.getByRole('button', { name: '確認移除' }).click()
-        await expect(dialog.getByRole('listitem', { name: LAST_ROLE })).toHaveCount(0)
+        await expect(dialog.getByRole('listitem', { name: renamed })).toHaveCount(0)
         await expect(dialog.getByRole('listitem')).toHaveCount(ROLE_COUNT - 1)
       })
 
@@ -213,12 +231,17 @@ for (const viewport of VIEWPORTS) {
     })
 
     test.describe('矩陣表', () => {
-      test('捲到最右邊看得到最後一個角色欄；桌機的主要事項欄留在原位、沒被角色欄蓋住', async ({ page }) => {
+      test('捲到最右邊看得到最後一個角色欄；桌機的開始、結束、主要事項欄留在原位、沒被角色欄蓋住', async ({ page }) => {
         // lg（1024px）以上才凍結左欄；手機凍結四欄會比螢幕還寬，設計上不凍結
         const frozen = viewport.size.width >= 1024
-        const title = page.getByTestId('rundown-cell-title').first()
-        if (frozen)
-          await expectReachable(title)
+        const frozenCells = ['rundown-cell-time', 'rundown-cell-end', 'rundown-cell-title'].map(id => page.getByTestId(id).first())
+        const before: number[] = []
+        if (frozen) {
+          for (const cell of frozenCells) {
+            await expectReachable(cell)
+            before.push((await cell.boundingBox())!.x)
+          }
+        }
 
         await matrixScroller(page).evaluate((table) => {
           const scroller = table.parentElement!
@@ -226,8 +249,12 @@ for (const viewport of VIEWPORTS) {
         })
 
         await expectReachable(page.getByRole('columnheader', { name: LAST_ROLE }))
-        if (frozen)
-          await expectReachable(title)
+        if (frozen) {
+          for (const [i, cell] of frozenCells.entries()) {
+            await expectReachable(cell)
+            expect(Math.abs((await cell.boundingBox())!.x - before[i]!)).toBeLessThan(1)
+          }
+        }
       })
 
       test('捲到最底看得到最後一列；按「新增一列」，新列落在視窗內', async ({ page }) => {
