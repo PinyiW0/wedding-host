@@ -65,7 +65,7 @@ find spec/gherkin-feature -maxdepth 1 -type f -name '*.feature'
 
 > **此前綴表是範例字典（取自某流星觀測專案），非通用白名單**：真正判準是「同一 aggregate 前綴 / 同一 URL 場景歸一個 module」。換領域（電商 `Order*`、CMS `Article*`）時依當前 `.feature` 即時歸納前綴，別套這張表的字面；前綴難歸時在計畫表「待確認」段問操作者。
 >
-> **就近原則**（取代舊版「主軸」措辭）：若 Feature 同時涉及多個前綴（如「觀測時段目擊事件清單」涉及 Watch + Sighting；「收藏單筆」純 Sighting），歸到**該 Feature 主要操作場景所在的 URL / 頁面**對應的 module（目擊事件清單、收藏皆在 `/watch/[id]` 頁面內，故歸 `watch`）。
+> **就近原則**：若 Feature 同時涉及多個前綴（如「觀測時段目擊事件清單」涉及 Watch + Sighting；「收藏單筆」純 Sighting），歸到**該 Feature 主要操作場景所在的 URL / 頁面**對應的 module（目擊事件清單、收藏皆在 `/watch/[id]` 頁面內，故歸 `watch`）。
 >
 > **未來擴展逃生口**：若新 Feature 的前綴不在表上、capability 也不在 2a，**停下來在計畫表的「待確認」段列出**，不要默默吃進最像的 module。
 

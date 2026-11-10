@@ -45,7 +45,7 @@ ui    P5  入口 / 按鈕 v-if 角色隱藏（§3b）
 > ⚠️ **授權分四層，「自己 / own」語意尤其要分辨型別**——對照 [OWASP API 授權兩類漏洞 BFLA / BOLA](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/)：
 > - **① 端點存取**（→ `endpoints`，擋 OWASP **BFLA**）：「僅 X 角色可進這個功能」——看**角色**，`requireRole` 擋。
 > - **② 列表級 ownership**（→ `ownership`）：「X 角色**只看自己建立的清單**」——對 GET 列表主動過濾，避免列表回傳他人資料。
-> - **③ 單筆 object 歸屬**（→ `object_ownership`，擋 OWASP **BOLA / API #1**）：「只能讀 / 改 / 刪**自己的那一筆** `/{id}`」——角色對、端點對，但帶他人 id 不該成功。看**這筆資料的擁有者**，`owner !== me → 403`。**這層要自動生**（§2 ③、§3a），最常被漏，卻是 OWASP 排名第 1 的 API 漏洞。
+> - **③ 單筆 object 歸屬**（→ `object_ownership`，擋 OWASP **BOLA / API #1**）：「只能讀 / 改 / 刪**自己的那一筆** `/{id}`」——角色對、端點對，但帶他人 id 不該成功。看**這筆資料的擁有者**，`owner !== me → 404`（預設；route-map 條目設 `deny_status: 403` 時回 403）。**這層要自動生**（§2 ③、§3a），最常被漏，卻是 OWASP 排名第 1 的 API 漏洞。
 > - **④ 動作級 self-scope**（→ `business_guards`，**不自動生、手寫**）：「`member` 改自己密碼**且需 oldPassword**、`workspace_owner` 改他人免帶」這種**歸屬 + 額外 domain 條件**的混合。
 >
 > 判型訣竅：純「這筆是不是我的」→ `object_ownership`（自動生）；「是不是我的 **且** 還要滿足別的條件（舊密碼、最後一個 admin…）」→ `business_guards`（手寫）。真實 spec 常 `ownership` 空、但可能有 `object_ownership`——別看到「自己」就一律塞列表過濾。
@@ -101,7 +101,8 @@ rbac:
   #    來源：spec 明說「只能讀 / 改 / 刪自己的 X」「不得存取他人 Y」這類「單筆歸屬」散文（多在 /{id} 端點）
   #    與 ② 的差別：② 是 GET 列表主動只回自己的；③ 是 GET/PATCH/DELETE /{id} 單筆，角色對、端點對，但帶他人 id → 拒
   #    owner_field = 被操作資源的擁有者欄位；restricted_roles = 受此限的角色（全權角色不檢查）
-  #    notfound: true 時改回 404（不洩漏「該筆存在但你無權」，OWASP 建議之一；預設 403）
+  #    歸屬失敗預設回 404（不洩漏「該筆存在但你無權」，對齊 .claude/rules/server-security.md 第 8 條）；
+  #    專案要回 403 時在該條加 deny_status: 403 覆寫
   #    ⚠️ 【對照組】流星觀測 spec 的實際值也是空——它只有「全權角色 gating（→endpoints）+ 改密 self-scope（→business_guards）」，
   #       無 per-object ownership。同上，這是論證「實際結果就是空」，不是可照抄的範例。
   #       照「偵測到才生」：spec 真的寫「只能動自己的單筆」才填，別憑空加（憑空加 = 假權限）。
@@ -111,6 +112,10 @@ rbac:
   #   - { method: DELETE, path: /api/v1/notes/{noteId}, owner_field: createdBy, restricted_roles: [member] }
 
   # ④ 受角色保護的前端路由：feature-to-ui 據此做「入口隱藏 + 路由守門」
+  #    path 涵蓋其下子頁（寫 /members 也守 /members/[id]），子頁不必逐一列；
+  #    子頁要開放給其他角色時另列一條，最具體的規則優先（深的先、同深度具體段先，列的順序不影響）。
+  #    同一路徑不可重複列（只差參數名或尾斜線也算）；不可涵蓋任何 auth.public_paths（含 login；
+  #    最常見是寫了 `/`）——匿名者進公開頁會被導去 /403。兩者 feature-to-ui Phase 2 生成前都會擋下
   protected_routes:
     - { path: /members, allow: [workspace_owner] }
 
@@ -126,7 +131,7 @@ rbac:
 | `roles` | spec（loginAs 每角色）、ui（v-if 判斷） | 角色全集 |
 | `endpoints` | mock（requireRole → 403）、spec（拒絕場景） | 端點級存取控制 |
 | `ownership` | mock（列表過濾）、spec（依角色推算斷言值） | 列表級 ACL |
-| `object_ownership` | mock（單筆 owner 檢查 → 403/404）、spec（BOLA 拒絕場景） | 單筆 object 級 ACL（OWASP API #1） |
+| `object_ownership` | mock（單筆 owner 檢查 → 預設 404，`deny_status: 403` 覆寫）、spec（BOLA 拒絕場景） | 單筆 object 級 ACL（OWASP API #1） |
 | `protected_routes` | ui（rbac.global.ts 守門 + 入口隱藏）、spec（打 URL → 導向） | 前端路由守門 |
 | `business_guards` | spec / 人工 | 只登錄，不自動生 |
 
@@ -136,9 +141,9 @@ rbac:
 
 | 檔案 | 範本位置 | 套用者 | 說明 |
 |---|---|---|---|
-| `server/mock/auth-context.ts` | §3a | feature-to-api | `getMockCurrentUser` / `requireRole`（token → 當前 mock 使用者 + roles）。**補上目前 phase-1-mock-api 引用卻未定義的橋接** |
+| `server/mock/auth-context.ts` | §3a | feature-to-api | `getMockCurrentUser` / `requireAuth` / `requireRole` / `requireOwnership`（token → 當前 mock 使用者 + roles；無 token 或查無使用者 → 401） |
 | `server/mock/data/users.ts` | §3a | feature-to-api | mock 使用者帶 `roles: string[]`，每個 `rbac.roles` 至少一帳號 |
-| `server/api/**/*.ts`（受限端點） | §3a | feature-to-api | handler 首行 `requireRole(event, allow)` |
+| `server/api/**/*.ts`（非 public 端點） | §3a | feature-to-api | handler 首行 `requireAuth(event)`；受角色限制的端點改用 `requireRole(event, allow)`（內含 `requireAuth`） |
 | `app/middleware/rbac.global.ts` | §3b → feature-to-ui `phase-2-skeleton.md` | feature-to-ui | 路由守門（讀 `protected_routes`，受限角色導向 `/403`） |
 | 入口 / 操作鈕 `v-if` 角色判斷 | §3b → feature-to-ui `rules.md` | feature-to-ui | 選單入口 / 按鈕依 `authStore.roles` 隱藏 |
 
@@ -157,6 +162,7 @@ import { mockUsers } from './data/users'
 export interface MockCurrentUser {
   accountId: string
   account: string
+  name: string
   roles: string[]
 }
 
@@ -176,25 +182,37 @@ export function getMockCurrentUser(event: H3Event): MockCurrentUser | null {
   if (!accountId)
     return null
   const u = mockUsers.find(x => x.accountId === accountId && !x.deletedAt)
-  return u ? { accountId: u.accountId, account: u.account, roles: u.roles } : null
+  return u ? { accountId: u.accountId, account: u.account, name: u.name, roles: u.roles } : null
 }
 
-// 端點級守門：當前角色不在 allow 內 → 403。allow 來自 route-map.rbac.endpoints[*].allow。
-export function requireRole(event: H3Event, allow: string[], message = '權限不足'): MockCurrentUser {
+// 登入守門：沒帶 token、token 解析不出、或查無使用者 → 401（401＝不知道你是誰；403＝知道你是誰但不准）。
+// route-map 有 auth 時，依 phase-1-mock-api.md 步驟 6 的公開判定，非公開端點首行呼叫（auth.token_endpoints 的 login／refresh／logout 除外）。
+export function requireAuth(event: H3Event): MockCurrentUser {
   const user = getMockCurrentUser(event)
-  if (!user || !user.roles.some(r => allow.includes(r)))
-    throw createError({ statusCode: 403, statusMessage: message })
+  if (!user)
+    throw createError({ statusCode: 401, message: '請先登入' })
+  return user
+}
+
+// 端點級守門：先 requireAuth（未登入 401），當前角色不在 allow 內 → 403。allow 來自 route-map.rbac.endpoints[*].allow。
+export function requireRole(event: H3Event, allow: string[], message = '權限不足'): MockCurrentUser {
+  const user = requireAuth(event)
+  if (!user.roles.some(r => allow.includes(r)))
+    throw createError({ statusCode: 403, message })
   return user
 }
 
 // 物件級守門（OWASP BOLA / API #1）：受限角色操作單筆資源時，驗證該筆屬於自己。
+// 第一個參數收 requireAuth 回傳的使用者，不收 event：型別上逼呼叫端先過登入守門，匿名請求無從繞過。
 // owner = 被操作資源的擁有者 accountId；restrictedRoles 來自 route-map.rbac.object_ownership[*].restricted_roles。
-// notFound=true → 回 404（不洩漏「該筆存在但你無權」，OWASP 建議）；否則 403。全權角色（不在 restrictedRoles）直接放行。
-export function requireOwnership(event: H3Event, owner: string, restrictedRoles: string[], opts: { notFound?: boolean } = {}): void {
-  const user = getMockCurrentUser(event)
-  const restricted = !!user && user.roles.some(r => restrictedRoles.includes(r))
-  if (restricted && owner !== user!.accountId)
-    throw createError({ statusCode: opts.notFound ? 404 : 403, statusMessage: opts.notFound ? '資源不存在' : '無權存取此資源' })
+// 預設回 404（不洩漏「該筆存在但你無權」，server-security 第 8 條）；route-map 條目設 deny_status: 403 時傳 { denyStatus: 403 }。
+// 全權角色（不在 restrictedRoles）直接放行。
+export function requireOwnership(user: MockCurrentUser, owner: string, restrictedRoles: string[], opts: { denyStatus?: 403 | 404 } = {}): void {
+  const restricted = user.roles.some(r => restrictedRoles.includes(r))
+  if (restricted && owner !== user.accountId) {
+    const statusCode = opts.denyStatus ?? 404
+    throw createError({ statusCode, message: statusCode === 404 ? '資源不存在' : '無權存取此資源' })
+  }
 }
 ```
 
@@ -209,9 +227,7 @@ export const mockUsers = [
 
 > ⚠️ **此種子與 [phase-1-mock-api.md](phase-1-mock-api.md)「Mock 資料範例」是同一個檔（`server/mock/data/users.ts`）的兩處示意**——那裡示範「登入要什麼欄位」、這裡示範「rbac 要多角色」。
 >
-> **目前兩處的角色值不一致**：本檔已中性化為 `workspace_owner` / `member`，`phase-1-mock-api.md` 仍是 流星觀測 spec 的實際角色（尚未中性化，收斂追蹤見 issue #103 §7）。
->
-> **優先序無歧義：多角色種子以本檔 §3a 為準**——`phase-1-mock-api.md` 的「角色守門範例」段已明訂「完整範本（含多角色種子）見 rbac-scaffold.md §3a，**以該檔為唯一權威版本，勿在此複製**」。那邊「Mock 資料範例」的角色字面值屬已知待修的殘留複製品，**不要照抄**。
+> **優先序無歧義：多角色種子以本檔 §3a 為準**——`phase-1-mock-api.md` 的「角色守門範例」段已明訂「完整範本（含多角色種子）見 rbac-scaffold.md §3a，**以該檔為唯一權威版本，勿在此複製**」。那邊「Mock 資料範例」的角色值與本檔一致（皆為假想值）。
 
 ```ts
 // server/api/v1/members/index.get.ts —— 受限端點：首行 requireRole 即擋
@@ -224,7 +240,7 @@ import { requireRole } from '../../../mock/auth-context'
 import { mockUsers } from '../../../mock/data/users'
 
 export default defineEventHandler((event: H3Event): MemberListItem[] => {
-  requireRole(event, ['workspace_owner'], '僅 workspace_owner 可操作') // member 到這就 403
+  requireRole(event, ['workspace_owner'], '僅 workspace_owner 可操作') // 未登入 401、member 403
   return mockUsers
     .filter(u => !u.deletedAt)
     .map(u => ({ accountId: u.accountId, account: u.account, name: u.name, roles: u.roles }))
@@ -238,16 +254,16 @@ export default defineEventHandler((event: H3Event): MemberListItem[] => {
 // 對應 route-map.rbac.ownership: { GET /api/v1/notes, owner_field: createdBy, restricted_roles: [member] }
 import type { H3Event } from 'h3'
 import type { NoteListItem } from '../../../../app/types/api/notes'
-import { getMockCurrentUser } from '../../../mock/auth-context'
+import { requireAuth } from '../../../mock/auth-context'
 import { mockNotes } from '../../../mock/data/notes'
 
 export default defineEventHandler((event: H3Event): NoteListItem[] => {
-  const me = getMockCurrentUser(event)
+  const me = requireAuth(event) // 首行：匿名請求在這裡 401，不會拿到未過濾的全量
   let items = mockNotes.filter(n => !n.deletedAt)
 
   // 受限角色（restricted_roles）只看自己 createdBy 的；全權角色不過濾
   const restricted = ['member']
-  if (me && me.roles.some(r => restricted.includes(r)))
+  if (me.roles.some(r => restricted.includes(r)))
     items = items.filter(n => n.createdBy === me.accountId)
 
   return items.map(n => ({ noteId: n.noteId, title: n.title }))
@@ -255,30 +271,38 @@ export default defineEventHandler((event: H3Event): NoteListItem[] => {
 ```
 
 ```ts
-// server/api/v1/notes/[noteId].patch.ts —— 單筆 object 歸屬（OWASP BOLA）：受限角色帶他人 id → 403/404
+// server/api/v1/notes/[noteId].patch.ts —— 單筆 object 歸屬（OWASP BOLA）：受限角色帶他人 id → 404
 // 對應 route-map.rbac.object_ownership: { PATCH /api/v1/notes/{noteId}, owner_field: createdBy, restricted_roles: [member] }
 // ⚠️ notes 為假想資源、member 為假想角色（對照組：流星觀測 spec 的 object_ownership 為空）；真實專案用 route-map 實列端點與角色。
 import type { H3Event } from 'h3'
-import { getRouterParam, readBody } from 'h3'
-import { requireOwnership } from '../../../mock/auth-context'
+import { getRouterParam, readValidatedBody } from 'h3'
+import { requireAuth, requireOwnership } from '../../../mock/auth-context'
 import { mockNotes } from '../../../mock/data/notes'
+import { updateNoteSchema } from '../../../validation/notes'
 
 export default defineEventHandler(async (event: H3Event) => {
+  const me = requireAuth(event) // 首行：匿名 401，排在查資料之前，不讓匿名者從 404 探出哪些 id 存在
   const noteId = getRouterParam(event, 'noteId')
   // 順序很關鍵：先查到 object → 再驗歸屬 → 才動作。漏掉中間這步就是 BOLA。
   const note = mockNotes.find(n => n.noteId === noteId && !n.deletedAt)
   if (!note)
-    throw createError({ statusCode: 404, statusMessage: '資源不存在' })
+    throw createError({ statusCode: 404, message: '資源不存在' })
 
-  requireOwnership(event, note.createdBy, ['member']) // member 帶他人 note id → 403（workspace_owner 全權放行）
+  requireOwnership(me, note.createdBy, ['member']) // member 帶他人 note id → 404（workspace_owner 全權放行）
 
-  const body = await readBody(event)
-  note.title = body.title ?? note.title
+  // updateNoteSchema：z.object({ title: z.string().trim().min(1, '請輸入標題').max(100, '標題過長').optional() })
+  const parsed = await readValidatedBody(event, updateNoteSchema.safeParse)
+  if (!parsed.success)
+    throw createError({ statusCode: 400, message: parsed.error.issues[0]?.message ?? '輸入格式錯誤' })
+
+  note.title = parsed.data.title ?? note.title // 逐欄更新；[X] 禁止 Object.assign(note, body)
   return { noteId: note.noteId, title: note.title }
 })
 ```
 
-> ⚠️ **`server/api/` import 用相對路徑**（不能 `~/`）、**event 標 `H3Event`**、**錯誤用 `statusMessage`**——與 `rules.md` / `phase-1-mock-api.md` 既有規範一致。
+> ⚠️ **`server/api/` import 用相對路徑**（不能 `~/`）、**event 標 `H3Event`**、**使用者文案用 `message`**（`statusMessage` 不傳文案）——與 `rules.md` / `phase-1-mock-api.md` 既有規範一致，取值規則見 [openapi-conventions.md](openapi-conventions.md) §4。
+> ⚠️ **狀態碼分工**：無 token 或查無使用者 → 401（模板：前端 `useHttp` 會換發 token → 重試 → 仍失敗就登出。**本專案例外**：單一 JWT、沒有 refresh，`useHttp` 收到 401 直接清登入狀態並導回登入頁，不要補換發流程，見 `.claude/rules/framework-skills.md`）；已登入但角色不准 → 403；歸屬檢查失敗 → 404（預設，route-map 可覆寫 403）。匿名請求回 403 是錯的：前端不會因此導去登入頁。
+> ⚠️ **403／404 的 `message` 不會顯示在畫面上**：前端對這兩類一律用 `ERROR_COPY` 固定文案（「你沒有權限執行這個操作」「找不到這筆資料，可能已被刪除」），因為框架會把英文原文填進這兩類的錯誤內容。上面 `requireRole` 的 `message` 參數仍要帶，它進 server log 與 API 直接消費者；但不要指望使用者看得到裡面的角色名。**本專案例外**：尚無 `ERROR_COPY`，403／404 文案會直接顯示，見 [openapi-conventions.md](openapi-conventions.md) §4 開頭註記。
 > ⚠️ mock data 帶 `createdBy`（值為 accountId）在該資源出現在 `rbac.ownership` **或** `rbac.object_ownership` 時才需要；皆無則不加此欄。
 
 ### 3b. UI 層範本（feature-to-ui 套用）
@@ -296,7 +320,7 @@ export default defineEventHandler(async (event: H3Event) => {
 |---|---|---|
 | `business_guards`（如「不得刪最後一個全權角色」409、「全權角色不得以此 API 改自己密碼」） | 規則高度 domain-specific，無通用範本；硬塞會猜錯 | 只登錄在 route-map.rbac.business_guards，實作邏輯留 feature/spec 散文，由 spec 撰寫者確保有測 |
 | self-vs-others **疊加條件**（`member` 改自己密碼**且需 oldPassword**、`workspace_owner` 改他人免帶） | 屬端點內部商業邏輯；**純「是不是自己這筆」已由 `object_ownership` 自動生**，這裡只剩歸屬之上**再疊條件**（舊密碼、狀態…）的部分 | mock 端點內手寫條件分支，本 scaffold 不代勞 |
-| field-level 角色可見性（同端點依角色回不同欄位） | OpenAPI 本身無法表達，自動猜必錯（多給＝洩漏、少給＝壞 UI） | **不默默略過**：偵測到「PII 語意欄位（電話／地址／證件／內部備註等，範例非白名單）× 多角色讀同一資源」→ **停下來問操作者**各角色可見哪些欄位，確認後在 mock 端點依角色白名單挑欄位（wedding-host 實戰：接待員拿到全賓客電話／住址，實際工作只需姓名＋桌次） |
+| field-level 角色可見性（同端點依角色回不同欄位） | OpenAPI 本身無法表達，自動猜必錯（多給＝洩漏、少給＝壞 UI） | **不默默略過**：偵測到「PII 語意欄位（電話／地址／證件／內部備註等，範例非白名單）× 多角色讀同一資源」→ **停下來問操作者**各角色可見哪些欄位，確認後在 mock 端點依角色白名單挑欄位（分身內問不了：確認前只回非 PII 欄位給受限角色，並列待確認）（wedding-host 實戰：接待員拿到全賓客電話／住址，實際工作只需姓名＋桌次） |
 
 > 未來若後端在 OpenAPI 補機器可讀的 `x-required-roles` vendor extension，§1 偵測可從「散文語意萃取」升級為「直接讀標註」，route-map.rbac schema 不變、下游無感。
 
@@ -306,4 +330,5 @@ export default defineEventHandler(async (event: H3Event) => {
 
 - spec 後來才出現角色限制端點（新增 `roles` 欄位 / 「僅 X」散文）→ phase-0 偵測補寫 route-map.rbac，sync-report 標「新增角色守門」，mock / ui 補套範本。
 - spec 移除某端點的角色限制 → **不自動拆守門**（避免誤刪自訂邏輯），sync-report 標為待人工確認的 rbac 孤兒。
+- spec 收緊某端點的角色限制（`allow` 變少、新增 `restricted_roles`）→ 照新規格更新原條目，該端點列「修改」交給 Phase 1 增量模式（[phase-0-sync.md](phase-0-sync.md) 步驟 7.7）。
 - 角色全集變動（新增 / 移除 role）→ 更新 `rbac.roles`，提示檢查 mock 種子是否仍每角色至少一帳號、UI v-if 是否涵蓋新角色。

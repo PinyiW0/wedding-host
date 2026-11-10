@@ -13,10 +13,12 @@
 ## 執行步驟
 
 1. **讀取 `ui-config.yaml` 的 `theme.colors`**
-2. **建立 app.config.ts**（色彩映射）
-3. **建立 main.css**（自訂色階）：
-   - 有 `"#hex"` → 用 `@theme static` 寫入 `--color-{名稱}-50~950`
+2. **建立 `app/app.config.ts`**（色彩映射）
+3. **在既有 `app/assets/css/main.css` 末尾追加**（保留既有的 reduced-motion 守衛與 motion token，不可整檔覆寫）：
+   - button cursor 覆寫（見下方範例）
+   - 有 `"#hex"` → 用 `@theme static` 寫入 `--color-{名稱}-50~950`（neutral 例外，見「自訂 hex 的產出規則」）
    - 有 `"名稱"` 或空值 → 不產生 CSS
+3.5. **確認 icon collection 已安裝**：`package.json` 缺 `@iconify-json/heroicons`、`@iconify-json/lucide` 時執行 `npm i -D @iconify-json/heroicons @iconify-json/lucide`（沒裝會造成 SSR 圖示空白，見 pitfalls.md 第 7 條）
 4. **設定 SEO / Meta**（寫入 `nuxt.config.ts` 的 `app.head`）：
    - `project.name` → `<title>`
    - `project.description` → `<meta name="description">`
@@ -24,7 +26,7 @@
    - `meta.keywords` → `<meta name="keywords">`（非空值才產生）
    - `meta.author` → `<meta name="author">`（非空值才產生）
    - `meta.og.*` → `<meta property="og:*">`（含 `og:title`、`og:description`、`og:image`、`og:type`）
-5. **詢問用戶確認**
+5. **跑 `npm run eslint` + `npm run typelint`，全綠後回報**（分身不能問使用者；要調整請直接改檔）
 
 ## 色彩翻譯規則
 
@@ -58,6 +60,12 @@
 
 **關鍵：CSS 變數名稱必須和 app.config 映射名稱一致。**
 
+**neutral 例外：自訂色名不能叫 `neutral`。** NuxtUI 4.12 的 colors plugin 遇到映射值 `'neutral'` 會改讀 `--color-old-neutral-*`（內建灰階），自訂的 `--color-neutral-*` 進不了元件色票，畫面一半是自訂色、一半是內建灰。neutral 有 hex 時：
+
+1. 改用別的色名（如 `ink`）：`@theme static { --color-ink-50~950 }`
+2. app.config.ts 寫 `neutral: 'ink'`
+3. 不要另外覆寫 `--color-neutral-*`——`text-neutral-*` 會經 `--ui-color-neutral-*` 自動指到 ink
+
 ### app.config.ts 映射規則（極重要！）
 
 Nuxt UI plugin 會根據 `app.config.ts` 的映射值去尋找 `--color-{value}-{shade}` CSS 變數。
@@ -83,7 +91,9 @@ info: 'blue',
 // [O] 有在 main.css 用 @theme 自訂色階 → 映射到自身名稱
 primary: 'primary',
 secondary: 'secondary',
-neutral: 'neutral',
+
+// [O] neutral 有自訂 hex → 映射到另取的色名（見上方 neutral 例外）
+neutral: 'ink',
 ```
 
 > ⚠️ **只有在 `main.css` 用 `@theme` 定義了 `--color-{名稱}-*` 色階的顏色，才能用自身語義名稱映射。沒有自訂色階的語義色，必須映射到 Tailwind 內建色名（如 `red`、`amber`、`green`、`blue`）。**
@@ -148,7 +158,7 @@ theme.colors
 
 ```typescript
 // app/app.config.ts
-// 假設 primary/secondary/neutral 有在 main.css 自訂色階
+// 假設 primary/secondary/neutral 有在 main.css 自訂色階（neutral 用 ink 色名）
 // success/warning/error/info 沿用 Tailwind 內建色
 export default defineAppConfig({
   ui: {
@@ -159,7 +169,7 @@ export default defineAppConfig({
       warning: 'amber',         // 沒自訂 → 映射到 Tailwind 內建色
       error: 'red',             // 沒自訂 → 映射到 Tailwind 內建色
       info: 'blue',             // 沒自訂 → 映射到 Tailwind 內建色
-      neutral: 'neutral',       // 有自訂色階 → 映射到自身名稱
+      neutral: 'ink',           // 有自訂色階 → 映射到另取的色名（不可叫 neutral）
     },
   },
 })
@@ -170,9 +180,7 @@ export default defineAppConfig({
 ## main.css 範例
 
 ```css
-/* app/assets/css/main.css */
-@import "tailwindcss";
-@import "@nuxt/ui";
+/* app/assets/css/main.css —— 以下追加在既有內容之後；既有的 @import、reduced-motion 守衛、motion token 保留不動 */
 
 /* Tailwind v4 preflight 將 button cursor 設為 default，覆蓋回 pointer */
 @layer base {
@@ -203,11 +211,11 @@ export default defineAppConfig({
   /* ... 完整 50-950 */
   --color-secondary-950: #1A3300;
 
-  /* neutral — 深藍灰 (base: #314157) */
-  --color-neutral-50: #F4F7FA;
-  --color-neutral-100: #E8ECF2;
+  /* neutral — 深藍灰 (base: #314157)；色名用 ink，app.config 寫 neutral: 'ink' */
+  --color-ink-50: #F4F7FA;
+  --color-ink-100: #E8ECF2;
   /* ... 完整 50-950 */
-  --color-neutral-950: #0D1117;
+  --color-ink-950: #0D1117;
 
   /* success/warning/error/info — 空值，不產生 CSS，沿用 Tailwind 內建 */
 }

@@ -19,16 +19,18 @@
 
 同步完成後，比對同步前後的 `ui-config.yaml` 差異，記錄變更的設定區塊：
 
-| 變更的設定區塊 | 影響的 Phase |
+| 變更的設定區塊 | 要跑的指令 |
 |--------------|-------------|
-| `theme.colors` | Phase 2 |
-| `project.*`（name, description, favicon） | Phase 2 |
-| `meta.*`（keywords, author, og） | Phase 2 |
-| `colorMode.*` | Phase 2 |
-| `table.*` | Phase 4 |
-| `delete.*` | Phase 4 |
-| `toast.*` | Phase 3（UApp toaster 設定） |
-| `responsive.sidebar.*` | Phase 3 |
+| `theme.colors` | `/feature-to-ui 1` |
+| `project.*`（name, description, favicon） | `/feature-to-ui 1` |
+| `meta.*`（keywords, author, og） | `/feature-to-ui 1` |
+| `colorMode.*` | `/feature-to-ui 1` |
+| `table.*` | `/feature-to-ui 4` |
+| `delete.*` | `/feature-to-ui 4` |
+| `toast.*` | `/feature-to-ui 3`（UApp toaster 設定） |
+| `responsive.sidebar.*` | `/feature-to-ui 3` |
+
+> 指令寫全名：feature-to-api 與 feature-to-ui 各有自己的 Phase 編號，只寫「Phase 1」分不出是哪一支。
 
 > 此偵測結果會在步驟 8 產出「Phase 執行建議」時使用。
 
@@ -46,7 +48,7 @@
 
 1. 取既有值：`route-map.yaml > api_contract.path_prefix`（步驟 2 已讀）
 2. 重新偵測本次預期前綴：
-   - **OpenAPI 模式**：讀 `spec/api/api-spec.yml > servers.url`，取 path 段（去掉 protocol+host+port）
+   - **OpenAPI 模式**：依 [phase-0-prep.md](phase-0-prep.md)「Path 前綴偵測」步驟 2 的和解規則重算（`servers.url` 的 path 段 × `paths` 最長共同前綴，含離群端點條款）；不可只讀 `servers.url`
    - **Feature 推導模式**：掃 `server/api/` 取最長共同前綴
 3. 比對：
 
@@ -54,9 +56,9 @@
    |------|------|
    | 既有 path_prefix **不存在**（舊版 route-map） | 寫入本次偵測值，sync-report 記錄「初始化 path_prefix = X」 |
    | 兩值相同 | 通過，繼續步驟 3 |
-   | 兩值不同 | **停下來詢問使用者**（見下方），不要默默改寫 |
+   | 兩值不同 | **維持既有值、不改寫**，sync-report「Path 前綴狀態」標 ⚠️ 待確認並附下方說明；使用者選 (a) 時手改 `route-map.yaml` 的 `path_prefix` 後重跑 Sync |
 
-#### 不一致時的對話腳本
+#### 不一致時寫進報告的說明
 
 ```
 偵測到 API path 前綴漂移：
@@ -69,7 +71,7 @@
   (b) spec / 程式碼狀態漂移（無心改動） 
       → 維持既有 path_prefix，提示你修正 spec 或還原誤改
 
-請選 (a) 或 (b)，或描述其他情況。
+目前維持既有值（等同 (b)）。若是 (a)，請改 route-map.yaml 的 path_prefix 後重跑 /feature-to-api。
 ```
 
 #### 不要做的事
@@ -82,6 +84,14 @@
 
 - 路徑：`spec/gherkin-feature/*.feature`（含 `.dsl.feature` 變體）
 - 計算每個檔案的 `content_hash`
+
+### 步驟 3b：端點差集（OpenAPI 模式）
+
+- 步驟 2 的前綴狀態是 ⚠️ 時，先把 spec 路徑的新前綴換成既有 `path_prefix` 再比；否則整批端點會同時被列成新增與刪除
+- spec `paths` 的 method × path 與 `route-map.yaml > api_contract.endpoints` 取差集：spec 有、route-map 沒有 → 「新增」；route-map 有、spec 沒有 → 「刪除」
+- 兩邊都有、但 request／response schema 引用變了 → 「修改」；codegen 重生後 `typelint` 紅燈的位置就是修改點
+- 不影響型別的驗證限制變更（`maxLength`、`minimum`、`pattern`、`format` 等）typelint 抓不到：用 `git diff $(git log -1 --format=%H -- spec/report/route-map.yaml) -- spec/api/api-spec.yml` 比對上次 Sync 時的 spec 與現在的 spec（新 spec 已 commit 也比得到），被改到的 operation 與它引用的 schema 也列「修改」
+- 結果寫入步驟 8 的「端點變更」表
 
 ### 步驟 4：讀取現有型別定義
 
@@ -99,7 +109,7 @@
 
 ### 步驟 6：變更程度判斷
 
-> 機械式規則，不是 AI 猜測。**必須按下方 checklist 逐步判定，並在變更報告中附上判定過程**。
+> 下方 checklist 是判準起點，依序判定並在變更報告附上判定過程。#4 要判斷 Scenario 跟哪個欄位有關，屬語意判讀：模糊時寫出研判理由，並在報告標「待確認」。
 
 #### 判定 Checklist（依序執行，遇到即停止）
 
@@ -118,9 +128,9 @@
 
 4. 計算新增 Scenario 數量，並逐一分類：
      a) 「欄位驗證型」：Scenario 名稱或內容可明確對應到新增欄位
-        （如：「經度超出範圍」對應新增的 weight 欄位）
+        （如：「標題超過長度上限」對應新增的 title 欄位）
      b) 「新功能型」：無法對應到任何新增欄位
-        （如：「搜尋觀測站」「AI 狀態篩選」「分頁」）
+        （如：「搜尋筆記」「標籤篩選」「分頁」）
 
      → 存在任何「新功能型」Scenario → rebuild（停止）
      → 全部都是「欄位驗證型」→ patch（停止）
@@ -134,11 +144,11 @@
 在變更報告的「Feature 變更總覽」表格中，`說明` 欄須包含判定依據：
 
 ```markdown
-| 04-建立觀測點 | 修改 | patch | /sites | 新增 1 欄位(簡介) + 2 Scenario 皆為該欄位驗證 → checklist #4a → patch |
-| 12-查詢訓練列表 | 修改 | rebuild | /trainings | 新增 6 Scenario 含搜尋/篩選/分頁(新功能型) → checklist #4b → rebuild |
+| 04-建立筆記 | 修改 | patch | /notes | 新增 1 欄位(摘要) + 2 Scenario 皆為該欄位驗證 → checklist #4a → patch |
+| 12-查詢筆記本列表 | 修改 | rebuild | /notebooks | 新增 6 Scenario 含搜尋/篩選/分頁(新功能型) → checklist #4b → rebuild |
 ```
 
-> **不附判定依據 = 違規**。這是確保判定可追溯、可驗證的關鍵。
+> 判定依據是事後追溯的唯一線索，不可省略。
 
 ### 步驟 7：推導下游影響
 
@@ -164,7 +174,9 @@
 
 #### 偵測流程
 
-1. **抽取新版 feature 的「合約 symbol 集」**：
+1. **抽取「合約 symbol 集」**（依模式換來源）：
+   - **OpenAPI 模式**：spec `paths`（method × path）＋ `components.schemas` 名稱與其 view alias（如 `LoginResponse = TokenPairData`）；沒有 feature 對應的端點（health、資料上傳）照樣算合約
+   - **Feature 推導模式**：從 DSL 抽（下列四條）
    - Commands：`When {Actor} sends {CommandName}` → `{CommandName}Body`
    - Events：`Then the {EventName} event is emitted` → `{EventName}Event`
    - Views：`When the {ViewName} view is queried` → `{ViewName}Item` / `{ViewName}Detail`
@@ -172,8 +184,8 @@
 
 2. **抽取 codebase 的「實作 symbol 集」**：
    - `app/types/api/*.ts` 的 `export interface` / `export type` 名稱
-   - `server/api/v1/**/*.ts` 的 endpoint 路由 + method（檔名 / HTTP verb）
-   - `app/pages/**/*.vue` 中 `import { X } from '~/types/api'` 的 X 集合
+   - `server/api/` 下對應 `path_prefix` 的子目錄（如 `/api/v1` → `server/api/v1/**/*.ts`）的 endpoint 路由 + method（檔名 / HTTP verb）；`outside_prefix` 端點看 `server/routes/`
+   - `app/**/*.vue`、`app/**/*.ts` 中 `from '~/types/api` 開頭的 import（含 `import type`、子路徑 `~/types/api/notes`）引用的 X 集合
 
 3. **差集 = 孤兒**：
    - `type 孤兒` = codebase types ∖ feature contract types
@@ -184,9 +196,9 @@
 
 | 例外類型 | 範例 | 處理 |
 |---------|------|------|
-| 過渡兼容欄位（feature 已遷移，server 為兼容 UI 保留） | `WatchHistoryItem.startedAt` 為兼容欄位 | type 加 `@deprecated` 註解，報告標「兼容」不視為孤兒 |
+| 過渡兼容欄位（feature 已遷移，server 為兼容 UI 保留） | `NoteHistoryItem.editedAt` 為兼容欄位 | type 加 `@deprecated` 註解，報告標「兼容」不視為孤兒 |
 | 基礎設施路由 | `/api/__test__/reset`、`/api/health` | 跳過 |
-| UI extension（feature 未定義但 UI 有額外需求） | `ExportType: 'selected-sightings'` | 報告標「UI extension」，待 feature 補對應 Scenario，不視為孤兒 |
+| UI extension（feature 未定義但 UI 有額外需求） | `ExportType: 'selected-notes'` | 報告標「UI extension」，待 feature 補對應 Scenario，不視為孤兒 |
 
 #### 偵測指令範例
 
@@ -197,6 +209,9 @@ grep -oE "sends [A-Z][A-Za-z]+" spec/gherkin-feature/*.feature | sort -u
 # codebase 中的 Body / Event interface
 grep -rE "export (interface|type) [A-Z][A-Za-z]*(Body|Event|Item|Detail)" app/types/api/
 
+# 誰引用了合約型別（含 import type、子路徑）
+grep -rnE "from '~/types/api" app/
+
 # 找差集（手動或腳本比對）
 ```
 
@@ -204,9 +219,17 @@ grep -rE "export (interface|type) [A-Z][A-Za-z]*(Body|Event|Item|Detail)" app/ty
 
 填入步驟 8 的「🗑️ 孤兒清單」表格（見變更報告格式）。
 
+### 步驟 7.7：重跑 auth／rbac 偵測（⚠️ 必跑）
+
+- 照 [phase-0-prep.md](phase-0-prep.md)「Auth 偵測」「授權（RBAC）偵測」，用新版規格重跑一次，結果與 `route-map.yaml` 的 `auth`／`rbac` 區塊比對
+- 新出現的守門規則（新的登入端點、新的角色限制端點、新角色）→ 步驟 9 寫進 `route-map.yaml`，報告標「新增 auth 守門」或「新增角色守門」（同 auth-scaffold.md §6、rbac-scaffold.md §5 的用詞）
+- 被新守門命中的**既有端點**也列進步驟 8 的「端點變更」表、標「修改」，即使路徑與 schema 都沒變：新增 auth → 所有非公開端點；新增角色／歸屬規則 → 規則命中的端點。不列的話 Phase 1 增量模式不會碰它，端點仍是公開或未過濾
+- 同一 method＋path 的權限**收緊**（`allow` 角色變少、新增 `restricted_roles`、公開端點改成要登入）→ 照新規格改掉原條目，該端點列「修改」。保留舊條目等於照舊放行
+- 權限**放寬或整條守門被拿掉** → **不改**，報告列待確認（寧可多擋，不可漏擋；見 auth-scaffold.md §6、rbac-scaffold.md §5）
+
 ### 步驟 8：產出變更報告
 
-將分析結果寫入 **`spec/report/sync-report.md`**。
+先做步驟 8.5（讀取舊版報告、合併未解決的孤兒；模式切換時另遞延待 PM 處理清單），再把分析結果寫入 **`spec/report/sync-report.md`**。直接寫入會覆蓋舊版，舊版的孤兒清單就遺失了。
 
 > 因為 `context: fork`，Phase 間無法共享對話記憶，所以必須持久化為檔案。後續 Phase 讀取此報告決定行為。
 
@@ -214,16 +237,16 @@ grep -rE "export (interface|type) [A-Z][A-Za-z]*(Body|Event|Item|Detail)" app/ty
 
 產出「Phase 執行建議」表格時，**必須依序檢查以下規則**：
 
-| Phase | 條件 | 建議 |
+| 指令 | 條件 | 建議 |
 |-------|------|------|
-| Phase 1 | 型別變更或端點變更表格有任何「新增」或「修改」 | 執行 |
-| Phase 2 | 設定檔變更偵測到 `theme.colors`、`project.*`、`meta.*`、`colorMode.*` 有變更 | 執行（否則跳過） |
-| Phase 2 | 路由變更表格有任何「新增」 | 執行 |
-| **Phase 3** | **路由變更表格有任何「新增」，或設定檔變更偵測到 `toast.*`、`responsive.sidebar.*` 有變更** | **執行** |
-| Phase 4 | 新路由使用了尚未建立的共用元件，或設定檔變更偵測到 `table.*`、`delete.*` 有變更 | 執行（否則跳過） |
-| Phase 5 | 頁面實作指令有任何 build/patch/rebuild | 執行 |
+| `/feature-to-api 1`、`/feature-to-api 1.5` | 型別變更或端點變更表格有任何「新增」或「修改」 | 執行 |
+| `/feature-to-ui 1` | 設定檔變更偵測到 `theme.colors`、`project.*`、`meta.*`、`colorMode.*` 有變更 | 執行（否則跳過） |
+| `/feature-to-ui 2` | 路由變更表格有任何「新增」 | 執行 |
+| **`/feature-to-ui 3`** | **路由變更表格有任何「新增」，或設定檔變更偵測到 `toast.*`、`responsive.sidebar.*` 有變更** | **執行** |
+| `/feature-to-ui 4` | 新路由使用了尚未建立的共用元件，或設定檔變更偵測到 `table.*`、`delete.*` 有變更 | 執行（否則跳過） |
+| `/feature-to-ui 5` | 頁面實作指令有任何 build/patch/rebuild | 執行 |
 
-> **Phase 3 跟 Phase 2 的觸發條件相同**：有新路由 → 兩者都必須執行。Phase 2 建空殼頁面，Phase 3 把新路由加入 sidebar 導航。
+> **`/feature-to-ui 3` 跟 `/feature-to-ui 2` 的觸發條件相同**：有新路由 → 兩者都必須執行。UI Phase 2 建空殼頁面，UI Phase 3 把新路由加入 sidebar 導航。
 
 格式見下方「變更報告格式」。
 
@@ -239,29 +262,31 @@ grep -rE "export (interface|type) [A-Z][A-Za-z]*(Body|Event|Item|Detail)" app/ty
    - 若已不存在 → 視為已清理，可從新版移除（但建議在報告底部「本次已清理孤兒」段記錄一行）
 3. 若是從 OpenAPI 模式切到 Feature 模式（或反向），**舊版的「待 PM 處理」清單必須完整遞延**進新版孤兒/待處理段，不可整段消失
 
-### 步驟 9：更新 route-map.yaml
+### 步驟 9：更新 `spec/report/route-map.yaml`（直接寫入）
 
 - `version` 遞增（如 1 → 2）
 - 新增的 feature → 加入對應路由的 features 陣列（或建立新路由條目）
 - hash 變更的 feature → 更新 `content_hash`
 - 刪除的 feature → **不自動移除**，僅在報告中標記待刪除
 - **`api_contract.path_prefix` 維持步驟 2.5 結果**（使用者未確認 (a) 升版前，不可變動）
-- **同步更新 `api_contract`**：新增/修改的型別 → 更新 `api_contract.types`（鏡像 `app/types/api/*.ts` 的欄位）；新增/修改的端點 → 更新 `api_contract.endpoints`（所有 `path:` 必以 `path_prefix` 開頭）
+- **同步更新 `api_contract`**：新增/修改的型別 → 更新 `api_contract.types`（鏡像 `app/types/api/*.ts` 的欄位）；新增/修改的端點 → 更新 `api_contract.endpoints`（`path:` 以 `path_prefix` 開頭。OpenAPI 模式下只有少數端點不在前綴底下時，照 phase-0-prep「Path 前綴偵測」的離群端點條款保留原始路徑並標 `outside_prefix: true`；步驟 2 的前綴狀態是 ⚠️ 時，先照步驟 3b 換成既有前綴，不標 `outside_prefix`）
 - **同步更新 `enabled_features`**：反映 PM yaml 最新的 `additionalFeatures`
+- **同步更新 `auth`／`rbac` 區塊**：照步驟 7.7 寫入新增守門與權限收緊；放寬或移除的規則不動
 - 更新 `generated_at` 為今天日期
 
-### 步驟 10：詢問用戶確認
+### 步驟 10：回報後結束
 
-向用戶展示：
+向使用者回報以下內容後結束（不自動進 Phase 1）。本 skill 在分身裡執行，等不到使用者回覆，所以步驟 10 只展示、不寫檔：
 1. 變更報告摘要（Feature 變更總覽表格）
 2. Phase 執行建議（哪些 Phase 需要跑、哪些可跳過）
-3. 待刪除項目（提醒用戶手動處理）
+3. 待刪除項目（提醒使用者手動處理）
 4. **🗑️ 孤兒清單**（步驟 7.6 + 8.5 產出）——分 `UI` / `Backend` / `兼容` 三類明確標示
-5. 更新後的 route-map.yaml 變更
+5. 更新後的 `spec/report/route-map.yaml` 變更
+6. 步驟 7.7 的「新增 auth 守門」「新增角色守門」與待確認的 auth／rbac 孤兒
 
-**⚠️ 孤兒清單必須口頭強調**：不能只放進報告就算數。若 `UI` 類孤兒存在，必須在回應中明確提示「下一步：清除 UI 層孤兒 [列項目]」，否則 claude 容易跳過此步直接進 Phase 1。
+**⚠️ 孤兒清單必須在回報裡強調**：不能只放進報告就算數。若 `UI` 類孤兒存在，必須在回報中明確提示「下一步：清除 UI 層孤兒 [列項目]」，否則 claude 容易跳過此步直接進 Phase 1。
 
-確認後才寫入檔案。
+步驟 8、9 已把 `spec/report/sync-report.md` 與 `spec/report/route-map.yaml` 寫入磁碟。使用者要調整時，直接改這兩個檔，再執行 `/feature-to-api 1`。
 
 ---
 
@@ -279,12 +304,12 @@ sync_version: 2
 | 項目 | 值 | 備註 |
 |------|-----|------|
 | 既有 path_prefix | /api/v1 | 來自上一版 route-map.yaml |
-| 本次偵測 | /api/v1 | 來自 servers.url 或 server/api/ 結構 |
-| 結論 | 一致，沿用 | （或「使用者確認升版 /api/v1 → /api/v2，列入待批次調整」） |
+| 本次偵測 | /api/v1 | 來自 prep 的和解規則（OpenAPI）或 server/api/ 結構（Feature） |
+| 結論 | 一致，沿用 | （或「⚠️ 不一致，維持既有值待確認」／「使用者已改 route-map 升版 /api/v1 → /api/v2，列入待批次調整」） |
 
 ## 設定檔變更
 
-| 設定區塊 | 變更內容 | 影響 Phase |
+| 設定區塊 | 變更內容 | 要跑的指令 |
 |---------|---------|-----------|
 | （若無變更則顯示「設定檔無變更」） | | |
 
@@ -292,51 +317,51 @@ sync_version: 2
 
 | Feature 檔 | 狀態 | 模式 | 影響頁面 | 說明 |
 |------------|------|------|---------|------|
-| 03-查詢觀測點列表.dsl.feature | 無變化 | skip | — | hash 相同 |
-| 04-建立觀測點.dsl.feature | 修改 | patch | /sites | 新增 1 個欄位 |
-| 12-新增觀測員.dsl.feature | 新增 | build | /observers | 全新功能 |
-| 05-刪除觀測點.dsl.feature | 刪除 | — | /sites | feature 檔已不存在 |
+| 03-查詢筆記列表.dsl.feature | 無變化 | skip | — | hash 相同 |
+| 04-建立筆記.dsl.feature | 修改 | patch | /notes | 新增 1 個欄位 |
+| 12-新增成員.dsl.feature | 新增 | build | /members | 全新功能 |
+| 05-刪除筆記.dsl.feature | 刪除 | — | /notes | feature 檔已不存在 |
 
 ## 型別變更
 
 | 檔案 | 動作 | 詳細變更 |
 |------|------|---------|
-| app/types/api/sites.ts | 修改 | CreateSiteBody 新增 `description` 欄位 |
-| app/types/api/observers.ts | 新增 | ObserverItem, CreateObserverBody |
+| app/types/api/notes.ts | 修改 | CreateNoteBody 新增 `summary` 欄位 |
+| app/types/api/members.ts | 新增 | MemberItem, CreateMemberBody |
 
 ## 端點變更
 
 | 端點 | 動作 | 影響型別 | 影響頁面 |
 |------|------|---------|---------|
-| POST /api/sites | 修改 | CreateSiteBody | /sites |
-| GET /api/observers | 新增 | ObserverItem[] | /observers |
-| POST /api/observers | 新增 | CreateObserverBody | /observers |
+| POST /api/notes | 修改 | CreateNoteBody | /notes |
+| GET /api/members | 新增 | MemberItem[] | /members |
+| POST /api/members | 新增 | CreateMemberBody | /members |
 
 ## 路由變更
 
 | 路由 | 動作 | 頁面 | Features |
 |------|------|------|---------|
-| /observers | 新增 | app/pages/observers/index.vue | 12-新增觀測員 |
+| /members | 新增 | app/pages/members/index.vue | 12-新增成員 |
 
 ## 頁面實作指令
 
 | 頁面 | 模式 | 變更的 Features | 說明 |
 |------|------|----------------|------|
-| /sites | patch | 04-建立觀測點 | 新增欄位，Edit 受影響區塊 |
-| /observers | build | 12-新增觀測員 | 全新頁面 |
+| /notes | patch | 04-建立筆記 | 新增欄位，Edit 受影響區塊 |
+| /members | build | 12-新增成員 | 全新頁面 |
 | /login | skip | — | 無變化 |
 
 ## Phase 執行建議
 
-| Phase | 建議 | 原因 |
+| 指令 | 建議 | 原因 |
 |-------|------|------|
-| Phase 0 | 已完成 | 本次執行 |
-| Phase 1 | 執行 | 有型別/端點新增或修改 |
-| Phase 2 | 跳過 | 設定檔無變更（theme/project/meta/colorMode） |
-| Phase 2 | 執行 | 有新增路由 |
-| Phase 3 | 執行 | 有新增路由（需加入 sidebar 導航） |
-| Phase 4 | 跳過 | 共用元件無變更 |
-| Phase 5 | 執行 | 有 build/patch 頁面 |
+| `/feature-to-api 0` | 已完成 | 本次執行 |
+| `/feature-to-api 1`、`/feature-to-api 1.5` | 執行 | 有型別/端點新增或修改 |
+| `/feature-to-ui 1` | 跳過 | 設定檔無變更（theme/project/meta/colorMode） |
+| `/feature-to-ui 2` | 執行 | 有新增路由 |
+| `/feature-to-ui 3` | 執行 | 有新增路由（需加入 sidebar 導航） |
+| `/feature-to-ui 4` | 跳過 | 共用元件無變更 |
+| `/feature-to-ui 5` | 執行 | 有 build/patch 頁面 |
 
 ## 待刪除項目（Phase 5 開始時確認後執行）
 
@@ -344,9 +369,9 @@ sync_version: 2
 
 | 類型 | 路徑 | 原因 |
 |------|------|------|
-| feature 參照 | route-map.yaml > /sites > 05-刪除觀測點 | feature 檔已不存在 |
-| 型別（待確認） | app/types/api/sites.ts > DeleteSiteBody | 若 05 是唯一使用者 |
-| 端點（待確認） | DELETE /api/sites/[id] | 若 05 是唯一使用者 |
+| feature 參照 | route-map.yaml > /notes > 05-刪除筆記 | feature 檔已不存在 |
+| 型別（待確認） | app/types/api/notes.ts > DeleteNoteBody | 若 05 是唯一使用者 |
+| 端點（待確認） | DELETE /api/notes/[noteId] | 若 05 是唯一使用者 |
 
 ## 🗑️ 孤兒清單（codebase 有，feature 不再引用）
 
@@ -355,9 +380,9 @@ sync_version: 2
 
 | 類型 | 路徑 / symbol | feature 對應狀態 | 建議動作 | 負責方 |
 |------|--------------|----------------|---------|--------|
-| Type | `app/types/api/watch.ts > SwitchSightingerBody` | feature 已移除「切換觀測站」Feature（commit XXX）| 清除 interface + 所有 import | UI |
-| Endpoint | `server/api/v1/watches/[watchId]/station.patch.ts` | 同上 | 刪除整檔 | Backend |
-| UI 元素 | `app/pages/watch/[watchId].vue` 切換觀測站按鈕、Modal、form、handler | 同上 | 移除 UI 區塊 | UI |
+| Type | `app/types/api/notebooks.ts > TransferNotebookBody` | feature 已移除「轉移筆記本擁有者」Feature（commit XXX）| 清除 interface + 所有 import | UI |
+| Endpoint | `server/api/v1/notebooks/[notebookId]/owner.patch.ts` | 同上 | 刪除整檔 | Backend |
+| UI 元素 | `app/pages/notebooks/[notebookId].vue` 轉移擁有者按鈕、Modal、form、handler | 同上 | 移除 UI 區塊 | UI |
 
 > **負責方分類**：
 > - `UI`：claude 或前端工程師可直接清，主 spec 仍會綠

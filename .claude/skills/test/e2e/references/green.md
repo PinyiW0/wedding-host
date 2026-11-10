@@ -15,6 +15,7 @@
 ```bash
 /test e2e green <feature>           # 單一 feature（從紅燈修到綠燈）
 /test e2e green <start> <end>       # 批次綠燈（多個 feature）
+/test e2e green auto                # 綠燈全部 feature（見下方「auto 模式」）
 ```
 
 ---
@@ -243,6 +244,19 @@ E2E 綠燈批次報告：01 → 05
   統計：4 綠燈 / 1 部分失敗
   修復檔案：5 個
 ```
+
+## auto 模式
+
+```bash
+/test e2e green auto    # 綠燈 test/e2e/specs/ 下全部 feature
+```
+
+`/feature-to-ui` Phase 5 全部完成、`/sdd-status` 第 7 站建議的就是這個指令。
+
+1. 列出 `test/e2e/specs/` 下所有 `{NN}-{name}.spec.ts`，依編號由小到大排序
+2. 逐一對每個 feature 走批次模式的流程（前一個修完再處理下一個）
+3. 對應頁面不存在的 feature 不跑 green（見「前置條件」），在報告標 `⏭️ UI 未建立（先執行 /feature-to-ui 5 <功能名>）`
+4. 輸出格式同批次報告，標題寫 `E2E 綠燈批次報告：auto（{第一個編號} → {最後一個編號}）`
 
 ---
 

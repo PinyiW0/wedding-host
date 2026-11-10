@@ -134,6 +134,8 @@ return createdEvent   // → SiteCreatedEvent（POST 201）
 
 ## 4. 錯誤格式
 
+> **本專案現況（wedding-host 客製，issue #209）**：本專案尚無 `app/utils/api-error.ts`（`readApiError`／`ERROR_COPY` 等隨模板 #169 一起評估，另案處理）。既有 server 一律 `createError({ statusCode, statusMessage })`，前端讀 `error?.data?.message || error?.statusMessage || '<fallback>'`，所以 **403／404 的文案會顯示在畫面上**，不要放角色名或內部細節。新端點跟既有慣例走，直到 #169 落地再改用本節寫法。
+
 **前端一律用 `~/utils/api-error` 的 `readApiError(err, fallback)` 讀錯誤訊息**（同時容忍 envelope 與 createError 兩種來源），
 不要自己 `e.statusMessage || ...` 散落各處：
 
@@ -141,10 +143,10 @@ return createdEvent   // → SiteCreatedEvent（POST 201）
 import { getErrorCode, readApiError } from '~/utils/api-error'
 
 try {
-  await useHttp().post('/auth/login', { body })
+  await useHttp().post('/api/v1/auth/login', { body }) // 路徑 = {path_prefix}/auth/login，不寫裸 /auth/*
 }
 catch (e) {
-  toast.error(readApiError(e, '登入失敗'))
+  toast.add({ title: '登入失敗', description: readApiError(e, '帳號或密碼錯誤'), color: 'error' })
   // 需對特定錯誤分支：if (getErrorCode(e) === 'ACCOUNT_LOCKED') { ... }
 }
 ```
@@ -158,14 +160,28 @@ server / mock 端依模式拋錯：
   throw createError({ statusCode: 404, data: { success: false, code: 'ACCOUNT_NOT_FOUND', message: '帳號不存在' } })
   ```
 
-- **模式 B（裸 schema）**：用 `createError({ statusCode, statusMessage })`，前端 `readApiError` 一樣讀得到。
+  形狀注意：mock 層經 `createError({ data })` 時，envelope 會落在 `err.data.data`（多包一層）；真實後端裸回 envelope 時是淺層 `err.data`。
+  `readApiError`／`getErrorCode`／`getFieldErrors` 三者都已涵蓋這兩種形狀。
+
+- **模式 B（裸 schema）**：用 `createError({ statusCode, message })`，前端 `readApiError` 一樣讀得到。
 
   ```typescript
-  throw createError({ statusCode: 409, statusMessage: '帳號名稱已存在' })
+  throw createError({ statusCode: 409, message: '帳號名稱已存在' })
   ```
 
-> `readApiError` 取值順序 `data.message → data.statusMessage → statusMessage → message → fallback`，兩種模式都涵蓋。
-> 欄位錯誤用 `getFieldErrors(err)`，錯誤碼用 `getErrorCode(err)`。
+  ⚠️ 中文放 `message`（回應 body 原文保留、不被 sanitize、前端讀得到）；`statusMessage` 是 status line 的 reason phrase，h3 會 sanitize status line 的非 ASCII 字元，但回應 body 的欄位不受影響；所以中文放 `message` 才對，`statusMessage` 保持 ASCII 或不給。
+
+> `readApiError(err, fallback?)` 規則（`fallback` 選填）：
+> - `network`／`unavailable`／`server`／`forbidden`／`notFound` 五種一律回 `ERROR_COPY` 固定文案（後端文字對這五種沒有價值。403／404 的理由：最常見的 404 是路由沒命中（網址打錯、pathParams 缺值），此時框架填的是 `Page not found: /api/xxx`；Nitro 填英文只發生在路由沒命中與非 H3Error 兩種情形，與狀態碼無關，開發者自拋的 403／404 中文 `message` 本身會原樣保留。`ERROR_COPY` 對這兩類的文案已足夠準確，後端訊息沒有額外資訊量；代價是後端刻意寫的 403／404 文案會被捨棄，這是刻意的取捨，見 `rbac-scaffold.md`）。
+> - `unauthorized`（401）刻意不列入固定文案，呼叫端的 `fallback` 與後端 envelope 仍會透出（例如登入頁的「帳號或密碼錯誤」）。
+> - 其他依序取 `data.data.message → data.message → fallback`，末端退到 `ERROR_COPY[kind]`；兩種模式（含 mock 層 `createError({ data })` 的深層 envelope）都涵蓋。後端沒給文案時 `data.message` 是空字串，會往下走到 `fallback`。放行條件：`message` 若為空白、非字串、恰為 `'Server Error'`、或符合 ofetch 自組格式（`[GET] "url": 409 ...`），會被丟掉並退到 `fallback`，等於沒回。
+> - 不讀任何 `statusMessage`：它是 status line 的 reason phrase，不同執行環境填不同的英文預設值（如 `Server Error`）；也不讀頂層 `statusMessage`／`message`（那是 `Bad Gateway` 等 HTTP 原文與 ofetch 自組字串）。
+> **要給使用者看的訊息，放回應內容的 `message` 或 envelope 的 `message`；`statusMessage` 不傳文案。**
+> **要給使用者看的錯誤，server 端一律用 4xx**；5xx 代表非預期錯誤，前端不顯示其內文。
+> 403／404 的 `message` 不會顯示在畫面上（前端對這兩類一律用 `ERROR_COPY`）；該欄位仍要寫，但讀者是 server log 與 API 直接消費者。
+> BFF 的 server route 內呼叫上游（`$fetch` 或任何可能丟出帶 `statusCode` 的非 H3Error 的函式庫）必須 try/catch 後重包成 `createError`，否則 production 回應內容被換成 `"Server Error"`、dev 會洩漏內部原文；做法見 [phase-1-mock-api.md](phase-1-mock-api.md) 的 BFF 警示。
+> 豁免：`grep -rn "statusMessage: '" .claude/skills/` 剩兩處屬刻意保留——`rules.md` 的 `[X]` 反例、`nuxt/references/features-server.md` 是第三方 vendored 的 nuxt skill（框架知識快照），皆不改。
+> 欄位錯誤用 `getFieldErrors(err)`，錯誤碼用 `getErrorCode(err)`，錯誤種類用 `getErrorKind(err)`；各種類預設文案集中在 `ERROR_COPY`，衍生專案改那一處即全站生效。
 
 ---
 
@@ -271,7 +287,7 @@ Feature 推導模式下，**列表預設不加分頁**，除非該頁明確需�
 | 欄位 | `account_id` | `accountId` |
 | 型別 | `AccountItem` | `AccountListItem` |
 | 回應 | `{ status, data, meta }` | 裸物件 / 陣列 |
-| 錯誤 | `{ message }` | `createError({ statusMessage })` |
+| 錯誤 | `{ message }` | `createError({ statusCode, message })` |
 | 收藏切換 | `DELETE .../favorite` | `POST .../unfavorite` |
 | 密碼修改 | `PATCH /accounts/{id}/change-password` | `POST /accounts/{id}/password` |
 

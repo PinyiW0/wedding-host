@@ -71,7 +71,7 @@ antfu nuxt skill 整體相容 Nuxt 4,唯 data fetching 有兩處過時,易誤導
 | 身分自報 | body/query 中的 `xxxId` 是否被當操作者身分使用(身分只能來自 auth context/簽名憑證) |
 | 投影與分級 | 回傳是否白名單挑欄位;password/token/內部備註/審核理由是否外洩;公開端點是否只回已發布資料 |
 | 密鑰 | diff 中的字面 secret、dev 預設值成為 production fallback |
-| 錯誤訊息與存在性 | grep diff 中 `createError`:`statusMessage` 是否為固定訊息(不夾 stack/DB 原文/內部細節);歸屬檢查失敗是否回 404 而非 403(不讓外人探測資源存在) |
+| 錯誤訊息與存在性 | grep diff 中 `createError`:`statusMessage`(本專案慣例)與 `message` 是否均為固定訊息(不夾 stack/DB 原文/內部細節;本專案 403/404 文案會顯示在畫面上,見 `feature-to-api/references/openapi-conventions.md` §4 開頭註記);歸屬檢查失敗是否回 404 而非 403(不讓外人探測資源存在) |
 
 > 安全 finding 一律列「必修」。敏感資料外洩屬高風險,需明確標示。
 

@@ -112,11 +112,13 @@ flow 不存在？
 
 ```bash
 # 取得檔案修改時間（秒級 Unix timestamp）
-# macOS / BSD：
+# stat 的旗標在兩套實作間不相容，依平台擇一：
+
+# macOS / BSD
 stat -f %m spec/e2e-flows/04-建立觀測點.flow.md
 stat -f %m test/e2e/specs/04-建立觀測點.spec.ts
 
-# Linux / GNU coreutils（CI runner 多為此）：
+# Linux / GNU coreutils
 stat -c %Y spec/e2e-flows/04-建立觀測點.flow.md
 stat -c %Y test/e2e/specs/04-建立觀測點.spec.ts
 ```
@@ -304,7 +306,7 @@ rm test/e2e/specs/{NN}-{name}.spec.ts
 
 > 個別 feature 的 green 完成後，把**本批處理過的 feature spec**與**煙霧 spec**（由 `.husky/pre-push` 的 `SMOKE_PATTERN` 定義，本專案是 `00-auth`、`00-hydration`）
 > 接成一條指令再跑一次，捕捉本批內的連鎖影響（例：修 feature 08 的 mock data 影響同批 feature 07 的列表筆數斷言）。
-> **不跑全量**：跨到本批以外的連鎖影響由發 PR 前的 `/vibe-check --full`（dev 全量）與 CI（production 全量）承接，這裡不重複。
+> **不跑全量**：跨到本批以外的連鎖影響由 `/ship` L2（dev 全量）與 CI（production 全量）承接，這裡不重複。
 > 位置參數之間是聯集；**不用 `--last-failed`**（它與檔名篩選是 AND，缺 `.last-run.json` 時會靜默跑全量）。
 
 ```bash
@@ -332,7 +334,7 @@ E2E 執行完成
 | 27-匯出訓練報告 | spec → green | ✅ 通過（迭代 2 次） |
 | 03-查詢觀測點列表 | red → green | ✅ 通過 |
 
-本批煙霧測試：✅ 全部通過（本批 4 支 ＋ 煙霧 2 支；不含全量——dev 全量由 /vibe-check --full 跑、production 全量由 CI 跑）
+本批煙霧測試：✅ 全部通過（本批 4 支 ＋ 煙霧 2 支；不含全量——dev 全量由 /ship L2 跑、production 全量由 CI 跑）
 
 下一步：有 vibe 改動先跑 /vibe-check，否則 /commit
 ```

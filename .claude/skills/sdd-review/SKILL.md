@@ -1,7 +1,7 @@
 ---
 name: sdd-review
 description: 本地手動審查 git diff 的框架語意慣例與邏輯安全 — 只查 eslint/typecheck/playwright 都抓不到的死角(vue/nuxt/pinia 語意慣例、server 授權)。Use when 想手動 code review、push 前自檢、提交前檢查 .vue/store/server 改動、或提到 sdd-review、框架慣例審查、SDD review。
-argument-hint: "[feature 名(選填)]"
+argument-hint: "[feature 名 或 檔案清單(選填)]"
 ---
 
 # SDD Review
@@ -50,6 +50,7 @@ flowchart TD
 ### 步驟
 
 1. 跑 `git diff`(working tree + staged),挑出 `app/**/*.vue`、`app/stores/**`、`server/**/*.ts`。無相關改動則回報「無需審查」並結束。
+   - `$ARGUMENTS` 給了檔案清單 → 只審那幾個檔（`/ship` 自動修後的增量重審會這樣呼叫，避免整個 diff 重審一遍）。
 2. 對每個改動檔套用 6 項框架語意慣例 + Nuxt 4 行為檢查,判斷細節見 [checks.md](references/checks.md) 第 1、2 節。
 3. 若 diff 動到 `server/`,加做輕量邏輯安全掃描(checks.md §3);動到 `app/` 或 `nuxt.config.ts`,加做前端安全掃描(checks.md §4)。
 4. 輸出終端報告(格式見第 4 節)。**懷疑某項時才** deep-read 對應的單一 antfu reference,不整包載入。

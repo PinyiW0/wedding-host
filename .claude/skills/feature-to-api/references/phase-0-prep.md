@@ -71,6 +71,8 @@ Phase 0 再檢查 `spec/report/route-map.yaml`：
 | streaming | 有影音播放 / 直播嗎 | `streaming` | `streaming` skill |
 
 > rbac 以 auth 為前提；各關注點無訊號則該區塊**完全不生**（中立預設）。索引只為防漏——五個都要逐一過，判準一律回到下方各段的語意描述。
+>
+> **本專案未安裝 `realtime`／`streaming` skill**（issue #209 列為範圍外）。偵測到這兩個區塊時照樣寫進 route-map，並在報告與回報裡列為待確認「需要先安裝對應 skill」，不要憑記憶實作。
 
 ---
 
@@ -90,7 +92,9 @@ Phase 0 再檢查 `spec/report/route-map.yaml`：
             或與 paths 不一致）。取兩份證據再和解，不要只信 servers.url：
               a. servers.url 的 path 段（去掉 protocol+host+port）
               b. 所有 paths keys 的最長共同前綴
-                 （如 /api/v1/auth/login + /api/v1/sites → /api/v1）
+                 （如 /api/v1/auth/login + /api/v1/notes → /api/v1）
+                 離群端點：少數端點不在多數前綴下（內網資料上傳、health 等）→ 不納入 (b) 的計算，
+                 離群清單寫進報告供使用者確認；route-map 對應 endpoint 標 outside_prefix: true
             和解規則：
               - (a) 與 (b) 一致 → 用該值
               - servers.url 無 path 段、或 (a) 與 (b) 衝突 → 以 (b) paths 共同前綴為準
@@ -103,8 +107,8 @@ Phase 0 再檢查 `spec/report/route-map.yaml`：
 
 3. server/api/ 目錄存在且非空？
      → 是 → 掃描所有 endpoint 檔，取最長共同前綴
-            例：server/api/v1/sites/, server/api/v1/cameras/ → path_prefix = "/api/v1"
-            例：server/api/sites/, server/api/auth/         → path_prefix = "/api"
+            例：server/api/v1/notes/, server/api/v1/members/ → path_prefix = "/api/v1"
+            例：server/api/notes/, server/api/auth/          → path_prefix = "/api"
             寫入 route-map.yaml，停止
      → 否 → 繼續
 
@@ -129,14 +133,15 @@ api_contract:
 
 > SDD workflow 對 auth 中立——**偵測到才走**，無訊號的專案完全不生 auth。詳見 [auth-scaffold.md](auth-scaffold.md)。
 
-grep 來源訊號（命中任一即「需要 auth」）：
+判準：有沒有登入主體。主訊號與命名範例（範例不是必要字串，命名不同但語意相同一樣命中）：
 
-- OpenAPI：`paths` 同時含 `/auth/login` 與 `/auth/refresh`；或 `securitySchemes` 有 bearer
+- OpenAPI：有「收憑證換 token」的端點（如 `/auth/login`、`/sessions`、`/oauth/token`），或 `securitySchemes` 有 bearer／oauth2／cookie（只有 cookie 的例外見下方）
 - `.feature` / `.flow.md`：有登入 scenario（登入 / login / 帳號+密碼 / 未登入導向）
+- 例外：spec 只有 cookie 認證（`securitySchemes` 是 `in: cookie`、登入回應沒有 token）→ **不寫 `route-map.auth`**，下游就不會套 Bearer 範本；在回報列「待確認：cookie session 認證，scaffold 未支援（需要 CSRF 防護）」
 
-**偵測到 → 寫入 `route-map.yaml > auth` 區塊**（`required: true` + `login_path` / `home_path` / `public_paths` / `token_endpoints`，格式見 auth-scaffold.md §2）。`public_paths` 推導：login ＋ `.feature` 中**無需登入即可用的場景**（賓客／訪客／公開瀏覽）對應的路由——漏列會被 middleware 誤擋，多列會漏守門，判準是「這個場景的操作者有沒有登入過」。**公開路由不得是受保護路由的路徑前綴**（middleware 前綴比對，`/announcement` 公開會連 `/announcement/settings` 一起放行）——路由規劃時遇到巢狀衝突，把受保護頁改掛別的前綴（如 `/admin/…`），並依 auth-scaffold.md §3a 套用 API 層範本（提供 `useHttpAuth` handler 即啟用攔截，**useHttp.ts 不覆蓋**；`nuxt.config` 追加 auth 路徑）。
+**偵測到 → 寫入 `route-map.yaml > auth` 區塊**（`required: true` + `login_path` / `home_path` / `public_paths` / `token_endpoints`，格式見 auth-scaffold.md §2）。`public_paths` 推導：login ＋ `.feature` 中**無需登入即可用的場景**（賓客／訪客／公開瀏覽）對應的路由——漏列會被 middleware 誤擋，多列會漏守門，判準是「這個場景的操作者有沒有登入過」。**middleware 對 public_paths 採逐段比對**（段數不同即不命中，子路由不會被連帶放行）——要注意的是 `public_paths` 若含動態段（`[id]` 或 `:id`），該段會吃任意非空值，需確認不會吃到受保護資源的路徑，並依 auth-scaffold.md §3a 套用 API 層範本（提供 `useHttpAuth` handler 即啟用攔截，**useHttp.ts 不覆蓋**；`nuxt.config` 追加 auth 路徑）。
 
-**沒偵測到 → route-map 不寫 auth 區塊、不套 scaffold。** Sync 模式下後來才出現 `/auth/*` 一樣補上（見 auth-scaffold.md §6）。
+**沒偵測到 → route-map 不寫 auth 區塊、不套 scaffold。** Sync 模式下後來才出現登入端點一樣補上（見 auth-scaffold.md §6）。
 
 ---
 
@@ -144,9 +149,9 @@ grep 來源訊號（命中任一即「需要 auth」）：
 
 > SDD workflow 對即時連線中立——**偵測到才提示**，無訊號的專案完全不碰。即時連線的實作知識（連線生命週期、重連補抓、auth token、cleanup、傳輸選型）由 `realtime` skill 提供。
 
-grep 來源訊號（命中任一即「有即時需求」）：
+判準：有沒有伺服器推送或雙向連線。主訊號與命名範例（範例不是必要字串）：
 
-- SSE：OpenAPI 有 `text/event-stream` content type、或 `/events`（含 `?channels=`）端點；`.feature`/`.flow.md` 有「即時 / 推播 / 通知 / live / 斷線重連」scenario
+- SSE：主訊號是 OpenAPI 的 `text/event-stream` content type；推送端點命名如 `/notifications/stream` 只是範例；`.feature`/`.flow.md` 有「即時 / 推播 / 通知 / live / 斷線重連」scenario
 - WebSocket：`wss://`、`ws://`、WebSocket 端點描述
 - WebRTC：`RTCPeerConnection`、signaling、datachannel
 
@@ -162,13 +167,13 @@ grep 來源訊號（命中任一即「有即時需求」）：
 
 > SDD workflow 對影音串流中立——**偵測到才提示**，無訊號的專案完全不碰。影音播放的實作知識（播放器掛載、錯誤自救、看門狗、延遲調校、多路對齊、teardown、傳輸選型）由 `streaming` skill 提供。
 
-grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI 是主訊號**——串流合約住在 spec 與 UI，flow 通常只以路由暗示（如 `/watch/live`），故 flow 側訊號弱、僅供參考：
+判準：有沒有影音播放或直播。**OpenAPI 是主訊號**——串流合約住在 spec 與 UI，flow 通常只以路由暗示（如 `/live`），故 flow 側訊號弱、僅供參考：
 
-- HLS：OpenAPI 有 `hlsUrl` 欄位、`/streams` 端點、描述含「HLS」、或 `.m3u8`；mock / 原始碼有 `application/vnd.apple.mpegurl`、`application/x-mpegurl`
+- HLS：主訊號是 `.m3u8` 或 HLS mime（`application/vnd.apple.mpegurl`、`application/x-mpegurl`）、描述含「HLS」；`playbackUrl` 類欄位、`/videos/{videoId}/playback` 類端點只是命名範例
 - WebRTC media：`RTCPeerConnection` + `ontrack` / `addTrack` / `addTransceiver`
-- （flow 側弱訊號）`.flow.md` 出現名為 `live` 的路由 / 頁面（如 `/watch/live`）——僅暗示可能有直播頁，**不據此要求 flow 寫串流不變式**（畫面呈現屬 vibe）
+- （flow 側弱訊號）`.flow.md` 出現名為 `live` 的路由 / 頁面（如 `/live`）——僅暗示可能有直播頁，**不據此要求 flow 寫串流不變式**（畫面呈現屬 vibe）
 
-**偵測到 → 寫入 `route-map.yaml > streaming` 區塊**（`transport: hls | webrtc-media`、`url_source`（提供播放 URL 的端點，如 `/streams/{streamId}` 取 `hlsUrl`）、`url_field`（URL 欄位名，如 `hlsUrl`））**並在報告提示「建議套用 `streaming` skill」**。播放 URL 多由獨立端點提供（單一真相來源），型別走 codegen alias（如 `StreamResponse`），實作見 streaming/references/hls.md。
+**偵測到 → 寫入 `route-map.yaml > streaming` 區塊**（`transport: hls | webrtc-media`、`url_source`（提供播放 URL 的端點，如 `/videos/{videoId}/playback` 取 `playbackUrl`）、`url_field`（URL 欄位名，如 `playbackUrl`））**並在報告提示「建議套用 `streaming` skill」**。播放 URL 多由獨立端點提供（單一真相來源），型別走 codegen alias（如 `PlaybackResponse`），實作見 streaming/references/hls.md。
 
 **沒偵測到 → route-map 不寫 streaming 區塊、不提示。** Sync 模式下後來才出現串流端點一樣補上。
 
@@ -181,12 +186,12 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 
 判準是**語意**——「不同角色看到 / 能做的事不一樣嗎」，不是逐字比對。下列訊號為**常見範例非白名單**，命中任一即「有角色分層」：
 
-- OpenAPI：端點 description 含「僅 X 可操作 / X 不得 / X 才能」這類**操作者角色限制**散文（→ `endpoints`，OWASP BFLA）；含「只能讀 / 改 / 刪**自己的** X」「不得存取**他人** Y」這類**單筆歸屬**散文，尤其在 `/{id}` 端點（→ `object_ownership`，OWASP BOLA / API #1）；schema 有 `roles` 列舉欄位（值如 `super_admin`/`observer`/`owner`/`member`，皆範例）；`403` 回應帶權限語意 `errorCode`
-- `.feature` / `.flow.md`：不同身分操作同一資源結果不同（「以管理員登入」vs「以觀測員登入」看到的清單 / 可按的鈕不同）、「無權限 / 僅…可 / 被拒 / 只能操作自己的」語意 scenario
+- OpenAPI：端點 description 含「僅 X 可操作 / X 不得 / X 才能」這類**操作者角色限制**散文（→ `endpoints`，OWASP BFLA）；含「只能讀 / 改 / 刪**自己的** X」「不得存取**他人** Y」這類**單筆歸屬**散文，尤其在 `/{id}` 端點（→ `object_ownership`，OWASP BOLA / API #1）；schema 有 `roles` 列舉欄位（值如 `admin`/`editor`/`viewer`，皆範例）；`403` 回應帶權限語意 `errorCode`
+- `.feature` / `.flow.md`：不同身分操作同一資源結果不同（「以管理員登入」vs「以檢視者登入」看到的清單 / 可按的鈕不同）、「無權限 / 僅…可 / 被拒 / 只能操作自己的」語意 scenario
 
 **偵測到 → 寫入 `route-map.yaml > rbac` 區塊**（`required: true` + `roles` + `endpoints`（端點存取控制 / BFLA）+ `ownership`（列表級 ACL）+ `object_ownership`（單筆 object 級 ACL / BOLA，最常漏卻是 OWASP #1）+ `protected_routes`（前端守門）+ `business_guards`（僅登錄不自動生），格式見 rbac-scaffold.md §2）**並在報告提示「建議套用 rbac-scaffold」**。角色名一律從 spec 萃取、不寫死；判準是語意角色（受限 vs 全權）。
 
-**沒偵測到 → route-map 不寫 rbac 區塊、不套守門。** Sync 模式下後來才出現角色限制端點一樣補上（見 rbac-scaffold.md §5）。命名超出範例、或來源互相矛盾（散文說「僅 super_admin」但 feature 卻讓 observer 操作）時 → **不默默猜、也不硬比字面，列出研判與操作者確認再定**。
+**沒偵測到 → route-map 不寫 rbac 區塊、不套守門。** Sync 模式下後來才出現角色限制端點一樣補上（見 rbac-scaffold.md §5）。命名超出範例、或來源互相矛盾（散文說「僅 admin」但 feature 卻讓 viewer 操作）時 → **不默默猜、也不硬比字面，列出研判與操作者確認再定**。
 
 ---
 
@@ -204,9 +209,9 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 4. **派生端點規格**：每個 `paths/*/{method}` → `endpoints` 條目
    - 路徑、method、request/response schema 引用全照抄
    - 不要自加分頁（除非 spec 有 `parameters`）
-   - 不要改 method（如 spec 寫 `PATCH /watches/{id}/station` 就照 spec）
+   - 不要改 method（如 spec 寫 `PATCH /notes/{id}/notebook` 就照 spec）
 5. **產生 route-map.yaml**：
-   - 寫入 `api_contract.path_prefix`（來自上方「Path 前綴偵測」結果，**所有 endpoint 路徑都以此前綴開頭**）
+   - 寫入 `api_contract.path_prefix`（來自上方「Path 前綴偵測」結果，**所有 endpoint 路徑都以此前綴開頭**；離群端點標 `outside_prefix: true` 例外）
    - 寫入 `api_contract.response_conventions`（回應信封依 openapi-conventions §3 判定：模式 A envelope／模式 B 裸回，判定規則勿在此複製）：
    ```yaml
    response_conventions:
@@ -214,20 +219,23 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
      list: 'A：ok(T[]) / page(items, pagination)；B：T[]'
      single: 'A：ok(T)；B：T'
      action: XxxEvent（POST 201；軟刪除 204 無 body，兩模式皆同）
-     error: 'A：ErrorEnvelope；B：createError({ statusCode, statusMessage })'
+     error: 'A：ErrorEnvelope；B：createError({ statusCode, message })'
    ```
+   - **產生 `routes` 與 `enabled_features`**：依全量模式步驟 1–4、6 產生（`.feature` 只用於路由規劃與 `content_hash`，欄位仍以 spec 為準）——下游 feature-to-ui 與 Sync 都讀這兩塊
+   - **孤兒偵測**：同全量模式步驟 7.6
 6. **產出前自檢**：
    - □ `app/types/api/_schema.d.ts` 由 `gen:api` 產、未手改（檔頭 `Do not make direct changes`）
    - □ view 型別是 `_schema` 的 alias，`index.ts` 未 re-export `_schema`
    - □ `api_contract.path_prefix` 已寫入（值來自「Path 前綴偵測」）
-   - □ 所有 `endpoints[*].path` 都以 `path_prefix` 開頭，且為相對 path（無 `http://` / host）
+   - □ 所有 `endpoints[*].path` 都以 `path_prefix` 開頭（`outside_prefix: true` 除外），且為相對 path（無 `http://` / host）
+   - □ `routes` 與 `enabled_features` 已寫入
    - □ view 型別涵蓋所有端點用到的 `components/schemas`
    - □ endpoints 數量與 `paths` 一致（method 維度）
-   - □ 全欄位 camelCase
+   - □ 手寫型別全 camelCase；codegen 鏡像欄位照 spec（見 openapi-conventions.md §1 codegen 例外）
    - □ 未自創第三種包裝（如 `{ status, data, meta }`）；envelope 模式判定已寫入 `response_conventions`
    - □ HTTP code 對齊 spec
    - □ 若偵測到角色分層，`rbac` 區塊已寫入且涵蓋所有角色限制端點（見 rbac-scaffold.md §2）
-7. **詢問用戶確認**
+7. **依「輸出格式：路由規劃」回報對照表後結束，不自動進 Phase 1**（型別檔與 `spec/report/route-map.yaml` 在前面步驟已寫入磁碟，本步只回報、不再寫檔；使用者要求調整時直接修改 `spec/report/route-map.yaml` 後再進 Phase 1）
 
 ---
 
@@ -235,7 +243,7 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 
 走下方「全量模式執行步驟」，但有三個必改：
 
-- **欄位命名 camelCase**（不再 snake_case）
+- **欄位命名 camelCase**（不用 snake_case）
 - **型別命名分 Event / ListItem / Body / Detail**（見 `openapi-conventions.md` § 1）
 - **mock 端點回應模式依 openapi-conventions §3**（預設模式 A envelope；Phase 1 負責實作，這邊先在 `route-map.yaml > response_conventions` 標明判定結果；絕不自創 `{ status, data }` 包裝）
 
@@ -258,9 +266,9 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 
 5. **建立 API 合約型別**（直接寫入 `app/types/api/*.ts`）
    - 根據 feature 分析結果，直接建立 TypeScript 型別定義檔
-   - 每個資源一個檔案（如 `sites.ts`、`auth.ts`）
+   - 每個資源一個檔案（如 `notes.ts`、`auth.ts`）
    - 建立 `index.ts` 統一 re-export
-   - ⚠️ **欄位命名使用 `camelCase`**（對齊 OpenAPI 慣例，未來與 `api-spec.yml` 無痛對接；不再用 snake_case）
+   - ⚠️ **欄位命名使用 `camelCase`**（對齊 OpenAPI 慣例，未來與 `api-spec.yml` 無痛對接；不用 snake_case）
    - ⚠️ **型別命名分 Event / ListItem / Body / Detail**，見 `openapi-conventions.md` § 1
    - ⚠️ 日期欄位使用 `string`（JSON 不支援 `Date`）
    - ⚠️ **必須建在 `app/types/api/`**，Nuxt 4 的 `~` 別名解析到 `app/`
@@ -289,9 +297,11 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 
    全量模式通常用於首次設定（codebase 空），但若在已有 codebase 的情況下跑全量（如重置 route-map 後重建），仍需執行孤兒偵測。
 
-   流程與輸出見 [phase-0-sync.md 步驟 7.6](phase-0-sync.md#步驟-76孤兒偵測反向-audit-必跑)。產出寫入新 `sync-report.md`（或全量模式下的 `initial-report.md`）的「🗑️ 孤兒清單」段。
+   流程與輸出見 [phase-0-sync.md 步驟 7.6](phase-0-sync.md#步驟-76孤兒偵測反向-audit-必跑)。產出寫入 `spec/report/initial-report.md` 的「🗑️ 孤兒清單」段（不可寫 `sync-report.md`：下游以它存在與否判斷增量模式）。沒有孤兒也要寫這個檔，該段寫「無」，讓下游知道偵測跑過。
 
-8. **詢問用戶確認**（含路由對照表內容 + 孤兒清單若有）
+   已有舊的 `sync-report.md`（例如重置 route-map 後重建）→ 把舊檔改名為 `sync-report.<YYYY-MM-DD>.bak.md`（同日已存在加 `-2`、`-3`），並在回報列出舊檔裡的待 PM 處理項目；孤兒由本次 7.6 重新偵測。不改名的話，Phase 1 會看到 `sync-report.md` 存在而進增量模式，重播舊清單、漏建本次端點。
+
+8. **依「輸出格式：路由規劃」回報對照表（含孤兒清單，若有）後結束，不自動進 Phase 1**（型別檔與 `spec/report/route-map.yaml` 在前面步驟已寫入磁碟，本步只回報、不再寫檔；使用者要求調整時直接修改 `spec/report/route-map.yaml` 後再進 Phase 1）
 
 ---
 
@@ -321,15 +331,15 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 - [ ] 登入頁面 (01-使用者登入.dsl.feature)
 - [ ] 登出功能 (02-使用者登出.dsl.feature)
 
-### 觀測點管理
-- [ ] 觀測點列表 (03-查詢觀測點列表.dsl.feature)
-- [ ] 建立觀測點 (04-建立觀測點.dsl.feature)
+### 筆記管理
+- [ ] 筆記列表 (03-查詢筆記列表.dsl.feature)
+- [ ] 建立筆記 (04-建立筆記.dsl.feature)
 
 ### 資料模型
 | 實體 | 欄位 | 來源 |
 |------|------|------|
 | User | account, role, status | 01-使用者登入 |
-| Site | id, name, stationCount | 03-查詢觀測點列表 |
+| Note | id, title, tagCount | 03-查詢筆記列表 |
 
 ### API 端點規劃
 > ⚠️ 路徑以本專案偵測到的 `path_prefix` 為前綴；下例假設 `/api/v1`
@@ -337,7 +347,7 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 | 端點 | 方法 | 用途 | 來源 |
 |------|------|------|------|
 | /api/v1/auth/login | POST | 登入 | 01 |
-| /api/v1/sites | GET | 觀測點列表 | 03 |
+| /api/v1/notes | GET | 筆記列表 | 03 |
 ```
 
 **讀回完整性（規劃完端點必查）**：`.feature` 是命令驅動的，照著寫只會產出寫入端點。列完端點表後，逐一檢查每個 command（POST/PUT/PATCH）：「它寫入的每個欄位，重新整理後前端從哪個 GET 拿回來？」
@@ -353,6 +363,8 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 
 ## 輸出格式：路由規劃
 
+> 本段是 Phase 0 回報的輸出格式（OpenAPI 模式與全量模式共用）；Sync 模式的回報依 phase-0-sync.md 的變更報告格式，不用本表。
+
 ```markdown
 ## 路由規劃
 
@@ -360,7 +372,14 @@ grep 來源訊號（命中任一即「有串流播放需求」）。**OpenAPI �
 |------|------|--------|----------|
 | /login | login.vue | auth | 01-使用者登入 |
 | / | index.vue | default | 首頁/Dashboard |
-| /sites | sites/index.vue | default | 03-查詢觀測點列表 |
+| /notes | notes/index.vue | default | 03-查詢筆記列表 |
+
+### 🗑️ 孤兒清單（若有；無則寫「無」）
+
+| 類別 | 項目 | 建議處置 |
+|------|------|----------|
+| UI | app/pages/legacy.vue | 刪除（無對應 feature） |
+| Backend | server/api/v1/legacy.get.ts | 加進 task list，不阻塞 |
 ```
 
 ---
@@ -374,35 +393,35 @@ Phase 0 直接建立 `app/types/api/*.ts`，消除 YAML → TypeScript 翻譯誤
 ```
 app/types/api/
 ├── index.ts     # 統一 re-export
-├── auth.ts      # LoginData
-├── sites.ts     # SiteItem, CreateSiteBody
-└── stations.ts   # StationItem, CreateStationBody
+├── auth.ts      # LoginBody, LoginResponse
+├── notes.ts     # NoteListItem, NoteCreatedEvent, CreateNoteBody
+└── notebooks.ts  # NotebookListItem, CreateNotebookBody
 ```
 
 ### 型別檔範例
 
 ```typescript
-// app/types/api/sites.ts
-export interface SiteListItem {
-  siteId: string // uuid
-  siteName: string
-  stationCount: number
+// app/types/api/notes.ts
+export interface NoteListItem {
+  noteId: string // uuid
+  title: string
+  tagCount: number
 }
 
-export interface SiteCreatedEvent {
-  siteId: string
-  siteName: string
+export interface NoteCreatedEvent {
+  noteId: string
+  title: string
 }
 
-export interface CreateSiteBody {
-  siteName: string
+export interface CreateNoteBody {
+  title: string
 }
 ```
 
 ```typescript
 // app/types/api/index.ts — 統一 re-export
-export type { ObserverLoggedInEvent, LoginBody } from './auth'
-export type { CreateSiteBody, SiteCreatedEvent, SiteListItem } from './sites'
+export type { LoginBody, LoginResponse } from './auth'
+export type { CreateNoteBody, NoteCreatedEvent, NoteListItem } from './notes'
 ```
 
 > ⚠️ **命名慣例**：欄位 `camelCase`、型別 `PascalCase`、UUID 用 `string`、日期用 `string`
@@ -418,7 +437,7 @@ export type { CreateSiteBody, SiteCreatedEvent, SiteListItem } from './sites'
 
 ## 路由對照表格式（route-map.yaml）
 
-用戶確認後，將此對照表寫入 `spec/report/route-map.yaml`。此檔案是後續 Phase 2-5 及 **update 迭代的唯一參照來源**。
+產出後直接寫入 `spec/report/route-map.yaml`（使用者要調整就直接改這個檔）。此檔案是後續 Phase 2-5 及 **update 迭代的唯一參照來源**。
 
 ```yaml
 # spec/report/route-map.yaml
@@ -450,46 +469,51 @@ api_contract:
     list: 'A：ok(T[]) / page(items, pagination)；B：T[]'
     single: 'A：ok(T)；B：T'
     action: XxxEvent（POST 201；軟刪除 204 無 body，兩模式皆同）
-    error: 'A：ErrorEnvelope；B：createError({ statusCode, statusMessage })'
+    error: 'A：ErrorEnvelope；B：createError({ statusCode, message })'
 
   # 型別欄位快照（鏡像 app/types/api/*.ts，作為 Sync diff 基準）
   # 程式碼層面的 SSoT 仍是 app/types/api/*.ts
   # 手動修改只改 *.ts，此區塊由 Phase 0 自動同步覆蓋
   types:
-    SiteListItem:
-      file: sites.ts
+    NoteListItem:
+      file: notes.ts
       fields:
-        siteId: string
-        siteName: string
-        stationCount: number
-    SiteCreatedEvent:
-      file: sites.ts
+        noteId: string
+        title: string
+        tagCount: number
+    NoteCreatedEvent:
+      file: notes.ts
       fields:
-        siteId: string
-        siteName: string
-    CreateSiteBody:
-      file: sites.ts
+        noteId: string
+        title: string
+    CreateNoteBody:
+      file: notes.ts
       fields:
-        siteName: string
+        title: string
 
   # 端點規格（方法 + 路徑 + Request/Response 型別名引用）
   # ⚠️ 以下 path 假設 path_prefix = "/api/v1"，實際以本檔上方 path_prefix 為準
-  # 所有 path 必以 path_prefix 開頭；不得寫絕對 URL
-  # ⚠️ Phase 1.5 會依 method + path 推導 client function name（如 GET /sites → listSites，
-  #    POST /watches/{id}/end → endWatch），命名規則見 phase-1-5-client-api.md
+  # 所有 path 必以 path_prefix 開頭（離群端點標 outside_prefix: true 例外）；不得寫絕對 URL
+  # ⚠️ Phase 1.5 會依 method + path 推導 client function name（如 GET /notes → listNotes，
+  #    POST /notes/{id}/archive → archiveNote），命名規則見 phase-1-5-client-api.md
   endpoints:
+    # ⚠️ LoginResponse 為 XxxEvent 命名規則的既有例外（對齊 auth-scaffold.md 的 TokenPairData）
     - method: POST
       path: /api/v1/auth/login
       request: LoginBody
-      response: ObserverLoggedInEvent
+      response: LoginResponse
     - method: GET
-      path: /api/v1/sites
+      path: /api/v1/notes
       request: '{}'
-      response: 'SiteListItem[]'
+      response: 'NoteListItem[]'
     - method: POST
-      path: /api/v1/sites
-      request: CreateSiteBody
-      response: SiteCreatedEvent
+      path: /api/v1/notes
+      request: CreateNoteBody
+      response: NoteCreatedEvent
+    # 離群端點示意（不在 path_prefix 下，如內網資料上傳）
+    # - method: POST
+    #   path: /upload-data
+    #   outside_prefix: true
 
 routes:
   - path: /login
@@ -503,17 +527,17 @@ routes:
     components: []
     store: auth
 
-  - path: /sites
-    page: app/pages/sites/index.vue
+  - path: /notes
+    page: app/pages/notes/index.vue
     layout: default
     features:
-      - file: 03-查詢觀測點列表.dsl.feature
+      - file: 03-查詢筆記列表.dsl.feature
         content_hash: e5f6g7h8
-      - file: 04-建立觀測點.dsl.feature
+      - file: 04-建立筆記.dsl.feature
         content_hash: i9j0k1l2
     api_endpoints:
-      - GET /api/v1/sites
-      - POST /api/v1/sites
+      - GET /api/v1/notes
+      - POST /api/v1/notes
     components:
       - PageHeader
       - ListContainer
@@ -558,7 +582,7 @@ routes:
 
 > ⚠️ **根路由必建**：即使沒有 feature 對應 `/`，route-map.yaml 也必須包含 `/` 路由。Phase 2 建空殼，Phase 5 填入 client-side redirect。**禁止使用 `redirectCode`（HTTP redirect 會被瀏覽器快取，影響同 port 的其他專案）**，改用 `if (import.meta.client) { await navigateTo('/xxx', { replace: true }) }`。
 
-> ⚠️ **一個頁面可對應多個 feature**：例如觀測點列表頁同時處理「查詢」「建立」「編輯」「刪除」四個 feature。
+> ⚠️ **一個頁面可對應多個 feature**：例如筆記列表頁同時處理「查詢」「建立」「編輯」「刪除」四個 feature。
 >
 > ⚠️ **Phase 2 必須讀取此檔案**：建立頁面骨架時，以 route-map.yaml 為準。
 >
@@ -570,7 +594,7 @@ features 欄位使用物件陣列，每個物件包含 `file`（檔名）和 `co
 
 ```yaml
 features:
-  - file: 03-查詢觀測點列表.dsl.feature
+  - file: 03-查詢筆記列表.dsl.feature
     content_hash: a1b2c3d4
 ```
 
@@ -580,7 +604,7 @@ features:
 
 計算方式（shell，統一使用 `shasum -a 256`，macOS/Linux 皆內建）：
 ```bash
-shasum -a 256 spec/gherkin-feature/03-查詢觀測點列表.dsl.feature | awk '{print $1}'
+shasum -a 256 spec/gherkin-feature/03-查詢筆記列表.dsl.feature | awk '{print $1}'
 ```
 
 ---

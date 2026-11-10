@@ -88,6 +88,7 @@ green（修復 UI、讓測試通過）
 | Flow 架構 | `spec/e2e-flows/_common.flow.md` | 提示「請先將 `_common.flow.md` 放入 `spec/e2e-flows/`」 |
 | 目標 Flow | `spec/e2e-flows/{NN}-{name}.flow.md` | 提示「請先將對應的 `.flow.md` 放入 `spec/e2e-flows/`」 |
 | E2E 基礎 | `test/e2e/helpers/actions.ts` | 提示先執行 `/test e2e setup` |
+| 合約事實 | `spec/report/contract-facts.md` | 不存在 → 先執行 [spec.md](spec.md) Step 0 合約事實盤點，盤點完成才繼續產 spec（batch／auto 亦同） |
 
 ---
 
@@ -124,7 +125,8 @@ for each spec/e2e-flows/{NN}-{name}.flow.md:
   ├─ 檢查前置條件
   │   ├─ _common.flow.md 存在？ → 不存在 → 提示「請先放入 _common.flow.md」
   │   ├─ 目標 .flow.md 存在？ → 不存在 → 提示「請先放入對應的 .flow.md」
-  │   └─ actions.ts 存在？ → 不存在 → 提示 /test e2e setup
+  │   ├─ test/e2e/helpers/actions.ts 存在？ → 不存在 → 提示 /test e2e setup
+  │   └─ contract-facts.md 存在？ → 不存在 → 先執行合約事實盤點（spec.md Step 0），盤點完再繼續
   │
   ├─ 讀取 .flow.md + _common.flow.md
   ├─ 更新 fixtures.ts（如有新路由/帳號）
@@ -216,7 +218,7 @@ E2E Pipeline 完成：04-建立觀測點
 
 ## 檢查清單
 
-- [ ] 前置條件已滿足（.flow.md 存在、helpers/actions.ts 存在）
+- [ ] 前置條件已滿足（.flow.md 存在、test/e2e/helpers/actions.ts 存在、spec/report/contract-facts.md 已存在或已先盤點）
 - [ ] fixtures.ts 已包含所需的路由和測試帳號
 - [ ] .spec.ts 已產出（從 helpers import 共用操作，不含本地定義）
 - [ ] `npm run eslint` + `npm run typelint` 零錯誤

@@ -6,7 +6,8 @@
 必須讀取：
 - ui-config.yaml > project.name（網站名稱）
 - ui-config.yaml > colorMode（深淺模式）
-- ui-config.yaml > responsive.sidebar（響應式設定）
+- ui-config.yaml > responsive.sidebar（響應式設定，含 bottomSection 的 colorModeToggle／userDisplay／logoutButton 開關）
+- spec/report/route-map.yaml > auth（有無此區塊決定 layout 要不要放會員名稱與登出）
 - ui-config.yaml > icons.common（常用 icon）
 - ui-config.yaml > loading.pageIndicator（分頁切換進度條開關）
 - spec/report/route-map.yaml > routes（所有路由，用於建立 sidebar 導航項目）
@@ -38,11 +39,12 @@ Phase 3 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
    - `colorMode.enabled: true` → 支援深淺模式切換
    - `colorMode.enabled: false` → 不支援切換（使用 `colorMode.default` 指定的模式）
 3. **建立 default.vue**（含 Sidebar）
+   - 會員名稱與登出區塊**只在** `route-map.yaml` 有 `auth` 區塊、且 `bottomSection.userDisplay`／`logoutButton` 為 `true` 時產出；否則刪掉該區塊，也不寫 `useAuthStore`（auth store 只在 auth 命中時由 `/feature-to-api` 建立，沒有它 typelint 會紅）
 4. **建立 auth.vue**（無 Sidebar）
 5. **⚠️ 如果本 Phase 有建立任何 layout，則更新 app.vue**（見下方說明）
 6. **輸出完成摘要**（告知用戶下一步指令，不用「要我繼續嗎？」的問法）
 
-## ⚠️ 條件式 app.vue 設定（極度重要！）
+## 條件式 app.vue 設定
 
 **判斷邏輯**：如果 Phase 3 建立了任何 layout 檔案（`app/layouts/*.vue`），則**必須**同步更新 `app.vue` 加入 `<NuxtLayout>` + `<UApp>`。
 
@@ -101,23 +103,24 @@ Phase 3 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 
 ## default.vue 範例（可收合 Sidebar）
 
+> 側欄收合時寬度直接切換、不加動畫：`creative-direction.md` §4 禁止對 width 這類版面屬性做 transition，`npm run eslint` 也會擋 `transition-all`。
+
 > ⚠️ **Sidebar 規範** → 詳見 [rules.md](rules.md) > Layout 規範
 
 ```vue
-<!-- app/layouts/default.vue -->
+<!-- app/layouts/default.vue（範例為 auth 命中版；無 auth 時刪掉 authStore、handleLogout 與會員／登出區塊） -->
 <script setup lang="ts">
-import { useAuthStore } from '~/stores/auth'
-
+// useAuthStore 由 @pinia/nuxt auto-import
 const authStore = useAuthStore()
-const router = useRouter()
 const colorMode = useColorMode()
 const isMobileMenuOpen = ref(false)
 const isCollapsed = ref(false)
 
+// 導航項目從 route-map.yaml > routes 產生；下列為假想示意
 const navigation = [
   { label: '首頁', icon: 'i-heroicons-home', to: '/' },
-  { label: '觀測點', icon: 'i-heroicons-user-group', to: '/sites' },
-  { label: '觀測站', icon: 'i-heroicons-users', to: '/stations' },
+  { label: '筆記', icon: 'i-heroicons-document-text', to: '/notes' },
+  { label: '成員', icon: 'i-heroicons-users', to: '/members' },
 ]
 
 function toggleSidebar() {
@@ -129,8 +132,10 @@ function toggleColorMode() {
 }
 
 async function handleLogout() {
-  authStore.clearAuth()
-  await router.push('/login')
+  // logout() 會打 server 登出（真後端在這裡撤銷 refresh token）再清本地狀態；只 clearAuth() 不會通知 server
+  // server 失敗不擋登出：logout() 的 finally 已清本地狀態，照樣導去登入頁
+  await authStore.logout().catch(() => {})
+  await navigateTo(useRuntimeConfig().public.authLoginPath || '/login')
 }
 </script>
 
@@ -138,7 +143,7 @@ async function handleLogout() {
   <div class="flex h-screen overflow-hidden bg-neutral-100 dark:bg-neutral-950">
     <!-- Sidebar：lg 以上顯示，可收合 -->
     <aside
-      class="hidden shrink-0 border-r border-neutral-200 bg-white transition-all duration-300 lg:flex lg:flex-col dark:border-neutral-800 dark:bg-neutral-900"
+      class="hidden shrink-0 border-r border-neutral-200 bg-white lg:flex lg:flex-col dark:border-neutral-800 dark:bg-neutral-900"
       :class="isCollapsed ? 'w-16' : 'w-64'"
     >
       <!-- Logo + 收合按鈕 -->
@@ -151,6 +156,7 @@ async function handleLogout() {
           color="neutral"
           variant="ghost"
           size="sm"
+          :aria-label="isCollapsed ? '展開側欄' : '收合側欄'"
           @click="toggleSidebar"
         />
       </div>
@@ -161,7 +167,7 @@ async function handleLogout() {
           v-for="item in navigation"
           :key="item.to"
           :to="item.to"
-          class="flex items-center rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-300 hover:bg-primary-50 hover:text-primary-600 dark:text-neutral-300 dark:hover:bg-primary-950 dark:hover:text-primary-400"
+          class="flex items-center rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-250 hover:bg-primary-50 hover:text-primary-600 dark:text-neutral-300 dark:hover:bg-primary-950 dark:hover:text-primary-400"
           :class="isCollapsed ? 'justify-center' : 'gap-3'"
         >
           <UIcon :name="item.icon" class="size-5 shrink-0" />
@@ -173,7 +179,7 @@ async function handleLogout() {
       <div class="shrink-0 border-t border-neutral-200 p-2 dark:border-neutral-800">
         <!-- 深淺模式切換 -->
         <button
-          class="flex w-full items-center rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-300 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          class="flex w-full items-center rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-250 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
           :class="isCollapsed ? 'justify-center' : 'gap-3'"
           @click="toggleColorMode"
         >
@@ -207,6 +213,7 @@ async function handleLogout() {
             color="neutral"
             variant="ghost"
             size="xs"
+            aria-label="登出"
             @click="handleLogout"
           />
         </div>
@@ -221,6 +228,7 @@ async function handleLogout() {
               color="neutral"
               variant="ghost"
               size="xs"
+              aria-label="登出"
               @click="handleLogout"
             />
           </UTooltip>
@@ -239,6 +247,7 @@ async function handleLogout() {
               icon="i-heroicons-x-mark"
               color="neutral"
               variant="ghost"
+              aria-label="關閉選單"
               @click="isMobileMenuOpen = false"
             />
           </div>
@@ -248,7 +257,7 @@ async function handleLogout() {
               v-for="item in navigation"
               :key="item.to"
               :to="item.to"
-              class="flex items-center gap-3 rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-300 hover:bg-primary-50 hover:text-primary-600 dark:text-neutral-300 dark:hover:bg-primary-950 dark:hover:text-primary-400"
+              class="flex items-center gap-3 rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-250 hover:bg-primary-50 hover:text-primary-600 dark:text-neutral-300 dark:hover:bg-primary-950 dark:hover:text-primary-400"
               @click="isMobileMenuOpen = false"
             >
               <UIcon :name="item.icon" class="size-5" />
@@ -258,7 +267,7 @@ async function handleLogout() {
           <!-- Mobile 底部功能區 -->
           <div class="shrink-0 border-t border-neutral-200 p-4 dark:border-neutral-800">
             <button
-              class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-300 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-neutral-700 transition-colors duration-250 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
               @click="toggleColorMode"
             >
               <ClientOnly>
@@ -283,6 +292,7 @@ async function handleLogout() {
                 color="neutral"
                 variant="ghost"
                 size="xs"
+                aria-label="登出"
                 @click="handleLogout"
               />
             </div>
@@ -295,14 +305,15 @@ async function handleLogout() {
     <div class="flex flex-1 flex-col overflow-hidden">
       <!-- Mobile Top Bar（in-flow，不會覆蓋內容） -->
       <div class="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-200 bg-white px-4 lg:hidden dark:border-neutral-800 dark:bg-neutral-900">
-        <button @click="isMobileMenuOpen = true">
+        <button type="button" aria-label="開啟選單" @click="isMobileMenuOpen = true">
           <UIcon name="i-heroicons-bars-3" class="size-6 text-neutral-900 dark:text-white" />
         </button>
         <span class="text-lg font-bold text-neutral-900 dark:text-white">網站名稱</span>
       </div>
-      <main class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
+      <!-- 頁面自帶 <main>，layout 用 div 避免巢狀 main landmark（本專案例外：app/layouts/default.vue 已用 <main> 包 slot，頁面最外層一律用 <div>） -->
+      <div class="flex min-h-0 flex-1 flex-col overflow-auto p-6">
         <slot />
-      </main>
+      </div>
     </div>
   </div>
 </template>

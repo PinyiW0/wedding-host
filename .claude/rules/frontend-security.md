@@ -41,4 +41,4 @@ localStorage.setItem('token', token)
 
 角色與 JWT 的信任邊界（前端不解 JWT、角色由 server 判定）住 `docs/architecture.md` §2「使用者角色與四種 UI 端」；
 已知風險與決定記錄住 `docs/security.md`；框架語意的審查查法住 `.claude/skills/sdd-review/references/checks.md`。
-本檔在 subagent 內不會自動注入——feature-to-ui 產元件／頁面前須明文指讀本檔。
+本檔在 subagent 內不會自動注入——feature-to-ui 產元件／頁面前、feature-to-api 在 auth 命中寫 store／composable 前，須明文指讀本檔。

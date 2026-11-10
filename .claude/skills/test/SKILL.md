@@ -19,8 +19,8 @@ description: E2E 測試開發流程 — Playwright。Use when 要產出或更新
 /test e2e auto [--limit N]     # 自動偵測缺 spec 的 feature
 /test e2e red <feature>  # 紅燈 - 跑測試收集失敗
 /test e2e green <feature>  # 綠燈 - 修復 UI/mock/API 讓測試通過
+/test e2e green auto       # 綠燈全部 feature（依編號序）
 /test e2e pipeline <feature>   # 完整流程 (spec→red→green)
-/test e2e handwritten [<path>]  # vibe 視覺/互動測試（diff-driven，獨立於 spec）
 ```
 
 ### 參數說明
@@ -50,7 +50,7 @@ description: E2E 測試開發流程 — Playwright。Use when 要產出或更新
 | e2e batch / auto / pipeline | [pipeline.md](e2e/references/pipeline.md) |
 | e2e red | [red.md](e2e/references/red.md) |
 | e2e green | [green.md](e2e/references/green.md) |
-| e2e handwritten | [handwritten.md](e2e/references/handwritten.md) |
+| vibe 視覺/互動測試（已退役 handwritten 模式） | 改用 `/vibe-e2e` |
 
 > Flow 檔案（`.flow.md`）由外部工具產出，手動放入 `spec/e2e-flows/`。
 

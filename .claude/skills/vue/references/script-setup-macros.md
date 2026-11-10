@@ -37,13 +37,9 @@ const props = defineProps<{
   items: string[]
 }>()
 
-// With defaults (Vue 3.5+)
-const { title, count = 0 } = defineProps<{
-  title: string
-  count?: number
-}>()
-
-// With defaults (Vue 3.4 and below)
+// With defaults: use withDefaults (Reactive Props Destructure, e.g.
+// `const { title, count = 0 } = defineProps<...>()`, is supported in Vue 3.5+
+// but discouraged here；props 解構本專案不用，預設值一律走 withDefaults)
 const props = withDefaults(defineProps<{
   title: string
   items?: string[]
