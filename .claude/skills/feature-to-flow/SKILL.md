@@ -4,6 +4,7 @@ description: 從 spec/gherkin-feature/ 下任何 .feature 檔（含 .dsl.feature
 argument-hint: "[module]"
 context: fork
 agent: general-purpose
+model: sonnet
 ---
 
 # Feature to Flow 工作流程

@@ -15,7 +15,7 @@
 
 ## 動機
 
-v2 flow 的 Business Invariants 寫**意圖層**（可識別／可達／可感知），但其中的**業務狀態詞**（「已收藏」「進行中」「連線中」等）仍會被 spec 以可見文字斷言、被 vibe 守則要求保留語意——這些字面就是本檔的適用對象（操作反饋訊息不是，見「該進與不該進」）。傳統做法靠 spec runtime 跑 `getByText` 驗證，缺點：
+flow 的 Business Invariants 寫**意圖層**（可識別／可達／可感知），但其中的**業務狀態詞**（「已收藏」「進行中」「連線中」等）仍會被 spec 以可見文字斷言、被 vibe 守則要求保留語意——這些字面就是本檔的適用對象（操作反饋訊息不是，見「該進與不該進」）。傳統做法靠 spec runtime 跑 `getByText` 驗證，缺點：
 
 - UI 端隨手改字 → runtime 紅燈 → 浪費迭代輪
 - spec 因 UI 端混用同義詞被迫用 regex 集合，弱化合約精度
@@ -79,7 +79,7 @@ export const {GROUP_B} = {
 
 ❌ **不該進常數檔**：
 
-- **toast / feedback 訊息字面**（v2 spec 用 `getFeedbackElement` / role=alert 驗「使用者可感知反饋」，不寫死措辭；反饋文字屬 flow「不再凍結」的 vibe 自由區）
+- **toast / feedback 訊息字面**（spec 用 `getFeedbackElement` / role=alert 驗「使用者可感知反饋」，不寫死措辭；反饋文字屬 flow「不再凍結」的 vibe 自由區）
 - **Fixture / mock seed data**（測試用業務資料，屬於 `server/mock/` 範疇）
 - **API server error message**（屬於 `server/api/` 的 `createError({ message })` 合約）
 - **純 UI label**（按鈕文字、form label、placeholder——這些 vibe 可動）
@@ -104,7 +104,7 @@ export const {GROUP_B} = {
 5. **改 spec**：assertion 改用常數 import
 6. **改 UI**：對應 hardcode 改用常數 import
 7. **驗證**：跑 `npx playwright test` 全綠
-8. **TS 編譯**：跑 `npx tsc --noEmit` 確認沒有殘留字面 mismatch
+8. **型別檢查**：跑 `npm run typelint` 確認沒有殘留字面 mismatch（Nuxt 4 的根 tsconfig 只有 references，直接跑 tsc 不檢查任何檔）
 
 ## 為什麼放在 feature-to-api 而非 feature-to-ui
 

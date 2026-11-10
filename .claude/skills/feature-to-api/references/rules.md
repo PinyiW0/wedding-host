@@ -23,15 +23,17 @@ item.name = 'new'
 
 **回應信封依 [openapi-conventions.md §3](./openapi-conventions.md)：模式 A envelope（`ok()`/`page()` 包裝，useHttp 拆封）／模式 B 裸回，同一專案固定一種；軟刪除 204 無 body 兩模式皆同；絕不自創第三種包裝（如 `{ status, data, meta }`）——正反例與判定規則見 §3，勿在此複製。**
 
-**錯誤用 `statusMessage`，不用 `message`：**
+**錯誤用 `message` 傳使用者文案，`statusMessage` 不傳文案：**
 
 ```typescript
 // [O]
-throw createError({ statusCode: 404, statusMessage: '帳號不存在' })
+throw createError({ statusCode: 409, message: '帳號名稱已存在' })
 
-// [X] message 不會被 Nuxt 自動帶到 error.statusMessage，前端讀不到
-throw createError({ statusCode: 404, message: '帳號不存在' })
+// [X] statusMessage 是 status line 的 reason phrase，不是使用者文案
+throw createError({ statusCode: 409, statusMessage: '帳號名稱已存在' })
 ```
+
+前端讀取規則見 [openapi-conventions.md §4](./openapi-conventions.md)（單一真理來源）。
 
 **對齊鏈路：**
 1. `spec/api/api-spec.yml`（若存在）= 最終 SoT

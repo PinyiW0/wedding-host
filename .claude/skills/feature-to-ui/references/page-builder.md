@@ -2,7 +2,7 @@
 
 > 配色、深淺模式、Nuxt UI 類型、API 規範、Pinia store 規範 → 詳見 [rules.md](rules.md)
 >
-> 色彩主題設定（app.config.ts、main.css）→ 詳見 [phase-1-theme.md](phase-1-theme.md)
+> 色彩主題設定（`app/app.config.ts`、`app/assets/css/main.css`）→ 詳見 [phase-1-theme.md](phase-1-theme.md)
 
 ---
 
@@ -69,7 +69,7 @@ And 系統顯示 "帳號或密碼錯誤"
 | `篩選 XXX` | USelect / USelectMenu | 篩選條件選項 |
 | `批次刪除` / `批次操作` | UTable checkbox + 批次按鈕 | 全選/取消全選 |
 | `上傳 XXX` | UInput type="file" / 拖放區 | 檔案格式提示 |
-| `切換狀態` / `啟用/停用` | UToggle / USwitch | 狀態標籤文字 |
+| `切換狀態` / `啟用/停用` | USwitch | 狀態標籤文字 |
 | `匯出 XXX` | UButton（下載觸發） | loading 狀態 |
 
 > **重要**：**list 類**頁面（依語意判斷，不限「查詢」二字）→ UI 必須包含搜尋框
@@ -144,7 +144,7 @@ await refreshNuxtData('sites')
 
 ## 載入佔位（skeleton）——分頁切換體感
 
-頁面**主資料**的 `get()` 一律帶 `lazy: true`，template 以 `status === 'pending'` 渲染 `USkeleton` 佔位（列表 → 3-5 條 skeleton 列；詳情 → 標題＋內容區塊）。
+頁面**主資料**的 `get()` 一律帶 `lazy: true`，template 以 `status === 'pending'` 且尚無資料（`&& !data`，避免 refresh 時閃爍）渲染 `USkeleton` 佔位（列表 → 3-5 條 skeleton 列；詳情 → 標題＋內容區塊）。
 
 **為什麼要 lazy**：預設 blocking `useFetch` 在 client 導航時會擋住換頁、舊頁停留到資料回來，skeleton 沒機會出現；`lazy: true` 讓切頁即時、pending 態可見（頂部進度條由 app.vue 的 `<NuxtLoadingIndicator>` 負責，兩層合起來才是完整體感）。SSR 首次載入不受影響——server 端照樣出完整 HTML。
 
@@ -154,7 +154,9 @@ await refreshNuxtData('sites')
 |------|------|
 | 只有頁面主資料 lazy | modal 內、次要資料照舊（不 lazy） |
 | 用 `status === 'pending'` 判斷 | `immediate: false` 時初始 `status` 是 `'idle'` 非 `'pending'`（見 `rules/framework-skills.md`） |
-| 狀態互斥順序 | `pending` → skeleton；成功且空 → `#empty`；有資料 → 列表——避免載入中閃現空狀態 |
+| **本專案例外** | 尚無 `<ApiErrorState>` 元件與 `~/utils/api-error`（隨模板 #169 另案評估）。下列範本的 error 分支先改寫成頁面內一段錯誤文字＋「重新載入」按鈕，文案讀 `error?.data?.message \|\| error?.statusMessage \|\| '<fallback>'`；`readApiError(...)` 同樣換成這個讀法 |
+| 狀態互斥順序 | `pending` → skeleton；`error` → `<ApiErrorState>`；成功且空 → `#empty`；有資料 → 列表——避免載入中閃現空狀態 |
+| 讀取失敗不可落到空狀態或「找不到」 | `error` 分支排在空狀態**之前**，一律交給 `<ApiErrorState :error="error" @retry="refresh()" />`：它依錯誤種類出文案，斷網／服務不可用／5xx 才給「重新載入」，403／404 一律顯示固定文案（404 即「找不到」）且不給重試——詳情頁不必另寫 404 判斷 |
 | skeleton 容器加 `aria-busy="true"` | 語意化載入標記；**不加**額外 `data-testid`（守「fallback testid 不多加、不漏」） |
 | animation 依 `ui-config.yaml > loading.skeleton` | `pulse` ＝ USkeleton 預設 `animate-pulse`，不用另外設 |
 
@@ -165,17 +167,37 @@ await refreshNuxtData('sites')
 import { listSites } from '~/api'
 
 // 主資料 lazy：切頁即時，pending 期間渲染 skeleton
-const { data: sites, status } = listSites({ key: 'sites', lazy: true })
+const { data: sites, status, error, refresh } = listSites({ key: 'sites', lazy: true })
 </script>
 
 <template>
   <!-- pending → skeleton（容器標 aria-busy，不加 testid） -->
-  <div v-if="status === 'pending'" aria-busy="true" class="space-y-3">
+  <!-- 加 !sites：refresh() 也會回到 pending，沒這條每次刷新都會閃成 skeleton -->
+  <div v-if="status === 'pending' && !sites" aria-busy="true" class="space-y-3">
     <USkeleton v-for="i in 4" :key="i" class="h-12 w-full" />
   </div>
+  <!-- 讀取失敗 → 錯誤狀態（不可落到下面的空狀態，使用者會以為資料被刪了） -->
+  <ApiErrorState v-else-if="error" :error="error" @retry="refresh()" />
   <!-- 成功且空 → 空狀態；有資料 → 列表（UTable 用 #empty slot 同理） -->
   <div v-else-if="!sites?.length">尚無資料</div>
   <UTable v-else :data="sites" ... />
+</template>
+```
+
+**詳情頁範例**（狀態順序同列表：`pending` → `error` → 有資料）：
+
+```vue
+<script setup lang="ts">
+import { getSite } from '~/api'
+
+const route = useRoute()
+const { data: site, status, error, refresh } = getSite(() => route.params.id as string, { lazy: true })
+</script>
+
+<template>
+  <div v-if="status === 'pending' && !site" aria-busy="true"><USkeleton class="h-40 w-full" /></div>
+  <ApiErrorState v-else-if="error" :error="error" @retry="refresh()" />
+  <div v-else-if="site">{{ site.name }}</div>
 </template>
 ```
 
@@ -208,13 +230,15 @@ const { data: sites, status } = listSites({ key: 'sites', lazy: true })
 > 防迴圈：login 頁與其 layout **不得發 authed fetch**；只呼叫 `authStore.login`（內部端點 `handleUnauthorized:false`）。
 
 ```vue
+<!-- app/pages/login.vue -->
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { z } from 'zod'
-// ⚠️ 必須明確 import store，不可依賴 auto-import
-import { useAuthStore } from '~/stores/auth'
 import { readApiError } from '~/utils/api-error'
 
+definePageMeta({ layout: 'auth' })
+
+// useAuthStore 由 @pinia/nuxt auto-import（rules/framework-skills.md），不必手動 import
 const authStore = useAuthStore()
 const config = useRuntimeConfig().public
 const toast = useToast()
@@ -234,7 +258,7 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     return // 防止重複提交
   isSubmitting.value = true
   try {
-    await authStore.login(event.data) // login(body)，登入後內部補抓 /auth/me
+    await authStore.login(event.data) // 簽名 login(body: LoginBody)，見 auth-scaffold.md §3a；登入後內部補抓 me
     toast.add({ title: '登入成功', color: 'success' })
     await navigateTo(config.authHomePath || '/') // 導向設定的登入後首頁
   }
@@ -275,11 +299,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       >
         <template #trailing>
           <UButton
+            type="button"
             :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
             color="neutral"
             variant="link"
             size="sm"
-            :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+            :aria-label="showPassword ? '隱藏' : '顯示'"
             @click="showPassword = !showPassword"
           />
         </template>
@@ -294,87 +319,70 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
 > **不放 testid 是刻意的**：`UFormField` 的 `label` 已把 `帳號`／`密碼` 綁成 accessible name（`<label for>` 關聯），送出鈕有可見文字「登入」——`test/e2e/helpers` 的 `login()` 用 `getByLabel('帳號', { exact: true })` ＋ `getByRole('button', { name: /登入/ })` 就定位得到（見 [setup.md](../../test/e2e/references/setup.md)）。表單欄位 testid 是 SSOT [testid-conventions.md](../../feature-to-flow/references/testid-conventions.md) 明文禁止的形式。
 >
-> ⚠️ **欄位內 icon 按鈕的 `aria-label` 不得包含該欄位的 label 字串**。Playwright 的 `getByLabel` 對任何帶 `aria-label` 的元素都會回傳該值（不限 form control），所以密碼欄配上 `aria-label="顯示密碼"` 時，`getByLabel(/密碼/)` 會同時命中 input 與該按鈕 → strict mode violation（實測 count=2）。上面範本用 `顯示密碼`／`隱藏密碼` 是為了 a11y 可讀性，因此 `login()` 端**必須**用 `exact: true` 匹配；若你改用 regex 匹配，就要把 aria-label 換成不含「密碼」的字（如 `切換顯示`）。
+> ⚠️ **欄位內 icon 按鈕的 `aria-label` 不得包含該欄位的 label 字串**。Playwright 的 `getByLabel` 對任何帶 `aria-label` 的元素都會回傳該值（不限 form control），密碼欄若配上含欄位名的 `aria-label`（如 `顯示密碼`）會讓 `getByLabel(/密碼/)` 同時命中 input 與該按鈕 → strict mode violation（實測 count=2）。上面範本的 `aria-label` 只用 `顯示`／`隱藏`，不含「密碼」，`login()` 端不必依賴 `exact: true` 才能避開碰撞（保留 `exact: true` 也無害）。
 >
 > **改動此範本的 label／按鈕文案時，要同步 `setup.md` 的 `login()` helper**——兩者是一對耦合。
 
-### 一般表單
+### 一般表單（建立資料）
+
+> 非登入的通用表單：送出走 client 層的寫入函式（`app/api/*.api.ts`），不直接 `$fetch`。notes 為假想資源，函式名與欄位以實際產出為準。
 
 ```vue
+<!-- app/pages/notes/new.vue -->
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { z } from 'zod'
+import { createNote } from '~/api'
+import { readApiError } from '~/utils/api-error'
 
+definePageMeta({ layout: 'default' })
+
+// 前端 schema 只做即時提示；權威驗證在 server 端的 readValidatedBody
 const schema = z.object({
-  account: z.string().trim().min(1, '請輸入帳號'),
-  password: z.string().min(1, '請輸入密碼'),
+  title: z.string().trim().min(1, '請輸入標題').max(50, '標題過長'),
 })
-
 type Schema = z.output<typeof schema>
 
-const state = reactive<Schema>({
-  account: '',
-  password: '',
-})
-
-const loading = ref(false)
+const state = reactive<Schema>({ title: '' })
+const isSubmitting = ref(false)
 const toast = useToast()
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
-  loading.value = true
+  if (isSubmitting.value)
+    return // 防止重複提交
+  isSubmitting.value = true
   try {
-    await $fetch('/api/auth/login', {
-      method: 'POST',
-      body: event.data,
-    })
-    toast.add({ title: '登入成功', color: 'success' })
-    await navigateTo('/')
+    await createNote(event.data)
+    toast.add({ title: '建立成功', color: 'success' })
+    await navigateTo('/notes') // 跨頁回列表：列表頁重新掛載會重抓（見「資料新鮮度」）
   }
-  catch (error: any) {
-    const message = error?.data?.message || '操作失敗'
-    toast.add({ title: '登入失敗', description: message, color: 'error' })
+  catch (error) {
+    toast.add({ title: '建立失敗', description: readApiError(error, '操作失敗'), color: 'error' })
   }
   finally {
-    loading.value = false
+    isSubmitting.value = false
   }
 }
 </script>
 
 <template>
-  <UForm
-    :schema="schema"
-    :state="state"
-    class="space-y-4"
-    @submit="onSubmit"
-  >
-    <!-- UFormField 用法依 /nuxt-ui MCP 文檔為準 -->
-    <!-- 不放 testid：label 與按鈕文字即 accessible name，helpers 的 login() 靠它定位 -->
-    <UFormField
-      label="帳號"
-      name="account"
+  <div class="mx-auto w-full max-w-lg">
+    <PageHeader title="新增筆記" />
+    <UForm
+      :schema="schema"
+      :state="state"
+      class="space-y-4"
+      @submit="onSubmit"
     >
-      <UInput
-        v-model="state.account"
-        class="w-full"
-      />
-    </UFormField>
-    <UFormField
-      label="密碼"
-      name="password"
-    >
-      <UInput
-        v-model="state.password"
-        type="password"
-        class="w-full"
-      />
-    </UFormField>
-    <UButton
-      type="submit"
-      :loading="loading"
-    >
-      登入
-    </UButton>
-  </UForm>
+      <!-- UFormField 用法依 /nuxt-ui MCP 文檔為準；label 即 accessible name，不放 testid -->
+      <UFormField label="標題" name="title">
+        <UInput v-model="state.title" class="w-full" />
+      </UFormField>
+      <UButton type="submit" :loading="isSubmitting">
+        建立
+      </UButton>
+    </UForm>
+  </div>
 </template>
 ```
 
@@ -383,7 +391,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 ## 密碼欄位範本
 
 ```vue
-<script setup>
+<script setup lang="ts">
+// 示意用：實際頁面沿用外層 UForm 的 state，不另宣告
+const state = reactive({ password: '' })
 const showPassword = ref(false)
 </script>
 
@@ -395,18 +405,21 @@ const showPassword = ref(false)
     :ui="{ error: 'absolute top-full left-0 mt-1' }"
   >
     <UInput
+      id="password-input"
       v-model="state.password"
       :type="showPassword ? 'text' : 'password'"
       class="w-full"
     >
       <template #trailing>
         <UButton
+          type="button"
           :icon="showPassword ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
           color="neutral"
           variant="link"
           size="sm"
-          :padded="false"
-          :aria-label="showPassword ? '隱藏密碼' : '顯示密碼'"
+          :aria-label="showPassword ? '隱藏' : '顯示'"
+          aria-controls="password-input"
+          :aria-pressed="showPassword"
           @click="showPassword = !showPassword"
         />
       </template>
@@ -414,6 +427,8 @@ const showPassword = ref(false)
   </UFormField>
 </template>
 ```
+
+> 同頁有多個密碼欄（如改密碼頁的目前密碼／新密碼／確認密碼）時，每欄的 `UInput` id 各自命名（如 `current-password-input`、`new-password-input`），對應切換鈕的 `aria-controls` 各自指向自己欄位的 id，`aria-label` 維持通用（不含欄位名），靠 `aria-controls` 天然區分。
 
 ---
 

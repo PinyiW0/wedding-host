@@ -27,7 +27,7 @@ Sync 模式額外讀取：
 
 ## 統一 HTTP 入口（單一 useHttp）
 
-所有 client 呼叫只走一個 composable —— `useHttp()`，共用 `runtimeConfig.public.apiBase` 這個 domain。path 替換、baseURL、envelope 拆封由 `useHttp` 內部統一處理（envelope 預設拆、`apiEnvelope=false` 可關；本模板尚不含 auth / 401，由 auth scaffold 偵測到登入需求時注入）。
+所有 client 呼叫只走一個 composable —— `useHttp()`，共用 `runtimeConfig.public.apiBase` 這個 domain。path 替換、baseURL、envelope 拆封由 `useHttp` 內部統一處理（envelope 預設拆、`apiEnvelope=false` 可關）。`useHttp` 已內建 auth 注入點：無 auth 時 `useHttpAuth()` 回 null，不帶 token、不攔 401；auth 命中時由 auth-scaffold 覆蓋 `useHttpAuth.ts` 啟用。
 
 ```
 useHttp().get        ← page 層用，useFetch，SSR-friendly，reactive url，回 AsyncData
@@ -39,7 +39,8 @@ useHttp().post/put/patch/delete ← 寫入，$fetch，回 Promise
 |---|---|---|
 | **GET 列表 / 詳情**（頁面載入時呼叫） | `useHttp().get` | useFetch：SSR、reactive url、auto-cancel |
 | **POST / PATCH / DELETE**（寫入） | `useHttp().{method}` | 寫入永遠用 `$fetch`，不可用 `useFetch`（會在 SSR 重複觸發） |
-| **登入 / 註冊**（POST） | `useHttp().post` | 與一般寫入相同（模板無 auth 層，不需特別處理 401） |
+| **登入 / 換發 / 登出 / me** | 不照本表命名 | route-map 有 `auth` 時，本 Phase 照 [auth-scaffold.md](auth-scaffold.md) §3a 範本產 `auth.api.ts`（函式名照範本），不照一般規則產 `auth.token_endpoints` |
+| **離群端點**（route-map 標 `outside_prefix: true`，如 `/upload-data`） | 不產 client | `useHttp` 一律加上 `apiBase`（`/api`），離群端點會被打成 `/api/upload-data`。本 Phase 不產這些端點的函式，在回報列出，由使用者決定改 `useHttp` 支援換前綴，或請後端把端點搬進前綴 |
 | **Blob 下載 / 二進位、event handler 內抓一次** | `useHttp().getOnce` + `responseType: 'blob'` | imperative GET 走 `$fetch`，`useFetch` 不能在 handler 內呼叫 |
 
 > ⚠️ **嚴禁** 在產出的 `*.api.ts` 中：
@@ -64,7 +65,7 @@ useHttp().post/put/patch/delete ← 寫入，$fetch，回 Promise
 | `DELETE /{resource}/{id}` | `delete{Resource}` | `deleteNotebook`, `deleteNote` |
 | `POST /{resource}/{id}/{action}` | `{action}{Resource}` | `archiveNote`, `pinNote`, `unpinNote` |
 | `PATCH /{resource}/{id}/{action}` | `{action}{Resource}` | `moveNote`, `renameNotebook` |
-| `POST /auth/login` | `login{Subject}` | `loginMember`, `loginAdmin` |
+| `POST /auth/login` | `login{Subject}` | `loginMember`, `loginAdmin`（僅無 auth scaffold 時用；auth 命中時函式名以 auth-scaffold §3a 為準） |
 
 > 命名遵循「動詞 + 資源」。多字資源用 PascalCase 連寫（`NotebookNote` 不是 `Notebook_Note`）。
 
@@ -192,15 +193,10 @@ export function moveNote(
 }
 ```
 
-### 登入端點
+### 登入端點（route-map 有 `auth` 時跳過）
 
-```typescript
-export function loginMember(body: LoginBody) {
-  return useHttp().post<MemberLoggedInEvent>('/api/v1/auth/login', { body })
-}
-```
-
-> ℹ️ 模板預設 auth 中立，登入與一般寫入一樣用 `useHttp().post`。偵測到 auth 時**不要自行在 `useHttp` 擴充攔截**——`useHttp` 已內建 Authorization / 401→refresh→retry 注入點，照 [auth-scaffold.md](auth-scaffold.md) §3a 覆蓋 `useHttpAuth.ts` 提供 handler 即啟用；login / refresh / logout 等免 token 端點以 `handleUnauthorized:false` 略過攔截（同見 §3a），不要散落在各 `*.api.ts`。
+> ℹ️ route-map 有 `auth` 區塊時，本 Phase **照 [auth-scaffold.md](auth-scaffold.md) §3a 範本**產出前端的 auth 檔：`app/api/auth.api.ts`（`loginUser`／`refreshAuthToken`／`logoutUser`／`fetchMe`，auth store 依賴這些名稱）、`app/stores/auth.ts`、`app/composables/useHttpAuth.ts`（覆蓋中立 stub）、`app/utils/force-logout.ts`，以及 §3a 的 `nuxt.config.ts` runtimeConfig 片段。`auth.token_endpoints` 不照一般規則另產一份——兩份會撞檔、函式名也對不上。token 欄位名以 spec 為準（見 §3a 開頭）。
+> 偵測到 auth 時**不要自行在 `useHttp` 擴充攔截**——`useHttp` 已內建 Authorization / 401→refresh→retry 注入點，覆蓋 `useHttpAuth.ts` 提供 handler 即啟用；`handleUnauthorized:false` 只寫在 `auth.api.ts`，不要散落在其他 `*.api.ts`。
 
 ### Blob 下載（imperative GET，走 getOnce）
 
@@ -230,7 +226,7 @@ export function getNoteAttachmentFile(
 ```
 app/api/
 ├── index.ts                  # 統一 re-export 所有 function
-├── auth.api.ts               # login / register
+├── auth.api.ts               # auth 命中時本 Phase 照 auth-scaffold §3a 範本產出
 ├── members.api.ts            # /members/*
 ├── notebooks.api.ts          # /notebooks（不含子資源）
 ├── notes.api.ts              # /notebooks/*/notes/* 與 /notes/*（子資源獨立成檔）
@@ -248,7 +244,7 @@ app/api/
 ### index.ts 範例
 
 ```typescript
-export { loginMember } from './auth.api'
+export { fetchMe, loginUser, logoutUser, refreshAuthToken } from './auth.api'
 export {
   createMember,
   deleteMember,
@@ -305,11 +301,11 @@ Phase 1.5 開始前，先掃描 `app/api/` 是否存在檔案：
 - [ ] GET 列表 / 詳情（頁面載入）→ 使用 `useHttp().get`
 - [ ] Blob 下載 / handler 內抓一次的 GET → 使用 `useHttp().getOnce` + `responseType`
 - [ ] POST / PATCH / DELETE → 使用 `useHttp().{method}`
-- [ ] login / register → `useHttp().post`（模板無 auth 層，不加 `handleUnauthorized`）
+- [ ] route-map 有 `auth` → `auth.api.ts`、`stores/auth.ts`、`useHttpAuth.ts`、`force-logout.ts` 照 auth-scaffold §3a 產出，沒有另產 `auth.token_endpoints` 的 function；其他 `*.api.ts` 都不寫 `handleUnauthorized`
 - [ ] 沒有任何 `$fetch(` 或 `useFetch(` 直接呼叫（grep 應為 0）
 - [ ] 沒有殘留 `useApiFetch` / `useApiFetchAll` / `apiFetch`（grep 應為 0）
 - [ ] 沒有絕對 URL：`grep -rE "https?://" app/api/` 為 0
-- [ ] 所有 path 含參數時保留 `{paramName}` template 並用 `pathParams` 物件傳值
+- [ ] 寫入與 `getOnce` 的 path 含參數時保留 `{paramName}` template 並用 `pathParams` 物件傳值；`get` 的響應式參數例外，用 getter 插值（下一條）
 - [ ] reactive url（含 ref param）一律包成 getter `() => ...`
 - [ ] 軟刪除 function 的回傳型別寫 `void`（即使有 `XxxDeletedEvent` 型別）
 - [ ] Blob 下載端點加 `responseType: 'blob'`

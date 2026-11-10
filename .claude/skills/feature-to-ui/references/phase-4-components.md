@@ -15,6 +15,7 @@
 - spec/report/route-map.yaml > enabled_features（PM 啟用的額外功能）
 - features.md（額外功能的元件模板，僅 enabled_features 有啟用時需讀取）
 - rules.md [P4] 段落（配色策略、深淺模式、Nuxt UI 類型規範、表單型別安全、第三方元件 import）
+- .claude/rules/frontend-security.md、.claude/rules/ui-conventions.md、.claude/rules/vibe-ui.md、.claude/rules/framework-skills.md（分身內 paths 規則不注入，必須主動讀）
 
 執行 /nuxt-ui 載入組件文檔（若尚未載入）
 ```
@@ -48,8 +49,8 @@ Phase 4 開始前，先檢查 `spec/report/sync-report.md` 是否存在：
 5. **建立 additionalFeature 元件**（若 `enabled_features` 有啟用項目）
    - 讀取 `features.md` 中對應功能的元件模板
    - 每個啟用的功能建立對應的 wrapper 元件（如 `ChartWrapper.vue`、`DraggableList.vue`）
-   - 若功能需要第三方套件，在確認清單中提醒用戶安裝
-6. **詢問用戶確認**
+   - 功能有套件選項（見 features.md「套件選項」）且使用者還沒選定 → 該 wrapper 不產出，把選項列進回報（見 SKILL.md「分身只做、不問」）
+6. **跑 `npm run eslint` + `npm run typelint`，全綠後回報**（列出建立的元件與待使用者選定的套件選項）
 
 ## 輸出結構
 
@@ -66,7 +67,7 @@ app/components/common/
 ```vue
 <!-- app/components/common/ListContainer.vue -->
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   total: number
   pageSize?: number
 }>(), {
@@ -101,7 +102,7 @@ const page = defineModel<number>('page', { default: 1 })
 ```vue
 <!-- app/components/common/ConfirmModal.vue -->
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
+withDefaults(defineProps<{
   title?: string
   description?: string
   confirmLabel?: string
@@ -124,7 +125,8 @@ const isOpen = defineModel<boolean>('open', { default: false })
 </script>
 
 <template>
-  <UModal v-model:open="isOpen">
+  <!-- :transition="false" 見 pitfalls.md 第 3 條：關閉即同步卸載，避免殘留節點與 inert 背景影響斷言 -->
+  <UModal v-model:open="isOpen" :transition="false">
     <template #content>
       <div data-testid="confirm-modal" class="p-6">
         <h3 class="text-lg font-semibold text-neutral-900 dark:text-white">
@@ -159,6 +161,8 @@ const isOpen = defineModel<boolean>('open', { default: false })
 ```
 
 ## PageHeader.vue
+
+> **本專案已有 `app/components/common/PageHeader.vue`**（`font-display text-h2`＋eyebrow＋`#actions` slot，見 `.claude/rules/visual-hierarchy.md`），不要用下方通用範本重產或覆蓋。下方範本只給還沒有 PageHeader 的新專案。
 
 ```vue
 <!-- app/components/common/PageHeader.vue -->

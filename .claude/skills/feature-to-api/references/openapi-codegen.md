@@ -11,7 +11,7 @@
 >
 > **唯二例外——刻意保留真名，因為它們是「契約本身」而非領域範例**：
 > - **envelope 契約**：`SuccessEnvelope` / `PaginatedSuccessEnvelope` / `ErrorEnvelope`。`useHttp` 的拆封行為就綁在這個形狀上（見 `openapi-conventions.md § 3`）——改名會讓範例與實際 composable 對不上。
-> - **auth 契約**：`TokenPairData` 與 `POST /api/v1/auth/login`。刻意沿用通用登入慣例、不改端點名。（`phase-1-5-client-api.md` 也用同一個端點，但該檔的領域聲明**尚未**寫明這條例外、目前仍概括地說「不是本專案的實際端點」——那句對其登入範例而言為偽，補聲明追蹤見 issue #103 §8。）
+> - **auth 契約**：`TokenPairData` 與 `POST /api/v1/auth/login`。刻意沿用通用登入慣例、不改端點名（`phase-1-5-client-api.md` 用同一個端點，並已聲明同一條例外）。
 
 ---
 
@@ -205,7 +205,7 @@ spec/api/api-spec.yml 變更
 
 > **「自動修復」的誠實版本**：自動的只有「重生 `_schema`」。breaking change（改名 / 刪欄位）的呼叫端修復
 > **不自動**——這是刻意的：要編譯器尖叫，不要它默默編過（默默編過 = 把真實破綻藏起來，更危險）。
-> codegen + `typelint` 紅燈 + AI 逐點修，就是逼近「自動修復」的正解，機制已全備（hash diff、sync-report、合約測試）。
+> codegen + `typelint` 紅燈 + AI 逐點修，就是逼近「自動修復」的正解，機制已全備（Sync 的端點差集、sync-report、合約測試）。
 
 ---
 
@@ -246,7 +246,7 @@ spec/api/api-spec.yml 變更
 | enum（`status`） | literal union（`'created'\|...`） | alias 自動繼承，填錯值 typelint 紅燈 |
 | OpenAPI 3.1 nullable（`type:[string,'null']`） | `string \| null` | 直接用 |
 | 巢狀子物件無自身 `$ref`（`NoteDetail.metadata`） | inline 匿名物件 | 整包 alias OK；要單獨用 → indexed access `NoteDetail['metadata']` |
-| 鬆散 `data: object`（SSE，prose 描述 discriminated） | `Record<string,never>` | codegen **產不出 union** → 手寫 discriminated union（`type` 欄位收斂）；實作見 `realtime` skill 的 [references/sse.md](../../realtime/references/sse.md) |
+| 鬆散 `data: object`（SSE，prose 描述 discriminated） | `Record<string,never>` | codegen **產不出 union** → 手寫 discriminated union（`type` 欄位收斂）；實作見 `realtime` skill 的 `references/sse.md`（本專案未安裝，見 phase-0-prep.md 偵測索引下方註記） |
 | ingestion 契約 snake_case（`raw_payload`） | snake_case 欄位（**忠實鏡像**） | 照原樣 alias；**不要改 camelCase**（見 `openapi-conventions.md § 1` carve-out） |
 | 動作端點回裸 `SuccessEnvelope`（無 `data`） | envelope 無 data 欄位 | `useHttp` 不拆（無 data）→ client 回 `void` / 忽略 body |
 | content-negotiation（`application/json` + `text/csv`） | 各自型別 | CSV 走 `getOnce<Blob>` + `responseType:'blob'`；array query（`tagIds[]`）照常傳 |

@@ -47,22 +47,26 @@ auth:
 
 | 檔案 | 範本位置 | 套用者 | 說明 |
 |---|---|---|---|
-| `app/types/api/auth.ts` | §3a | feature-to-api | TokenPairData / LoginBody / MeResponse… |
-| `app/composables/useHttpAuth.ts` | §3a | feature-to-api | **覆蓋**中立 stub（回 null）→ 從 store + force-logout 組 handler。**useHttp.ts 不動**（已內建 Authorization / 401→refresh→retry 注入點） |
-| `app/stores/auth.ts` | §3a | feature-to-api | single-flight refresh、cookie persist、login/logout/clearAuth |
-| `app/utils/force-logout.ts` | §3a | feature-to-api | **冪等單飛**登出出口（防並發導頁，§4） |
-| `app/api/auth.api.ts` | §3a | feature-to-api | 登入/refresh/logout/me，全 `handleUnauthorized:false` |
-| `app/api/index.ts` | §3a | feature-to-api | re-export（已存在則合併） |
+| `app/types/api/auth.ts` | §3a | feature-to-api Phase 0 | TokenPairData / LoginBody / MeResponse… |
+| `app/composables/useHttpAuth.ts` | §3a | feature-to-api Phase 1.5 | **覆蓋**中立 stub（回 null）→ 從 store + force-logout 組 handler。**useHttp.ts 不動**（已內建 Authorization / 401→refresh→retry 注入點） |
+| `app/stores/auth.ts` | §3a | feature-to-api Phase 1.5 | 三層併發防護 refresh（single-flight＋跨分頁鎖＋cookie 重讀）、cookie persist（含 maxAge）、login/logout/clearAuth |
+| `app/utils/force-logout.ts` | §3a | feature-to-api Phase 1.5 | **冪等單飛**登出出口（防並發導頁，§4） |
+| `app/api/auth.api.ts` | §3a | feature-to-api Phase 1.5 | 登入/refresh/logout/me，全 `handleUnauthorized:false`。**auth 命中時本檔是唯一來源**：Phase 1.5 照本範本產，不照一般命名規則另產 `token_endpoints`，函式名以本檔為準（store 依賴） |
+| `app/api/index.ts` | §3a | feature-to-api Phase 1.5 | re-export（已存在則合併） |
+| `server/api/v1/auth/*`（`path_prefix` 去掉開頭的 `/api` 再對應到資料夾；`/api/v1` → `server/api/v1/`） | §3a（login 在 phase-1-mock-api「API 端點範例」） | feature-to-api Phase 1 | login／refresh／logout／me 四個 mock 端點，auth 命中時一定要生（store 的 `login()` 必打 me、換發必打 refresh），不看 spec 有沒有寫 |
+| `server/mock/data/revoked-tokens.ts` | §3a | feature-to-api Phase 1 | refresh token 解析與登出作廢（每帳號一個登出時刻）；auth 命中時一定要生（refresh／logout 都 import 它） |
 | `nuxt.config.ts` 追加 | §3a | feature-to-api | auth 路徑設定（編輯，非新檔） |
 | `app/middleware/auth.global.ts` | §3b → feature-to-ui `phase-2-skeleton.md` | feature-to-ui | 全域守門（白名單 + never-nav-current） |
 | `app/pages/login.vue` | §3b → feature-to-ui `page-builder.md` | feature-to-ui | 登入頁（**不得發 authed fetch**） |
-| `server/plugins/00.security-guard.ts` | §4b | feature-to-api | production 啟動守衛（密鑰為 dev 預設值 → 拒絕啟動） |
-| `server/utils/rate-limit.ts` | §4b | feature-to-api | 登入限流（僅計失敗、成功清零；fileUpload 時同套 presign） |
-| `nuxt.config.ts` 安全標頭 | §4b | feature-to-api | 三個零調校標頭（編輯，非新檔） |
+| `server/plugins/00.security-guard.ts` | §4b | feature-to-api Phase 1 | production 啟動守衛（密鑰為 dev 預設值 → 拒絕啟動） |
+| `server/utils/rate-limit.ts` | §4b | feature-to-api Phase 1 | 登入限流（僅計失敗、成功清零；fileUpload 時同套 presign） |
+| `nuxt.config.ts` 安全標頭 | §4b | feature-to-api Phase 1 | 三個零調校標頭（編輯，非新檔） |
 
-**端點前綴**：範本用裸 `/auth/*`；若專案前綴為 `/api/v1`，比照 `openapi-conventions.md` §6 調整（或交給 `useHttp` baseURL）。
+**端點路徑**：路徑與 method 照 `route-map.yaml > auth.token_endpoints` 的實際值（後端是 `POST /api/v1/sessions` 就打 `/api/v1/sessions`）。下列範本的 `/api/v1/auth/*` 只是預設命名，假設 `path_prefix = /api/v1`；改成實際端點時，`auth.api.ts` 的網址與 method、mock 檔名（含 `.post.ts` 等 method 後綴）、mock 檔內的相對 import 層數要一起換。`auth.api.ts` 的函式名（`loginUser`／`refreshAuthToken`／`logoutUser`／`fetchMe`）固定不改，store 靠這些名字呼叫。不可寫裸 `/auth/*`（本專案 `apiBase` 是空字串，裸路徑會打到不存在的 `/auth/login`；`apiBase` 為 `/api` 的專案則會打到 `/api/auth/login`，同樣偏離 `path_prefix`）。
 
 ### 3a. API 層範本（feature-to-api 套用）
+
+> **欄位名以 spec 為準**：下方型別是 Feature 模式的預設形狀。OpenAPI 模式下 token 回應的欄位名照 spec（例如 spec 叫 `token` 而不是 `accessToken`），store 裡讀 `data.accessToken` 的地方要一起改，否則 typelint 會紅。
 
 ```ts
 // app/types/api/auth.ts —— 認證型別（envelope 的 data 取具名 schema）
@@ -94,7 +98,7 @@ export interface MeResponse {
 // app/composables/useHttpAuth.ts —— auth 版，覆蓋中立 stub（從 store + force-logout 組出 handler）
 // 重點：useHttp.ts **不覆蓋**——中立版已內建 auth 注入點（Authorization / 401→refresh→retry），
 //       只要本檔回傳真實 handler 即啟用。envelope / get / request 核心維持單一編譯來源，不複製。
-import { useAuthStore } from '~/stores/auth'
+// useAuthStore 由 @pinia/nuxt auto-import，不手動 import
 import { forceLogout } from '~/utils/force-logout'
 
 export interface HttpAuthHandler {
@@ -118,7 +122,7 @@ export function useHttpAuth(): HttpAuthHandler | null {
 ```
 
 ```ts
-// app/stores/auth.ts —— single-flight refresh、cookie persist、clearAuth 含 server deleteCookie
+// app/stores/auth.ts —— 三層併發防護 refresh、cookie persist（含 maxAge）、clearAuth 含 server deleteCookie＋epoch 防殭屍
 import type { LoginBody } from '~/types/api/auth'
 import { deleteCookie } from 'h3'
 import { fetchMe, loginUser, logoutUser, refreshAuthToken } from '~/api/auth.api'
@@ -153,24 +157,68 @@ export const useAuthStore = defineStore(
       await fetchProfile()
     }
 
-    // single-flight：同時多個 401 共用同一次換發，避免互相作廢新 token 或誤觸後端 reuse detection
+    // 三層併發防護：
+    // 1) 本分頁 single-flight（refreshing promise）：同時多個 401 共用同一次換發
+    // 2) 跨分頁 navigator.locks：整個 origin 同一時刻只有一個分頁換發（分頁同時甦醒的併發風暴）
+    // 3) 搶到鎖先重讀 cookie：別的分頁已 rotate → 直接沿用不打 API
+    //    ——關鍵在防後端 reuse detection：拿舊 refresh token 過寬限期再換會撤銷整個 token family
     let refreshing: Promise<boolean> | null = null
+    // 登出防殭屍：clearAuth 遞增 epoch，飛行中的 refresh 回來 epoch 對不上就丟棄結果，
+    // 否則「登出瞬間背景 refresh 慢半拍成功」會把新 token 寫回已登出的 state
+    let sessionEpoch = 0
+
+    async function doRefresh(): Promise<boolean> {
+      // 等鎖期間其他分頁可能已完成換發：先重讀 persist cookie，refresh token 變了就直接沿用
+      const prevRefreshToken = refreshToken.value
+      if (import.meta.client)
+        useAuthStore().$hydrate({ runHooks: false })
+      if (refreshToken.value && refreshToken.value !== prevRefreshToken)
+        return true
+      if (!refreshToken.value)
+        return false
+      const epoch = sessionEpoch
+      try {
+        const data = await refreshAuthToken({ refreshToken: refreshToken.value })
+        if (epoch !== sessionEpoch)
+          return false // 換發期間已登出：丟棄結果，不寫回 state
+        token.value = data.accessToken
+        refreshToken.value = data.refreshToken
+        refreshExpiresAt.value = data.refreshExpiresAt
+        accountId.value = data.accountId
+        return true
+      }
+      catch {
+        if (epoch === sessionEpoch)
+          clearAuth()
+        return false
+      }
+    }
+
+    // 跨分頁鎖包裝：Web Locks 僅存在於 client。SSR／不支援／取鎖失敗（sandbox iframe 的 SecurityError、
+    // 頁面非 fully active 的 InvalidStateError——分頁甦醒場景特別容易踩到）都退回直接執行；
+    // 取鎖失敗時尚未打過 refresh API，直跑不會重複換發
+    async function withRefreshLock(): Promise<boolean> {
+      if (!import.meta.client || !('locks' in navigator))
+        return doRefresh()
+      try {
+        // request 型別為 Promise<T>（T 即 doRefresh 的回傳 Promise），await 攤平後才是 boolean
+        return await navigator.locks.request('auth-refresh', () => doRefresh()) as boolean
+      }
+      catch {
+        return doRefresh()
+      }
+    }
+
     function refresh(): Promise<boolean> {
       if (refreshing)
         return refreshing
       refreshing = (async (): Promise<boolean> => {
-        if (!refreshToken.value)
-          return false
         try {
-          const data = await refreshAuthToken({ refreshToken: refreshToken.value })
-          token.value = data.accessToken
-          refreshToken.value = data.refreshToken
-          refreshExpiresAt.value = data.refreshExpiresAt
-          accountId.value = data.accountId
-          return true
+          return await withRefreshLock()
         }
         catch {
-          clearAuth()
+          // 非預期例外一律收斂成 false，維持 Promise<boolean> 契約：useHttp 的呼叫端是裸 await
+          // 不接 rejection，這裡拋錯會蓋掉原始 401 並跳過 forceLogout → 使用者卡在壞 token 又不被導去登入頁
           return false
         }
         finally {
@@ -181,6 +229,7 @@ export const useAuthStore = defineStore(
     }
 
     function clearAuth(): void {
+      sessionEpoch++ // 使飛行中的 refresh 結果作廢（登出殭屍防護）
       accountId.value = null
       token.value = null
       refreshToken.value = null
@@ -225,8 +274,10 @@ export const useAuthStore = defineStore(
   },
   {
     persist: {
-      // cookie 而非 localStorage：SSR 讀得到 token，避免 hydration 不一致
-      storage: piniaPluginPersistedstate.cookies({ sameSite: 'lax' }),
+      // cookie 而非 localStorage：SSR 讀得到 token，避免 hydration 不一致。
+      // maxAge 必須設且 ≥ 後端 refresh token 存活期：不設＝session cookie，瀏覽器行程被回收
+      // （手機切背景、關瀏覽器）cookie 即蒸發 → 「閒置一陣子回來就被登出」（wedding-host 實戰）
+      storage: piniaPluginPersistedstate.cookies({ sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 }),
       pick: ['accountId', 'token', 'refreshToken', 'refreshExpiresAt', 'account', 'name', 'roles'],
     },
   },
@@ -236,7 +287,7 @@ export const useAuthStore = defineStore(
 ```ts
 // app/utils/force-logout.ts —— 冪等單飛登出出口（防並發導頁，§4 第 1 道）
 import type { NuxtApp } from 'nuxt/app'
-import { useAuthStore } from '~/stores/auth'
+// useAuthStore 由 @pinia/nuxt auto-import，不手動 import
 
 // 並發 401 收斂旗標：同時多個 401 只允許一次「登出 + 導頁」→ 根治 Vue Router 重複導向錯誤
 let loggingOut = false
@@ -275,16 +326,16 @@ import type {
 import { useHttp } from '~/composables/useHttp'
 
 export function loginUser(body: LoginBody) {
-  return useHttp().post<LoginResponse>('/auth/login', { body, handleUnauthorized: false })
+  return useHttp().post<LoginResponse>('/api/v1/auth/login', { body, handleUnauthorized: false })
 }
 export function refreshAuthToken(body: RefreshBody) {
-  return useHttp().post<RefreshResponse>('/auth/refresh', { body, handleUnauthorized: false })
+  return useHttp().post<RefreshResponse>('/api/v1/auth/refresh', { body, handleUnauthorized: false })
 }
 export function logoutUser(refreshToken?: string) {
-  return useHttp().post<null>('/auth/logout', { body: { refreshToken }, handleUnauthorized: false })
+  return useHttp().post<null>('/api/v1/auth/logout', { body: { refreshToken }, handleUnauthorized: false })
 }
 export function fetchMe() {
-  return useHttp().getOnce<MeResponse>('/auth/me', { handleUnauthorized: false })
+  return useHttp().getOnce<MeResponse>('/api/v1/auth/me', { handleUnauthorized: false })
 }
 ```
 
@@ -294,11 +345,92 @@ export * from './auth.api'
 ```
 
 ```ts
-// nuxt.config.ts 追加（apiEnvelope 已由 envelope 功能提供；以下值依 route-map.auth）
+// server/api/v1/auth/me.get.ts —— Bearer 反查當前使用者；無 token 或查無使用者 → 401
+import type { H3Event } from 'h3'
+import type { MeResponse } from '../../../../app/types/api/auth'
+import { requireAuth } from '../../../mock/auth-context'
+
+export default defineEventHandler((event: H3Event): MeResponse => {
+  const me = requireAuth(event)
+  return { accountId: me.accountId, account: me.account, name: me.name, roles: me.roles }
+})
+```
+
+```ts
+// server/api/v1/auth/refresh.post.ts —— 解析 mock refresh token 後重發一組（形狀同 login）
+// mock 登入發的 refresh token 形如 `mock-refresh-${accountId}-${timestamp}`（見 phase-1-mock-api.md 登入範例）
+import type { H3Event } from 'h3'
+import type { RefreshResponse } from '../../../../app/types/api/auth'
+import { parseMockRefreshToken, REFRESH_TTL_MS } from '../../../mock/data/revoked-tokens'
+import { mockUsers } from '../../../mock/data/users'
+import { refreshSchema } from '../../../validation/auth' // 範本見 phase-1-mock-api.md 登入範例
+
+export default defineEventHandler(async (event: H3Event): Promise<RefreshResponse> => {
+  const parsed = await readValidatedBody(event, refreshSchema.safeParse)
+  const oldToken = parsed.success ? parsed.data.refreshToken : undefined
+  // 已登出或已過期的 refresh token 一律拒絕（換發不讓舊 token 失效：同時兩個換發請求時，後到的會被踢出登入）
+  const info = oldToken ? parseMockRefreshToken(oldToken) : undefined
+  const user = mockUsers.find(u => u.accountId === info?.accountId && !u.deletedAt)
+  if (!user)
+    throw createError({ statusCode: 401, message: '登入已過期，請重新登入' })
+  return {
+    accessToken: `mock-token-${user.accountId}-${Date.now()}`,
+    tokenType: 'Bearer',
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    accountId: user.accountId,
+    refreshToken: `mock-refresh-${user.accountId}-${Date.now()}`,
+    refreshExpiresAt: new Date(Date.now() + REFRESH_TTL_MS).toISOString(),
+  }
+})
+```
+
+```ts
+// server/mock/data/revoked-tokens.ts —— 登出後作廢 refresh token（mock 單一實例，重啟就清空）
+// mock 登入發的 refresh token 形如 `mock-refresh-${accountId}-${timestamp}`（見 phase-1-mock-api.md 登入範例）
+// 每個帳號只記一個「登出時刻」，該時刻以前發的 refresh token 全部作廢：筆數最多等於帳號數，不必設上限或清理
+const MOCK_REFRESH_RE = /^mock-refresh-(.+)-(\d+)$/
+export const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000 // login／refresh 回應的 refreshExpiresAt 也用這個值
+const loggedOutAt = new Map<string, number>() // accountId → 登出時刻
+
+// 格式不符、發行時間在未來、已過期、或登出前發的 → undefined
+export function parseMockRefreshToken(token: string): { accountId: string, issuedAt: number } | undefined {
+  const match = token.match(MOCK_REFRESH_RE)
+  const issuedAt = Number(match?.[2])
+  const now = Date.now()
+  if (!match?.[1] || !Number.isFinite(issuedAt) || issuedAt > now || now - issuedAt >= REFRESH_TTL_MS)
+    return undefined
+  if (issuedAt <= (loggedOutAt.get(match[1]) ?? -1))
+    return undefined
+  return { accountId: match[1], issuedAt }
+}
+
+export function revokeRefreshTokens(accountId: string): void {
+  loggedOutAt.set(accountId, Date.now())
+}
+```
+
+```ts
+// server/api/v1/auth/logout.post.ts —— 讓 refresh token 失效後回 204
+// 不加 requireAuth：token 過期的人也要能登出
+import type { H3Event } from 'h3'
+import { parseMockRefreshToken, revokeRefreshTokens } from '../../../mock/data/revoked-tokens'
+import { mockUsers } from '../../../mock/data/users'
+import { refreshSchema } from '../../../validation/auth'
+
+export default defineEventHandler(async (event: H3Event) => {
+  const parsed = await readValidatedBody(event, refreshSchema.safeParse)
+  const info = parsed.success ? parseMockRefreshToken(parsed.data.refreshToken) : undefined
+  // 只對有效 token 的帳號記登出時刻：亂寫的字串不會寫入任何東西
+  if (info && mockUsers.some(u => u.accountId === info.accountId))
+    revokeRefreshTokens(info.accountId)
+  setResponseStatus(event, 204)
+})
+```
+
+```ts
+// nuxt.config.ts 追加（apiBase／apiEnvelope 模板已有，不要重複寫；以下值依 route-map.auth）
 runtimeConfig: {
   public: {
-    apiBase: '/api',
-    apiEnvelope: true,
     authLoginPath: '/login',
     authHomePath: '/',
     // = route-map.auth.public_paths：login ＋賓客端/公開場景路由，不只 login（漏列會被 middleware 誤擋）
@@ -364,6 +496,11 @@ export default defineNitroPlugin(() => {
   if (import.meta.dev)
     return
   const config = useRuntimeConfig()
+  // mock 認證的 token 可偽造：換成真認證後把 MOCK_AUTH 改成 false。CI 的 E2E 以 NUXT_E2E_RESET=true 跑 production build，不擋
+  // 刻意用 mock 版做展示部署（docker compose、npm run preview）也會被擋：確認「登入可被偽造」可以接受，才改成 false
+  const MOCK_AUTH = true
+  if (MOCK_AUTH && !config.e2eReset)
+    throw new Error('[security] 仍是 mock 認證（token 可偽造），拒絕在 production 啟動。換成真認證後把 server/plugins/00.security-guard.ts 的 MOCK_AUTH 改成 false；不要設 NUXT_E2E_RESET 繞過，那會打開資料重設端點')
   const REQUIRED_SECRETS: Array<[key: string, devDefault: string]> = [
     // ['jwtSecret', 'dev-only-change-me'],
   ]
@@ -380,13 +517,34 @@ export default defineNitroPlugin(() => {
 ```ts
 // server/utils/rate-limit.ts —— in-memory 滑動視窗（單實例；serverless 多實例需共享儲存，出現濫用再升級）
 const buckets = new Map<string, number[]>()
+const MAX_KEYS = 10_000
+const SWEEP_WINDOW_MS = 15 * 60 * 1000 // 取各端點最長的視窗（登入 15 分）
+
+// 只刪過期的 key。不可刪還在視窗內的 key：攻擊者能用大量假帳號把受害帳號的失敗次數擠掉
+function sweep(): void {
+  const now = Date.now()
+  for (const [key, hits] of buckets) {
+    if (!hits.some(t => now - t < SWEEP_WINDOW_MS))
+      buckets.delete(key)
+  }
+}
 
 export function assertNotRateLimited(key: string, max: number, windowMs: number): void {
+  // 新 key 進來時記錄已滿：先清過期的，仍滿就整體拒絕（記憶體有上限、也不會擠掉別人的計數）
+  if (!buckets.has(key) && buckets.size >= MAX_KEYS) {
+    sweep()
+    if (buckets.size >= MAX_KEYS)
+      throw createError({ statusCode: 429, message: '嘗試次數過多，請稍後再試' })
+  }
   const now = Date.now()
   const hits = (buckets.get(key) ?? []).filter(t => now - t < windowMs)
-  buckets.set(key, hits)
+  // 清空就刪 key：沒失敗過的 key 不留空陣列，記憶體才不會只增不減
+  if (hits.length)
+    buckets.set(key, hits)
+  else
+    buckets.delete(key)
   if (hits.length >= max)
-    throw createError({ statusCode: 429, statusMessage: '嘗試次數過多，請稍後再試' })
+    throw createError({ statusCode: 429, message: '嘗試次數過多，請稍後再試' })
 }
 export function recordFailure(key: string): void {
   const hits = buckets.get(key) ?? []
@@ -400,7 +558,8 @@ export function clearFailures(key: string): void {
 
 ```ts
 // login handler 套用（15 分鐘 10 次失敗上限）
-const key = `login:${getRequestIP(event, { xForwardedFor: true })}:${body.account}`
+// 不讀 X-Forwarded-For：client 可自填、換值即繞過；部署在反向代理後面時才改讀代理設定的可信 header
+const key = `login:${getRequestIP(event)}:${body.account}`
 assertNotRateLimited(key, 10, 15 * 60 * 1000)
 // 驗證失敗 → recordFailure(key) 後 throw 401；驗證成功 → clearFailures(key)
 ```
@@ -444,10 +603,15 @@ routeRules: {
 - [ ] 登入成功後不被彈回 login
 - [ ] login 頁與 layout 沒有 authed fetch
 - [ ] `test/e2e/specs/01-auth-guard.spec.ts` 存在（範本見 test skill `e2e/references/setup.md` Step 6.5）：未登入訪受保護路由 → 只導向 `/login` 一次、無重複導向錯誤；公開頁不被導走；已登入訪 login 導回
-- [ ] `server/plugins/00.security-guard.ts` 存在（§4b①；真密鑰加入時已登記進 REQUIRED_SECRETS）
+- [ ] `server/plugins/00.security-guard.ts` 存在（§4b①；真密鑰加入時已登記進 REQUIRED_SECRETS），且含 `MOCK_AUTH` 守衛；換成真認證後已改成 `false`
 - [ ] login handler 首段有 `assertNotRateLimited`（§4b②；fileUpload 專案的 upload／presign 端點同套）
 - [ ] 公開端點已分級：匿名只回已發布資料的公開層欄位、公開寫入不信 body 身分欄位（§4a）
 - [ ] 無任何 server handler 從 cookie 讀憑證（grep `getCookie(event, 'auth')` 無命中）；憑證僅走 Authorization header（§4c 前提）
+- [ ] persist cookie 已設 `maxAge` 且 ≥ 後端 refresh token 存活期（不設＝session cookie → 閒置被登出）
+- [ ] `refresh()` 有跨分頁鎖（`navigator.locks`）且搶到鎖後先重讀 cookie 再決定是否打 API（§3a 三層併發防護）
+- [ ] 登出後飛行中 refresh 的結果會被丟棄（`sessionEpoch` guard，§3a）
+- [ ] mock refresh 拒絕登出前發的、已過期的、發行時間在未來的 refresh token；mock logout 只對有效 token 的帳號記登出時刻（`revoked-tokens.ts`，§3a）
+- [ ] 專案有 SSE/WebSocket 時：refresh 成功後長連線以新 token 重建、連線前驗 exp（近）過期先 refresh——見 realtime skill 鐵律 4、5
 
 ---
 

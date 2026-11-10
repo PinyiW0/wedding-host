@@ -4,7 +4,8 @@
 > Phase 4 建立 wrapper 元件，Phase 5 在頁面中使用。
 > 只有 `route-map.yaml > enabled_features` 中列出的功能才需要實作。
 >
-> **Phase 4 流程**：列出套件選項 → 開發者確認 → 安裝 → 依選定套件實作 wrapper 內部邏輯。
+> **Phase 4 流程**：有套件選項的功能，分身不能問開發者——第一次執行時該 wrapper 不產出，把選項列進回報；開發者選定後帶著選擇重新執行 Phase 4（例如 `/feature-to-ui 4 charts 用 vue-chartjs`），再安裝並實作 wrapper 內部邏輯。
+> **Wrapper 一律放 `app/components/common/`**，Nuxt 自動命名會加 `Common` 前綴（`common/ChartWrapper.vue` → `<CommonChartWrapper>`）；下方元件名寫檔名，使用時一律帶前綴。
 > **Phase 5 只使用 Wrapper API**，不直接 import 第三方套件。
 
 ---
@@ -13,7 +14,7 @@
 
 ### Wrapper API（Phase 5 消費介面）
 
-元件名：`ChartWrapper.vue`
+元件：`app/components/common/ChartWrapper.vue`（使用時 `<CommonChartWrapper>`）
 
 | Prop | Type | 說明 |
 |------|------|------|
@@ -33,7 +34,7 @@
 ### Phase 5 使用方式
 
 ```vue
-<ChartWrapper
+<CommonChartWrapper
   type="bar"
   :data="{ labels: ['一月', '二月'], datasets: [{ label: '次數', data: [10, 20] }] }"
 />
@@ -49,17 +50,17 @@
 
 ### Wrapper API（Phase 5 消費介面）
 
-元件名：`DraggableList.vue`
+元件：`app/components/common/DraggableList.vue`（使用時 `<CommonDraggableList>`）
 
 | Prop | Type | 說明 |
 |------|------|------|
-| items (v-model) | `{ id: number, [key: string]: unknown }[]` | 可拖曳的項目列表 |
-| itemKey | `string` | 項目唯一鍵（預設 `'id'`） |
+| items (v-model) | `Record<string, unknown>[]` | 可拖曳的項目列表；`itemKey` 指定的欄位（如 `noteId`）當唯一鍵 |
+| itemKey | `string` | 項目唯一鍵的欄位名（預設 `'id'`，依資源實際欄位改，如 `'noteId'`） |
 | handle | `string` | 拖曳把手的 CSS selector（選填） |
 
 | Emit | Payload | 說明 |
 |------|---------|------|
-| sorted | `number[]` | 排序後的 id 陣列 |
+| sorted | `string[]` | 排序後的唯一鍵陣列；型別跟資源 ID 一致（數字 ID 改 `number[]`），與排序端點的 `ids` 同型別 |
 
 | Slot | Scope | 說明 |
 |------|-------|------|
@@ -74,30 +75,19 @@
 
 ### `/feature-to-api` Phase 1 影響
 
-需建立 sort API 端點：
-
-```typescript
-// server/api/{resource}/sort.put.ts
-import type { H3Event } from 'h3'
-
-export default defineEventHandler(async (event: H3Event) => {
-  const body = await readBody(event) as { ids: number[] }
-  // 更新 mock 資料的排序
-  return { status: 'success' as const, message: '排序已更新' }
-})
-```
+需要排序端點（`PUT {path_prefix}/{resource}/sort`）。範本在 `/feature-to-api` 的 [phase-1-mock-api.md](../../feature-to-api/references/phase-1-mock-api.md)「additionalFeatures 端點」段，本檔不重複。
 
 ### Phase 5 使用方式
 
 ```vue
-<DraggableList v-model:items="sortedList" @sorted="handleSort">
+<CommonDraggableList v-model:items="sortedList" @sorted="handleSort">
   <template #default="{ element }">
     <div class="flex items-center gap-2 border-b p-3">
       <UIcon name="i-heroicons-bars-3" class="cursor-grab" />
       <span>{{ element.name }}</span>
     </div>
   </template>
-</DraggableList>
+</CommonDraggableList>
 ```
 
 ---
@@ -106,7 +96,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
 ### Wrapper API（Phase 5 消費介面）
 
-元件名：`RichTextEditor.vue`
+元件：`app/components/common/RichTextEditor.vue`（使用時 `<CommonRichTextEditor>`）
 
 | Prop | Type | 說明 |
 |------|------|------|
@@ -129,7 +119,7 @@ export default defineEventHandler(async (event: H3Event) => {
 ### Phase 5 使用方式
 
 ```vue
-<RichTextEditor v-model="formData.content" placeholder="請輸入文章內容..." />
+<CommonRichTextEditor v-model="formData.content" placeholder="請輸入文章內容..." />
 ```
 
 ---
@@ -138,7 +128,7 @@ export default defineEventHandler(async (event: H3Event) => {
 
 ### Wrapper API（Phase 5 消費介面）
 
-元件名：`DateRangePicker.vue`
+元件：`app/components/common/DateRangePicker.vue`（使用時 `<CommonDateRangePicker>`）
 
 | Prop | Type | 說明 |
 |------|------|------|
@@ -155,7 +145,7 @@ export default defineEventHandler(async (event: H3Event) => {
 ### Phase 5 使用方式
 
 ```vue
-<DateRangePicker v-model="filters.dateRange" placeholder="篩選日期範圍" />
+<CommonDateRangePicker v-model="filters.dateRange" placeholder="篩選日期範圍" />
 ```
 
 ---
@@ -164,31 +154,19 @@ export default defineEventHandler(async (event: H3Event) => {
 
 ### 不需額外套件
 
-使用原生 `FormData` + `$fetch` + `DragEvent`。
+使用原生 `FormData` + `DragEvent`；送出走 client 層的上傳函式（`/feature-to-api` 依 spec 產出，下方以 `uploadFile` 示意，名稱以實際 `app/api/` 為準）。
 
 ### `/feature-to-api` Phase 1 影響
 
-需建立 upload API 端點：
-
-```typescript
-// server/api/upload.post.ts
-import type { H3Event } from 'h3'
-
-export default defineEventHandler(async (event: H3Event) => {
-  const formData = await readMultipartFormData(event)
-  // Mock：回傳假的檔案 URL
-  return {
-    status: 'success' as const,
-    data: { url: `/uploads/mock-${Date.now()}.png`, name: 'uploaded-file.png' },
-  }
-})
-```
+需要上傳端點（`POST {path_prefix}/upload`）。範本在 `/feature-to-api` 的 [phase-1-mock-api.md](../../feature-to-api/references/phase-1-mock-api.md)「additionalFeatures 端點」段，本檔不重複。
 
 ### Phase 4 建立元件
 
 ```vue
 <!-- app/components/common/FileUpload.vue -->
 <script setup lang="ts">
+import { uploadFile } from '~/api'
+
 const props = withDefaults(defineProps<{
   accept?: string
   maxSizeMb?: number
@@ -205,8 +183,11 @@ const emit = defineEmits<{
 const isDragging = ref(false)
 const isUploading = ref(false)
 
+const input = ref<HTMLInputElement>()
+
 async function handleFiles(files: FileList | null) {
-  if (!files?.length) return
+  if (!files?.length)
+    return
   const file = files[0]!
 
   if (file.size > props.maxSizeMb * 1024 * 1024) {
@@ -218,8 +199,7 @@ async function handleFiles(files: FileList | null) {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const result = await $fetch('/api/upload', { method: 'POST', body: formData })
-    emit('uploaded', result.data)
+    emit('uploaded', await uploadFile(formData))
   }
   catch {
     emit('error', '上傳失敗')
@@ -244,7 +224,7 @@ function onDrop(e: DragEvent) {
     @dragover.prevent="isDragging = true"
     @dragleave="isDragging = false"
     @drop.prevent="onDrop"
-    @click="($refs.input as HTMLInputElement).click()"
+    @click="input?.click()"
   >
     <UIcon name="i-heroicons-cloud-arrow-up" class="size-8 text-neutral-400" />
     <p class="mt-2 text-sm text-neutral-500">點擊或拖放檔案上傳</p>
@@ -258,7 +238,7 @@ function onDrop(e: DragEvent) {
 ### Phase 5 使用方式
 
 ```vue
-<FileUpload accept="image/*" :max-size-mb="5" @uploaded="formData.avatar = $event.url" @error="showError" />
+<CommonFileUpload accept="image/*" :max-size-mb="5" @uploaded="formData.avatar = $event.url" @error="showError" />
 ```
 
 ---
@@ -286,7 +266,8 @@ const emit = defineEmits<{
 const sentinel = ref<HTMLElement>()
 
 onMounted(() => {
-  if (!sentinel.value) return
+  if (!sentinel.value)
+    return
   const observer = new IntersectionObserver(([entry]) => {
     if (entry?.isIntersecting && !props.loading && props.hasMore) {
       emit('loadMore')
@@ -314,9 +295,9 @@ onMounted(() => {
 ### Phase 5 使用方式
 
 ```vue
-<InfiniteScroll :loading="isFetching" :has-more="hasNextPage" @load-more="fetchNextPage">
+<CommonInfiniteScroll :loading="isFetching" :has-more="hasNextPage" @load-more="fetchNextPage">
   <div v-for="item in items" :key="item.id">{{ item.name }}</div>
-</InfiniteScroll>
+</CommonInfiniteScroll>
 ```
 
 ### 注意
