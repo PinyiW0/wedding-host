@@ -21,9 +21,15 @@ test.describe('vibe：喜餅款式在接待端的可見性與組合展開', () =
       data: { visibleToReception: false },
     })).ok()).toBeTruthy()
 
+    // issue #217 起，有款式可發的賓客只有打勾、沒有選款 modal；
+    // 選款 modal 改由不出席賓客的現場發放進入（轉為不出席會被自動設為不發放）
+    expect((await page.request.post(`/api/v1/weddings/${WID}/guests/guest-004/rsvp-override`, {
+      data: { attending: 'declined', reason: '代轉禮金' },
+    })).ok()).toBeTruthy()
+
     await page.goto(RECEPTION_PATH, { waitUntil: 'networkidle' })
-    // guest-001 無指派 → 走選款按鈕開啟發放 modal
-    await page.getByTestId('reception-cake-guest-001').click()
+    await page.getByTestId('vibe-reception-declined-toggle').click()
+    await page.getByTestId('reception-cake-guest-004').click()
     await page.getByTestId('distribute-cake-select').click()
 
     await expect(page.getByRole('option', { name: /經典禮盒/ })).toBeVisible()
