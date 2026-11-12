@@ -212,7 +212,7 @@ API 邊界保護（UI 正常對未登記者只顯示「登記」而非「更正�
 
 ### E2E 驗證流程
 1. 進入 `/reception`
-2. 在 guest-001 範圍內觸發「發放喜餅」（選擇款式 cake-type-001）
+2. 在 guest-001 範圍內觸發「發放喜餅」（發放後台設定的款式 cake-type-001；guest-001 無個別指派，退回預設款。後台已設定款式的賓客不在報到頁改款，issue #217）
 3. 期待：
    - API spy：`POST .../guests/guest-001/cake-box-distribution`，payload 含 cakeBoxTypeId
    - UI：guest-001 顯示為「已發放喜餅」
