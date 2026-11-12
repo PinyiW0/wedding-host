@@ -64,7 +64,7 @@
 
 - **M1 `venue-layout.put.ts`**：insert 分支 `values({ weddingId, ...body })` 的展開順序讓 `body.weddingId` 覆蓋 URL 值，可為他人婚禮建立佈局列（跨租戶寫入）。改為顯式白名單欄位。
 - **M2 `thank-you-card/public/[guestId].get.ts`**：guest 查詢用裸 `guestId`、未帶 `weddingId`，可跨婚禮枚舉並讀出其他婚禮賓客姓名。補 `weddingId` 過濾。
-- **M3 `guests/index.get.ts`**：接待員（RECEPTION_GET 白名單）拿到每位賓客的電話、郵寄地址、LINE id、內部備註、自由問答。報到／發喜餅只需 name/side/category/diet/partySize/childChairCount/tableName/status。改為接待員回精簡子集、`fields=full` 限管理端。
+- **M3 `guests/index.get.ts`**：接待員（RECEPTION_GET 白名單）拿到每位賓客的電話、郵寄地址、LINE id、內部備註、自由問答。報到／發喜餅只需 name/side/category/diet/partySize/childChairCount/tableName/status。改為接待員回精簡子集、`fields=full` 限管理端。**2026-11 更新（issue #217）**：備註改為接待員可讀、可寫（報到卡片要顯示並補寫），寫入走只改備註一欄的 `guests/[guestId]/notes.put.ts`；電話、地址、LINE id、自由問答仍剔除。
 - **M4 輸入驗證**：多處數字欄（`shuttleCount`／`partySize`／`childChairCount`／禮金 `amount`／喜餅與品項金額／桌次 `capacity`）未經整數與範圍檢查即落 integer 欄，可致 `NaN`、浮點、int4 溢位（→ 500）、負值污染，並與座位展開迴圈組成放大式 DoS；`side`／`diet`／`rsvpAttending` 等 enum 欄無執行期白名單。新增 `server/utils/validation.ts`（`assertPositiveInt`／`assertEnum`）並套用。其中 `shuttleCount` 於**未登入可達**的公開 RSVP 端點，優先。
 - **M5 `uploads/presign.post.ts`**：持婚禮簽名者可無限索取上傳 URL。已加限流（每 IP＋婚禮每分鐘上限）。R2 presigned PUT 無法在簽名內限制檔案大小（見殘餘風險 R）。
 - **M6 `blessings/index.post.ts`**：持婚禮簽名者可帶任意 `body.guestId` 冒名投稿。改為驗證 `guestId` 屬於本婚禮，否則忽略（退回自填姓名模式）。

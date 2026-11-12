@@ -5,7 +5,6 @@ import {
   getFeedbackElement,
   login,
   resetMockData,
-  selectOption,
   TestUsers,
   waitForApiCall,
 } from '../helpers'
@@ -212,17 +211,15 @@ test.describe('接待端：喜餅發放（Receptionist）', () => {
       // Given：guest-001 尚未領取喜餅
       await page.goto(RECEPTION_PATH, { waitUntil: 'networkidle' })
 
-      // When：在 guest-001 範圍內觸發「發放喜餅」並選擇款式（最後選下拉，坑 #8）
-      await findEntity(page, /陳大明/).getByRole('button', { name: /發放喜餅|發放/ }).click()
-      await selectOption(page, 'distribute-cake-select', /經典禮盒/)
-
+      // When：在 guest-001 範圍內打勾發放後台設定的款式（issue #217：guest-001 無個別指派，
+      // 退回預設款「經典禮盒」；後台已設定款式的賓客不提供現場改款，故無選款下拉）
       // 主要 outcome：API spy 驗證 POST .../cake-box-distribution，payload 含 cakeBoxTypeId
       const apiCall = waitForApiCall(
         page,
         /\/guests\/guest-001\/cake-box-distribution(\?|$)/,
         'POST',
       )
-      await page.getByRole('button', { name: /發放|送出|確定|完成/ }).click()
+      await findEntity(page, /陳大明/).getByRole('checkbox', { name: /經典禮盒/ }).click()
       const request = await apiCall
       expect(request.postDataJSON()).toMatchObject({ cakeBoxTypeId: 'cakeboxtype-001' })
 

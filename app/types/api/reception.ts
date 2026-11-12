@@ -53,6 +53,16 @@ export interface CakeBoxDistributedEvent {
   cakeBoxTypeId: string
 }
 
+// 報到頁改賓客備註（issue #217）：與賓客名單的備註同一欄；空字串或 null 代表清空
+export interface UpdateGuestNotesBody {
+  notes: string | null
+}
+
+export interface GuestNotesUpdatedEvent {
+  guestId: string
+  notes: string | null
+}
+
 // 取消喜餅發放（後台由新人／管理者操作；接待台維持單向確認、不可取消）
 export interface CakeBoxDistributionCancelledEvent {
   guestId: string

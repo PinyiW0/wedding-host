@@ -7,6 +7,7 @@ import type {
   ReceptionStatusItem,
   RecordGiftMoneyBody,
   UpdateGiftMoneyBody,
+  UpdateGuestNotesBody,
 } from '~/types/api/reception'
 import type {
   CreateTableBody,
@@ -32,6 +33,7 @@ import {
   recordGiftMoney,
   seatGuest,
   updateGiftMoney,
+  updateGuestNotes,
 } from '~/api'
 import { cakeBoxDisplayName, cakeBoxThumbItems } from '~/utils/cakeBoxDisplay'
 
@@ -84,6 +86,15 @@ const { data: venueMarkers, refresh: refreshMarkers } = markersAsync
 
 const activeGuests = computed(() =>
   (guests.value ?? []).filter(g => !g.deletedAt),
+)
+
+// 不出席的賓客不進主報到名單與報到率（issue #217）；
+// 朋友代轉禮金時，改從清單底部的「不出席」區操作
+const expectedGuests = computed(() =>
+  activeGuests.value.filter(g => g.rsvpAttending !== 'declined'),
+)
+const declinedGuests = computed(() =>
+  activeGuests.value.filter(g => g.rsvpAttending === 'declined'),
 )
 
 const cakeTypeById = computed(() =>
@@ -139,6 +150,30 @@ const assignedCakeViewByGuest = computed(() => {
 
 function assignedCakeView(guestId: string) {
   return assignedCakeViewByGuest.value.get(guestId) ?? null
+}
+
+// 沒有個別指派的賓客退回預設款，與喜餅後台的領取清單同一套判斷（issue #217）
+const defaultCakeType = computed(() => (cakeBoxTypes.value ?? []).find(t => t.isDefault) ?? null)
+const defaultCakeView = computed(() => defaultCakeType.value ? cakeTypeView(defaultCakeType.value) : null)
+
+// guestId → 這位賓客要發的款式（個別指派優先，否則預設款）；一次算好，卡片重繪時只查表
+const cakeByGuest = computed(() => {
+  const map = new Map<string, { typeId: string, isDefault: boolean, view: NonNullable<ReturnType<typeof assignedCakeView>> }>()
+  const fallback = defaultCakeType.value && defaultCakeView.value
+    ? { typeId: defaultCakeType.value.cakeBoxTypeId, isDefault: true, view: defaultCakeView.value }
+    : null
+  for (const g of activeGuests.value) {
+    const assigned = assignedCake(g.guestId)
+    if (assigned)
+      map.set(g.guestId, { typeId: assigned.typeId, isDefault: false, view: assignedCakeView(g.guestId)! })
+    else if (fallback)
+      map.set(g.guestId, fallback)
+  }
+  return map
+})
+
+function cakeForGuest(guestId: string) {
+  return cakeByGuest.value.get(guestId) ?? null
 }
 
 // 已發放顯示文字；款式被刪除時只說「已發放」，不渲染成「已發放（）」
@@ -198,8 +233,8 @@ const showOnlyUnchecked = ref(false)
 const filteredGuests = computed(() => {
   const t = searchTerm.value.trim().toLowerCase()
   const list = showOnlyUnchecked.value
-    ? activeGuests.value.filter(g => !status[g.guestId]?.checkedIn)
-    : activeGuests.value
+    ? expectedGuests.value.filter(g => !status[g.guestId]?.checkedIn)
+    : expectedGuests.value
   if (!t)
     return list
   return list.filter(g => g.name.toLowerCase().includes(t))
@@ -220,12 +255,35 @@ const displayGuests = computed(() => {
   return [...pending, ...served]
 })
 
-// 已報到人數 + 總報到率（供頂部計數）
+// 「不出席」區：預設收合，搜尋時自動展開，代轉禮金的人報姓名就找得到
+const isDeclinedOpen = ref(false)
+const filteredDeclined = computed(() => {
+  const t = searchTerm.value.trim().toLowerCase()
+  return t ? declinedGuests.value.filter(g => g.name.toLowerCase().includes(t)) : declinedGuests.value
+})
+const showDeclined = computed(() => isDeclinedOpen.value || !!searchTerm.value.trim())
+// 搜尋中該區固定展開，此時點標頭不改收合狀態，免得清掉搜尋字後狀態與原本相反
+function toggleDeclined() {
+  if (!searchTerm.value.trim())
+    isDeclinedOpen.value = !isDeclinedOpen.value
+}
+// 搜尋時不出席區自動展開，相符人數要一起算，否則只搜到不出席的人會顯示「0 位相符」
+const matchCount = computed(() =>
+  filteredGuests.value.length + (searchTerm.value.trim() ? filteredDeclined.value.length : 0),
+)
+const guestGroups = computed(() => [
+  { key: 'expected', declined: false, guests: displayGuests.value },
+  ...(filteredDeclined.value.length
+    ? [{ key: 'declined', declined: true, guests: filteredDeclined.value }]
+    : []),
+])
+
+// 已報到人數 + 總報到率（供頂部計數；分母不含不出席）
 const checkedInCount = computed(
-  () => activeGuests.value.filter(g => status[g.guestId]?.checkedIn).length,
+  () => expectedGuests.value.filter(g => status[g.guestId]?.checkedIn).length,
 )
 const checkInRate = computed(() => {
-  const total = activeGuests.value.length
+  const total = expectedGuests.value.length
   return total ? Math.round((checkedInCount.value / total) * 100) : 0
 })
 
@@ -424,6 +482,51 @@ async function submitGift() {
   }
 }
 
+// === 備註（issue #217）===
+// 與賓客名單的備註同一欄；接待帳號走只改備註的專用端點
+const NOTES_MAX = 500
+const isNotesOpen = ref(false)
+const isNotesSubmitting = ref(false)
+const notesError = ref('')
+const notesTarget = ref<GuestListItem | null>(null)
+const notesDraft = ref('')
+
+function openNotes(guest: GuestListItem) {
+  // 儲存中不換目標，否則前一筆回來會關掉新開的彈窗
+  if (isNotesSubmitting.value)
+    return
+  notesTarget.value = guest
+  notesError.value = ''
+  notesDraft.value = guest.notes ?? ''
+  isNotesOpen.value = true
+}
+
+async function submitNotes() {
+  if (!notesTarget.value || isNotesSubmitting.value)
+    return
+  const targetId = notesTarget.value.guestId
+  isNotesSubmitting.value = true
+  notesError.value = ''
+  try {
+    const body: UpdateGuestNotesBody = { notes: notesDraft.value }
+    const saved = await updateGuestNotes(weddingId.value, targetId, body)
+    // 重抓名單而不是就地改：新的請求會取消還在路上的定時更新，舊回應不會蓋掉剛存的備註
+    await refreshGuests()
+    toast.add({ title: saved.notes ? '備註已儲存' : '備註已清空', color: 'success' })
+    if (notesTarget.value?.guestId === targetId)
+      isNotesOpen.value = false
+  }
+  catch (error: any) {
+    if (notesTarget.value?.guestId === targetId) {
+      notesError.value
+        = error?.data?.message || error?.statusMessage || '儲存失敗，請稍後再試'
+    }
+  }
+  finally {
+    isNotesSubmitting.value = false
+  }
+}
+
 // === 喜餅發放 ===
 const isCakeOpen = ref(false)
 const isCakeSubmitting = ref(false)
@@ -439,10 +542,10 @@ function openCake(guest: GuestListItem) {
   isCakeOpen.value = true
 }
 
-// 卡片打勾即發放：直接發放後台指定的款式（無指定則不動作，改用「發放喜餅」選款）
+// 卡片打勾即發放：發放後台指定的款式，沒有指定就發預設款（兩者皆無則不動作，改用「發放喜餅」選款）
 const quickDistributingId = ref<string | null>(null)
 async function quickDistribute(guest: GuestListItem) {
-  const assigned = assignedCake(guest.guestId)
+  const assigned = cakeForGuest(guest.guestId)
   if (!assigned || quickDistributingId.value)
     return
   quickDistributingId.value = guest.guestId
@@ -488,7 +591,7 @@ onMounted(() => {
   pollTimer = setInterval(() => {
     if (document.visibilityState !== 'visible')
       return
-    if (checkingInId.value || isBatchChecking.value || isGiftSubmitting.value || isCakeSubmitting.value || quickDistributingId.value)
+    if (checkingInId.value || isBatchChecking.value || isGiftSubmitting.value || isCakeSubmitting.value || isNotesSubmitting.value || quickDistributingId.value)
       return
     Promise.all([
       refreshGuests(),
@@ -631,7 +734,7 @@ function normalSeatCount(tableId: string): number {
 // 報到即時反映，也涵蓋尚未用排位工具拖曳入座、僅預排桌次的賓客
 const guestsByTableName = computed<Record<string, GuestListItem[]>>(() => {
   const map: Record<string, GuestListItem[]> = {}
-  for (const g of activeGuests.value)
+  for (const g of expectedGuests.value)
     (map[guestTable(g)] ??= []).push(g)
   return map
 })
@@ -855,7 +958,7 @@ async function submitCake() {
           <div class="flex items-baseline justify-end gap-2 text-body text-ink-500 dark:text-neutral-400">
             已報到
             <span class="font-display text-h1 font-semibold leading-none text-ink dark:text-paper">{{ checkedInCount }}</span>
-            / {{ activeGuests.length }}
+            / {{ expectedGuests.length }}
           </div>
           <!-- 總報到率 -->
           <div class="mt-2 flex items-center justify-end gap-2">
@@ -925,7 +1028,7 @@ async function submitCake() {
           </div>
           <div class="mt-2 flex items-center justify-between pl-1">
             <p class="text-caption text-ink-500 dark:text-neutral-400">
-              {{ filteredGuests.length }} 位相符
+              {{ matchCount }} 位相符
             </p>
             <!-- OFF 態軌道底色調深（正常 switch 樣式，不加框/ring），灰態不再糊在背景；ON 態填金 -->
             <USwitch
@@ -1008,168 +1111,251 @@ async function submitCake() {
 
         <!-- 結果卡片列表；lg 鎖高內捲、flex-1 讓空狀態撐滿 -->
         <div data-testid="reception-list" class="flex flex-col space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-auto">
-          <div
-            v-for="guest in displayGuests"
-            :key="guest.guestId"
-            role="article"
-            :aria-label="guest.name"
-            :data-testid="`reception-row-${guest.guestId}`"
-            class="rounded-lg border border-line bg-white p-5 transition-colors dark:border-neutral-800 dark:bg-neutral-900"
-            :class="status[guest.guestId]?.checkedIn && 'opacity-70'"
-          >
-            <!-- 身分 + 報到狀態 -->
-            <div class="flex items-start gap-4">
-              <!-- 多選模式：未報到者顯示勾選框 -->
-              <UCheckbox
-                v-if="batchMode && !status[guest.guestId]?.checkedIn"
-                :model-value="selectedIds.has(guest.guestId)"
-                :data-testid="`vibe-batch-tick-${guest.guestId}`"
-                :aria-label="`選取 ${guest.name}`"
-                size="lg"
-                class="mt-3"
-                @update:model-value="toggleSelect(guest.guestId)"
+          <template v-for="group in guestGroups" :key="group.key">
+            <!-- 不出席區的標頭：預設收合；不計入報到率，但仍可登記禮金、發喜餅、寫備註（issue #217） -->
+            <button
+              v-if="group.declined"
+              type="button"
+              data-testid="vibe-reception-declined-toggle"
+              :aria-expanded="showDeclined"
+              :disabled="!!searchTerm.trim()"
+              class="flex w-full shrink-0 items-center gap-3 rounded pt-3 text-left focus-visible:ring-2 focus-visible:ring-gold/40 disabled:cursor-default"
+              @click="toggleDeclined"
+            >
+              <span class="text-overline uppercase text-gold-deep">不出席 {{ group.guests.length }} 位</span>
+              <span class="text-caption text-ink-300">可代收禮金、發放喜餅</span>
+              <span class="h-px flex-1 bg-line" />
+              <UIcon
+                v-if="!searchTerm.trim()"
+                :name="showDeclined ? 'i-heroicons-chevron-up' : 'i-heroicons-chevron-down'"
+                class="size-4 shrink-0 text-ink-300"
               />
-              <span class="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold-light/40 font-display text-xl font-semibold text-gold-deep">
-                {{ guest.name.charAt(0) }}
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-3">
-                  <p class="font-display text-2xl font-medium leading-tight text-ink dark:text-paper">
-                    {{ guest.name }}
-                  </p>
-                  <StatusBadge v-if="status[guest.guestId]?.checkedIn" color="success" size="md">
-                    已報到
-                  </StatusBadge>
-                  <StatusBadge v-else color="warning" size="md">
-                    未報到
-                  </StatusBadge>
-                </div>
-                <p class="mt-0.5 text-body text-ink-500 dark:text-neutral-400">
-                  {{ guestDetail(guest) }}
-                </p>
-              </div>
-            </div>
-
-            <!-- 報到資訊：桌次 · 總人數 · 兒童椅（報到時一眼看到） -->
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-              <span class="inline-flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-body text-ink dark:border-neutral-700 dark:text-paper">
-                <UIcon name="i-heroicons-table-cells" class="size-4 text-gold-deep" />
-                {{ guestTable(guest) }}
-              </span>
-              <span class="inline-flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-body text-ink dark:border-neutral-700 dark:text-paper">
-                <UIcon name="i-heroicons-user-group" class="size-4 text-gold-deep" />
-                共 {{ guest.partySize }} 人
-              </span>
-              <span
-                v-if="guest.childChairCount > 0"
-                class="inline-flex items-center gap-1.5 rounded border border-gold bg-gold-light/20 px-3 py-1.5 text-body font-medium text-gold-deep"
+            </button>
+            <template v-if="!group.declined || showDeclined">
+              <div
+                v-for="guest in group.guests"
+                :key="guest.guestId"
+                role="article"
+                :aria-label="guest.name"
+                :data-testid="`reception-row-${guest.guestId}`"
+                class="@container rounded-lg border border-line bg-white p-5 transition-colors dark:border-neutral-800 dark:bg-neutral-900"
+                :class="status[guest.guestId]?.checkedIn && 'opacity-70'"
               >
-                <UIcon name="i-heroicons-sparkles" class="size-4" />
-                兒童椅 ×{{ guest.childChairCount }}
-              </span>
-            </div>
-
-            <!-- 禮金 · 喜餅 · 報到（報到鈕置於最後、無箭頭） -->
-            <div class="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-line pt-4 dark:border-neutral-800">
-              <!-- 禮金 -->
-              <div class="flex items-center gap-3">
-                <span class="text-caption uppercase tracking-wider text-ink-300">禮金</span>
-                <span
-                  v-if="status[guest.guestId]?.giftAmount != null"
-                  class="font-display text-xl font-semibold text-ink dark:text-paper"
-                >
-                  NT$ {{ status[guest.guestId]!.giftAmount!.toLocaleString('en-US') }}
-                </span>
-                <span v-else class="text-body text-ink-300">未登記</span>
-                <UButton
-                  :data-testid="`reception-gift-${guest.guestId}`"
-                  color="neutral"
-                  variant="outline"
-                  size="sm"
-                  class="h-11 lg:h-auto"
-                  @click="openGift(guest)"
-                >
-                  {{ status[guest.guestId]?.giftAmount != null ? '更正' : '登記禮金' }}
-                </UButton>
-              </div>
-
-              <!-- 喜餅：已發放顯示款式；不發放者無操作；有指定款打勾即發放；
-                   「發放喜餅」按鈕只留給沒有後台指派的現場臨時來賓（issue #138） -->
-              <div class="flex items-center gap-3">
-                <span class="text-caption uppercase tracking-wider text-ink-300">喜餅</span>
-                <span
-                  v-if="status[guest.guestId]?.cakeBoxTypeId"
-                  class="inline-flex items-center gap-1.5 text-body font-medium text-success-600"
-                >
-                  <UIcon name="i-heroicons-check-circle-20-solid" class="size-5" />
-                  {{ distributedLabel(status[guest.guestId]!.cakeBoxTypeId) }}
-                </span>
-                <span
-                  v-else-if="isCakeExcluded(guest.guestId)"
-                  :data-testid="`vibe-reception-cake-nobox-${guest.guestId}`"
-                  class="text-body text-ink-300"
-                >
-                  不發放
-                </span>
-                <!-- 組合款以內含單款為主行、組合自訂名走 description 副標（issue #140） -->
-                <UCheckbox
-                  v-else-if="assignedCakeView(guest.guestId)"
-                  :model-value="false"
-                  :data-testid="`reception-cake-tick-${guest.guestId}`"
-                  :disabled="quickDistributingId === guest.guestId"
-                  :ui="{ root: 'items-center' }"
-                  @update:model-value="quickDistribute(guest)"
-                >
-                  <!-- 縮圖與副標都放進 label：整塊等高後，勾選框才會對齊縮圖中心
-                       （用 description prop 會讓副標落在 label 外，勾選框被推到頂部） -->
-                  <template #label>
-                    <span class="flex items-center gap-2">
-                      <CakeBoxThumb :items="assignedCakeView(guest.guestId)!.thumbItems" size="sm" />
-                      <span class="min-w-0">
-                        <span class="block">{{ assignedCakeView(guest.guestId)!.primary }}（指定）</span>
-                        <span
-                          v-if="assignedCakeView(guest.guestId)!.secondary"
-                          class="block text-caption text-ink-300"
-                        >
-                          {{ assignedCakeView(guest.guestId)!.secondary }}
-                        </span>
+                <!-- 上半：左 身分與報到資訊／右 備註（卡片夠寬才並排，窄卡片備註落到下方） -->
+                <div class="flex flex-col gap-4 @lg:flex-row @lg:items-start">
+                  <div class="min-w-0 flex-1">
+                    <!-- 身分 + 報到狀態 -->
+                    <div class="flex items-start gap-4">
+                      <!-- 多選模式：未報到者顯示勾選框 -->
+                      <UCheckbox
+                        v-if="batchMode && !group.declined && !status[guest.guestId]?.checkedIn"
+                        :model-value="selectedIds.has(guest.guestId)"
+                        :data-testid="`vibe-batch-tick-${guest.guestId}`"
+                        :aria-label="`選取 ${guest.name}`"
+                        size="lg"
+                        class="mt-3"
+                        @update:model-value="toggleSelect(guest.guestId)"
+                      />
+                      <span class="flex size-12 shrink-0 items-center justify-center rounded-full bg-gold-light/40 font-display text-xl font-semibold text-gold-deep">
+                        {{ guest.name.charAt(0) }}
                       </span>
-                    </span>
-                  </template>
-                </UCheckbox>
-                <template v-else>
-                  <span class="text-body text-ink-300">未指定款式</span>
-                  <UButton
-                    :data-testid="`reception-cake-${guest.guestId}`"
-                    color="neutral"
-                    variant="outline"
-                    size="sm"
-                    class="h-11 lg:h-auto"
-                    @click="openCake(guest)"
-                  >
-                    發放喜餅
-                  </UButton>
-                </template>
-              </div>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-3">
+                          <p class="font-display text-2xl font-medium leading-tight text-ink dark:text-paper">
+                            {{ guest.name }}
+                          </p>
+                          <StatusBadge v-if="group.declined" color="neutral" size="md">
+                            不出席
+                          </StatusBadge>
+                          <StatusBadge v-else-if="status[guest.guestId]?.checkedIn" color="success" size="md">
+                            已報到
+                          </StatusBadge>
+                          <StatusBadge v-else color="warning" size="md">
+                            未報到
+                          </StatusBadge>
+                        </div>
+                        <p class="mt-0.5 text-body text-ink-500 dark:text-neutral-400">
+                          {{ guestDetail(guest) }}
+                        </p>
+                      </div>
+                    </div>
 
-              <!-- 報到（最後位置、無箭頭） -->
-              <UButton
-                v-if="!status[guest.guestId]?.checkedIn"
-                :data-testid="`reception-checkin-${guest.guestId}`"
-                color="primary"
-                size="lg"
-                class="h-11 lg:h-auto"
-                :loading="checkingInId === guest.guestId"
-                :aria-label="`報到 ${guest.name}`"
-                @click="checkIn(guest)"
-              >
-                報到
-              </UButton>
-            </div>
-          </div>
+                    <!-- 報到資訊：桌次 · 總人數 · 兒童椅（報到時一眼看到） -->
+                    <div class="mt-4 flex flex-wrap items-center gap-2">
+                      <span class="inline-flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-body text-ink dark:border-neutral-700 dark:text-paper">
+                        <UIcon name="i-heroicons-table-cells" class="size-4 text-gold-deep" />
+                        {{ guestTable(guest) }}
+                      </span>
+                      <span class="inline-flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-body text-ink dark:border-neutral-700 dark:text-paper">
+                        <UIcon name="i-heroicons-user-group" class="size-4 text-gold-deep" />
+                        共 {{ guest.partySize }} 人
+                      </span>
+                      <span
+                        v-if="guest.childChairCount > 0"
+                        class="inline-flex items-center gap-1.5 rounded border border-gold bg-gold-light/20 px-3 py-1.5 text-body font-medium text-gold-deep"
+                      >
+                        <UIcon name="i-heroicons-sparkles" class="size-4" />
+                        兒童椅 ×{{ guest.childChairCount }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- 備註：沒有備註時只留一顆低調的新增鈕 -->
+                  <div class="min-w-0 @lg:w-2/5 @lg:shrink-0 @lg:border-l @lg:border-line @lg:pl-4">
+                    <template v-if="guest.notes">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="text-caption uppercase tracking-wider text-ink-300">備註</span>
+                        <UButton
+                          :data-testid="`vibe-reception-notes-edit-${guest.guestId}`"
+                          color="neutral"
+                          variant="ghost"
+                          size="xs"
+                          aria-label="編輯備註"
+                          @click="openNotes(guest)"
+                        >
+                          編輯
+                        </UButton>
+                      </div>
+                      <p
+                        :data-testid="`vibe-reception-notes-${guest.guestId}`"
+                        class="mt-1 whitespace-pre-line break-words text-body text-ink-500 dark:text-neutral-400"
+                      >
+                        {{ guest.notes }}
+                      </p>
+                    </template>
+                    <UButton
+                      v-else
+                      :data-testid="`vibe-reception-notes-edit-${guest.guestId}`"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      class="-ml-2 text-ink-300"
+                      @click="openNotes(guest)"
+                    >
+                      新增備註
+                    </UButton>
+                  </div>
+                </div>
+
+                <!-- 禮金 · 喜餅 · 報到（報到鈕置於最後、無箭頭） -->
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-t border-line pt-4 dark:border-neutral-800">
+                  <!-- 禮金 -->
+                  <div class="flex items-center gap-3">
+                    <span class="text-caption uppercase tracking-wider text-ink-300">禮金</span>
+                    <span
+                      v-if="status[guest.guestId]?.giftAmount != null"
+                      class="font-display text-xl font-semibold text-ink dark:text-paper"
+                    >
+                      NT$ {{ status[guest.guestId]!.giftAmount!.toLocaleString('en-US') }}
+                    </span>
+                    <span v-else class="text-body text-ink-300">未登記</span>
+                    <UButton
+                      :data-testid="`reception-gift-${guest.guestId}`"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      class="h-11 lg:h-auto"
+                      @click="openGift(guest)"
+                    >
+                      {{ status[guest.guestId]?.giftAmount != null ? '更正' : '登記禮金' }}
+                    </UButton>
+                  </div>
+
+                  <!-- 喜餅：已發放顯示款式；不發放者無操作；有指定款或預設款打勾即發放（issue #217）；
+                   選款按鈕只留給沒有任何款式可發的賓客（婚禮沒設預設款、也沒個別指定）；
+                   不出席區的不發放賓客多一顆「發放喜餅」，發放後保留不發放標記、畫面以已發放優先顯示 -->
+                  <div class="flex flex-wrap items-center gap-3">
+                    <span class="text-caption uppercase tracking-wider text-ink-300">喜餅</span>
+                    <span
+                      v-if="status[guest.guestId]?.cakeBoxTypeId"
+                      class="inline-flex items-center gap-1.5 text-body font-medium text-success-600"
+                    >
+                      <UIcon name="i-heroicons-check-circle-20-solid" class="size-5" />
+                      {{ distributedLabel(status[guest.guestId]!.cakeBoxTypeId) }}
+                    </span>
+                    <span
+                      v-else-if="isCakeExcluded(guest.guestId)"
+                      :data-testid="`vibe-reception-cake-nobox-${guest.guestId}`"
+                      class="text-body text-ink-300"
+                    >
+                      不發放
+                    </span>
+                    <!-- 不出席區的不發放賓客可現場發放（代轉禮金時交付禮盒） -->
+                    <UButton
+                      v-if="group.declined && isCakeExcluded(guest.guestId) && !status[guest.guestId]?.cakeBoxTypeId"
+                      :data-testid="`reception-cake-${guest.guestId}`"
+                      color="neutral"
+                      variant="outline"
+                      size="sm"
+                      class="h-11 lg:h-auto"
+                      @click="openCake(guest)"
+                    >
+                      發放喜餅
+                    </UButton>
+                    <template v-if="!status[guest.guestId]?.cakeBoxTypeId && !isCakeExcluded(guest.guestId)">
+                      <!-- 有指定款或預設款：打勾即發放；組合款以內含單款為主行、組合自訂名走副標（issue #140） -->
+                      <UCheckbox
+                        v-if="cakeForGuest(guest.guestId)"
+                        :model-value="false"
+                        :data-testid="`reception-cake-tick-${guest.guestId}`"
+                        :disabled="quickDistributingId === guest.guestId"
+                        :ui="{ root: 'items-center' }"
+                        @update:model-value="quickDistribute(guest)"
+                      >
+                        <!-- 縮圖與副標都放進 label：整塊等高後，勾選框才會對齊縮圖中心
+                         （用 description prop 會讓副標落在 label 外，勾選框被推到頂部） -->
+                        <template #label>
+                          <span class="flex items-center gap-2">
+                            <CakeBoxThumb :items="cakeForGuest(guest.guestId)!.view.thumbItems" size="sm" />
+                            <span class="min-w-0">
+                              <span class="block">{{ cakeForGuest(guest.guestId)!.view.primary }}（{{ cakeForGuest(guest.guestId)!.isDefault ? '預設' : '指定' }}）</span>
+                              <span
+                                v-if="cakeForGuest(guest.guestId)!.view.secondary"
+                                class="block text-caption text-ink-300"
+                              >
+                                {{ cakeForGuest(guest.guestId)!.view.secondary }}
+                              </span>
+                            </span>
+                          </span>
+                        </template>
+                      </UCheckbox>
+                      <span v-else class="text-body text-ink-300">未指定款式</span>
+                      <!-- 後台有設定款式（個別指定或預設款）就照設定發，不給現場改款；
+                           選款按鈕只留給完全沒有款式可發的賓客（婚禮沒設預設款、也沒個別指定） -->
+                      <UButton
+                        v-if="!cakeForGuest(guest.guestId)"
+                        :data-testid="`reception-cake-${guest.guestId}`"
+                        color="neutral"
+                        variant="outline"
+                        size="sm"
+                        class="h-11 lg:h-auto"
+                        @click="openCake(guest)"
+                      >
+                        發放喜餅
+                      </UButton>
+                    </template>
+                  </div>
+
+                  <!-- 報到（最後位置、無箭頭） -->
+                  <UButton
+                    v-if="!group.declined && !status[guest.guestId]?.checkedIn"
+                    :data-testid="`reception-checkin-${guest.guestId}`"
+                    color="primary"
+                    size="lg"
+                    class="h-11 lg:h-auto"
+                    :loading="checkingInId === guest.guestId"
+                    :aria-label="`報到 ${guest.name}`"
+                    @click="checkIn(guest)"
+                  >
+                    報到
+                  </UButton>
+                </div>
+              </div>
+            </template>
+          </template>
 
           <EmptyState
-            v-if="filteredGuests.length === 0"
+            v-if="filteredGuests.length === 0 && !(showDeclined && filteredDeclined.length)"
             bordered
             class="flex-1"
             :title="searchTerm ? '找不到相符的賓客' : '目前沒有賓客'"
@@ -1512,6 +1698,63 @@ async function submitCake() {
                 @click="submitGift"
               >
                 {{ giftIsUpdate ? '確定更正' : '確定登記' }}
+              </UButton>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 備註 Modal -->
+    <UModal v-model:open="isNotesOpen">
+      <template #content>
+        <div data-testid="vibe-reception-notes-modal" class="bg-paper p-8 dark:bg-neutral-900">
+          <p class="text-overline uppercase text-gold-deep">
+            賓客備註 · {{ notesTarget?.name }}
+          </p>
+          <h3 class="mb-6 mt-1 text-body-l font-semibold text-ink dark:text-paper">
+            編輯備註
+          </h3>
+
+          <UAlert
+            v-if="notesError"
+            icon="i-heroicons-exclamation-triangle"
+            color="error"
+            variant="soft"
+            :title="notesError"
+            class="mb-4"
+          />
+
+          <div class="space-y-6">
+            <UFormField label="備註" name="notes" :hint="`${notesDraft.length} / ${NOTES_MAX}`">
+              <UTextarea
+                v-model="notesDraft"
+                :rows="4"
+                :maxlength="NOTES_MAX"
+                autoresize
+                placeholder="例如：代收同事禮金、需引導到主桌"
+                class="w-full"
+              />
+            </UFormField>
+
+            <div class="flex justify-end gap-3 pt-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="lg"
+                :disabled="isNotesSubmitting"
+                @click="isNotesOpen = false"
+              >
+                取消
+              </UButton>
+              <UButton
+                data-testid="vibe-reception-notes-submit"
+                color="primary"
+                size="lg"
+                :loading="isNotesSubmitting"
+                @click="submitNotes"
+              >
+                儲存備註
               </UButton>
             </div>
           </div>

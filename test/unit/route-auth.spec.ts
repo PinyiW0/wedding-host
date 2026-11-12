@@ -37,6 +37,21 @@ describe('classifyRoute 的 open 標記', () => {
   })
 })
 
+// 接待帳號只能改賓客的備註一欄（issue #217）：整筆修改、刪除仍限管理端
+describe('classifyRoute 的接待端備註白名單', () => {
+  it('改備註：接待帳號可用', () => {
+    expect(classifyRoute('PUT', `${W}/guests/g1/notes`)).toMatchObject({ kind: 'auth', weddingId: 'wedding-001', receptionist: true })
+  })
+
+  it.each([
+    ['整筆修改賓客', 'PATCH', `${W}/guests/g1`],
+    ['刪除賓客', 'DELETE', `${W}/guests/g1`],
+    ['備註路徑換方法', 'PATCH', `${W}/guests/g1/notes`],
+  ])('%s：接待帳號不可用', (_label, method, path) => {
+    expect(classifyRoute(method, path)).toMatchObject({ kind: 'auth', receptionist: false })
+  })
+})
+
 // 中介層拿這個判斷決定「不驗簽章、也不因訪客身上帶的登入而擋」：
 // 範圍一放大（別的婚禮、沒標 open 的路由也回 true），別場的登入或過期的登入就能穿過婚禮範圍檢查
 describe('isLandingOpen：只認新人那場的 open 路由', () => {

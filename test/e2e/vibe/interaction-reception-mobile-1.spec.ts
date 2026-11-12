@@ -52,8 +52,8 @@ test.describe('vibe：接待台手機（375px）', () => {
     const toggle = await page.getByTestId('vibe-batch-toggle').boundingBox()
     expect(toggle!.height).toBeGreaterThanOrEqual(44)
 
-    // 卡片動作：登記禮金 / 發放喜餅 / 報到
-    for (const testId of ['reception-gift-guest-001', 'reception-cake-guest-001', 'reception-checkin-guest-001']) {
+    // 卡片動作：登記禮金 / 報到（issue #217 起 guest-001 走預設款打勾發放，卡片上沒有選款按鈕）
+    for (const testId of ['reception-gift-guest-001', 'reception-checkin-guest-001']) {
       const box = await page.getByTestId(testId).boundingBox()
       expect(box!.height, testId).toBeGreaterThanOrEqual(44)
     }
