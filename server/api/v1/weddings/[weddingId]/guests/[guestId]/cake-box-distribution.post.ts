@@ -25,7 +25,8 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxDistrib
   }
   // 不發放守門（issue #138）：後台標記排除的賓客，接待端已隱藏操作，這裡擋掉直接打 API 的路徑
   const [excluded] = await db.select({ guestId: cakeBoxExclusions.guestId }).from(cakeBoxExclusions).where(and(eq(cakeBoxExclusions.weddingId, weddingId), eq(cakeBoxExclusions.guestId, guestId)))
-  if (excluded) {
+  // 不出席賓客允許現場發放（issue #217）：代轉禮金時把禮盒交給代轉人。不解除不發放標記——分不出是自動加上還是新人刻意設的，畫面以已發放優先顯示
+  if (excluded && guest.rsvpAttending !== 'declined') {
     throw createError({ statusCode: 409, statusMessage: '該賓客設定為不發放喜餅' })
   }
   // cakeBoxTypeId 需屬於本婚禮（issue #70 / L2）：防指向跨婚禮或幽靈款式。
