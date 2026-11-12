@@ -1262,7 +1262,7 @@ async function submitCake() {
                   </div>
 
                   <!-- 喜餅：已發放顯示款式；不發放者無操作；有指定款或預設款打勾即發放（issue #217）；
-                   選款按鈕留給沒有個別指派的賓客（現場臨時來賓、走預設款但要改發其他款）；
+                   選款按鈕只留給沒有任何款式可發的賓客（婚禮沒設預設款、也沒個別指定）；
                    不出席區的不發放賓客多一顆「發放喜餅」，發放後保留不發放標記、畫面以已發放優先顯示 -->
                   <div class="flex flex-wrap items-center gap-3">
                     <span class="text-caption uppercase tracking-wider text-ink-300">喜餅</span>
@@ -1320,9 +1320,10 @@ async function submitCake() {
                         </template>
                       </UCheckbox>
                       <span v-else class="text-body text-ink-300">未指定款式</span>
-                      <!-- 沒有個別指派才留選款按鈕：走預設款的賓客可改發其他款，沒有預設款的賓客由此選款 -->
+                      <!-- 後台有設定款式（個別指定或預設款）就照設定發，不給現場改款；
+                           選款按鈕只留給完全沒有款式可發的賓客（婚禮沒設預設款、也沒個別指定） -->
                       <UButton
-                        v-if="!assignedCake(guest.guestId)"
+                        v-if="!cakeForGuest(guest.guestId)"
                         :data-testid="`reception-cake-${guest.guestId}`"
                         color="neutral"
                         variant="outline"
@@ -1330,7 +1331,7 @@ async function submitCake() {
                         class="h-11 lg:h-auto"
                         @click="openCake(guest)"
                       >
-                        {{ cakeForGuest(guest.guestId) ? '發放其他款' : '發放喜餅' }}
+                        發放喜餅
                       </UButton>
                     </template>
                   </div>
