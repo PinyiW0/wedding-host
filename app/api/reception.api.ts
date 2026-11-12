@@ -7,11 +7,13 @@ import type {
   GiftMoneyRecordedEvent,
   GiftMoneyUpdatedEvent,
   GuestCheckedInEvent,
+  GuestNotesUpdatedEvent,
   GuestSelfCheckedInEvent,
   ReceptionStatusItem,
   RecordGiftMoneyBody,
   SelfCheckInBody,
   UpdateGiftMoneyBody,
+  UpdateGuestNotesBody,
 } from '~/types/api/reception'
 import { useHttp } from '~/composables/useHttp'
 
@@ -49,6 +51,13 @@ export function recordGiftMoney(weddingId: string, guestId: string, body: Record
 export function updateGiftMoney(weddingId: string, guestId: string, body: UpdateGiftMoneyBody) {
   return useHttp().patch<GiftMoneyUpdatedEvent>(
     '/api/v1/weddings/{weddingId}/guests/{guestId}/gift-money',
+    { pathParams: { weddingId, guestId }, body },
+  )
+}
+
+export function updateGuestNotes(weddingId: string, guestId: string, body: UpdateGuestNotesBody) {
+  return useHttp().put<GuestNotesUpdatedEvent>(
+    '/api/v1/weddings/{weddingId}/guests/{guestId}/notes',
     { pathParams: { weddingId, guestId }, body },
   )
 }

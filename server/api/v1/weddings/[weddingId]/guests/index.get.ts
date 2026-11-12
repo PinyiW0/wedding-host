@@ -13,8 +13,9 @@ type SlimRow = Omit<typeof guests.$inferSelect, 'blessing' | 'flowerDrawing'> & 
 // 預設 slim：不撈 blessing / flowerDrawing（base64 手繪可達數十 KB/張），
 // 僅 RSVP 回覆管理頁（CSV 匯出、花圖下載）帶 ?fields=full 取完整欄位
 // 接待員視角剔除的敏感欄位（issue #70 / M3）：報到／發喜餅不需這些 PII
+// 備註不剔除（issue #217）：新人要接待人員在報到卡片看到並補寫備註
 function stripForReception(item: GuestListItem): GuestListItem {
-  return { ...item, contact: '', notes: null, lineUserId: null, mailingAddress: null, customAnswers: null }
+  return { ...item, contact: '', lineUserId: null, mailingAddress: null, customAnswers: null }
 }
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[]> => {

@@ -81,6 +81,7 @@ export {
   recordGiftMoney,
   selfCheckInGuest,
   updateGiftMoney,
+  updateGuestNotes,
 } from './reception.api'
 export { configureRsvpForm, getRsvpFormConfig } from './rsvp-config.api'
 export {
