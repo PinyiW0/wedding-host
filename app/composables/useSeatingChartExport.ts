@@ -98,7 +98,8 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
 interface TableNameFit { lines: string[], size: number }
 const NAME_LINE_H = 1.15 // 兩行桌名的行高（倍數）
 const NAME_INSET = 0.88 // 字只排在圓內側 88%，不壓到框線
-const ASCII_WORD_RE = /[\w.]/
+// 英數字、點、連字號、斜線、& 都算單字的一部分（「A-1 貴賓桌」「R&D 同事」不在中間拆行）
+const ASCII_WORD_RE = /[\w.\-/&]/
 
 function nameBaseSize(t: PlacedTable) {
   return Math.min(t.isMain ? 17 : 15, t.r * 0.62)
@@ -145,7 +146,9 @@ function planTableNames(ctx: CanvasRenderingContext2D, tables: PlacedTable[], na
     const w = Math.max(...lines.map(line => ctx.measureText(line).width)) / 100
     const halfH = NAME_LINE_H / 2 + 0.5
     const two = (2 * t.r * NAME_INSET) / Math.hypot(w, 2 * halfH)
-    long.push({ id: t.id, name, single, lines, best: Math.min(base, Math.max(single, two)) })
+    // 拆不開（單一英文字等）就沒有兩行可選，只看單行
+    const best = lines.length > 1 ? Math.min(base, Math.max(single, two)) : single
+    long.push({ id: t.id, name, single, lines, best })
   }
   const shared = Math.min(...long.map(p => p.best))
   for (const p of long)

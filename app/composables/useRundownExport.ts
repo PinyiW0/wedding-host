@@ -112,7 +112,8 @@ function triggerDownload(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  // 延後收回：大檔在 Safari 同步收回網址會讓下載失敗
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 // 依欄寬斷行：先照使用者自己的換行切段，再逐字量寬（中文沒有空白可斷）
@@ -231,49 +232,59 @@ type BigBand
 
 interface BigTile { columns: BigColumn[], bands: BigBand[] }
 
-// 量每一列在這組欄位下的高度，再依高度上限切成數段；每段開頭與每 headEvery 列放表頭
-function sliceRows(rows: RundownExportRow[], columns: BigColumn[], measure: CanvasRenderingContext2D): BigBand[][] {
-  const rowBands = rows.map((row): BigBand => {
-    const cells = columns.map(col => col.cell(row).flatMap((seg): BigCellLine[] => {
-      measure.font = `${seg.weight} ${BIG.fontSize}px ${FONT}`
-      return wrapText(measure, seg.text, col.width - BIG.pad * 2).map(text => ({ text, color: seg.color, weight: seg.weight }))
-    }))
-    const maxLines = Math.max(1, ...cells.map(lines => lines.length))
-    return { kind: 'row', row, cells, height: Math.max(BIG.minRowH, maxLines * BIG.lineH + BIG.pad * 2) }
-  })
-  const budget = TILE_MAX - BIG.margin * 2 - BIG.titleH
-  const head: BigBand = { kind: 'head', height: BIG.headH }
-  const slices: BigBand[][] = [[head]]
-  let used = BIG.headH
-  let count = 0
-  for (const band of rowBands) {
-    const needHead = count > 0 && count % BIG.headEvery === 0
-    const need = band.height + (needHead ? BIG.headH : 0)
-    // 放不下就換下一張（單列本身超過上限時照放，由 dpr 降解析度兜底）
-    if (count > 0 && used + need > budget) {
-      slices.push([head])
-      used = BIG.headH
-      count = 0
-    }
-    else if (needHead) {
-      slices.at(-1)!.push(head)
-      used += BIG.headH
-    }
-    slices.at(-1)!.push(band)
-    used += band.height
-    count++
-  }
-  return slices
+// 量一列在這組欄位下的斷行結果
+function wrapRow(row: RundownExportRow, columns: BigColumn[], measure: CanvasRenderingContext2D): BigCellLine[][] {
+  return columns.map(col => col.cell(row).flatMap((seg): BigCellLine[] => {
+    measure.font = `${seg.weight} ${BIG.fontSize}px ${FONT}`
+    return wrapText(measure, seg.text, col.width - BIG.pad * 2).map(text => ({ text, color: seg.color, weight: seg.weight }))
+  }))
 }
 
+// 依列高與高度上限切成數段（[起, 迄) 列索引）；每段開頭與每 headEvery 列放表頭
+function segmentRows(heights: number[]): [number, number][] {
+  const budget = TILE_MAX - BIG.margin * 2 - BIG.titleH
+  const ranges: [number, number][] = []
+  let start = 0
+  let used = BIG.headH
+  heights.forEach((height, i) => {
+    const count = i - start
+    const need = height + (count > 0 && count % BIG.headEvery === 0 ? BIG.headH : 0)
+    // 放不下就換下一張（單列本身超過上限時照放，由 dpr 降解析度兜底）
+    if (count > 0 && used + need > budget) {
+      ranges.push([start, i])
+      start = i
+      used = BIG.headH + height
+    }
+    else {
+      used += need
+    }
+  })
+  ranges.push([start, heights.length])
+  return ranges
+}
+
+// 張次順序：欄位組為外層、列段為內層；各欄位組共用同一套列段（列高取各組最高者）
 function bigTiles(rows: RundownExportRow[], roles: RundownRoleListItem[]): BigTile[] {
   const { fixed, rest } = bigColumns(roles)
   const fixedW = fixed.reduce((sum, col) => sum + col.width, 0)
-  const measure = document.createElement('canvas').getContext('2d')!
-  return groupColumns(rest, TILE_MAX - BIG.margin * 2 - fixedW).flatMap((group) => {
-    const columns = [...fixed, ...group]
-    return sliceRows(rows, columns, measure).map(bands => ({ columns, bands }))
-  })
+  const measure = document.createElement('canvas').getContext('2d')
+  if (!measure)
+    throw new Error('canvas context unavailable')
+  const groups = groupColumns(rest, TILE_MAX - BIG.margin * 2 - fixedW).map(group => [...fixed, ...group])
+  const wrapped = groups.map(columns => rows.map(row => wrapRow(row, columns, measure)))
+  const heights = rows.map((_, i) => Math.max(BIG.minRowH, ...wrapped.map(group =>
+    Math.max(1, ...group[i]!.map(lines => lines.length)) * BIG.lineH + BIG.pad * 2)))
+  const ranges = segmentRows(heights)
+  const head: BigBand = { kind: 'head', height: BIG.headH }
+  return groups.flatMap((columns, g) => ranges.map(([start, end]): BigTile => {
+    const bands: BigBand[] = [head]
+    for (let i = start; i < end; i++) {
+      if (i > start && (i - start) % BIG.headEvery === 0)
+        bands.push(head)
+      bands.push({ kind: 'row', row: rows[i]!, cells: wrapped[g]![i]!, height: heights[i]! })
+    }
+    return { columns, bands }
+  }))
 }
 
 function drawBigTile(tile: BigTile, meta: ExportMeta, index: number, total: number): HTMLCanvasElement {
@@ -286,7 +297,9 @@ function drawBigTile(tile: BigTile, meta: ExportMeta, index: number, total: numb
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(width * dpr)
   canvas.height = Math.round(height * dpr)
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx)
+    throw new Error('canvas context unavailable')
   ctx.scale(dpr, dpr)
   ctx.fillStyle = CHART.paper
   ctx.fillRect(0, 0, width, height)
@@ -358,11 +371,6 @@ function drawBigTile(tile: BigTile, meta: ExportMeta, index: number, total: numb
   return canvas
 }
 
-function buildBigTableCanvases(rows: RundownExportRow[], roles: RundownRoleListItem[], meta: ExportMeta): HTMLCanvasElement[] {
-  const tiles = bigTiles(rows, roles)
-  return tiles.map((tile, i) => drawBigTile(tile, meta, i, tiles.length))
-}
-
 export function useRundownExport(deps: RundownExportDeps) {
   const toast = useToast()
 
@@ -377,18 +385,31 @@ export function useRundownExport(deps: RundownExportDeps) {
   }
 
   // 一張直接下載 PNG；多張打包成 zip（瀏覽器常擋連續多個下載），檔名照張次編號
-  async function downloadPngs(canvases: HTMLCanvasElement[], baseName: string) {
+  // 逐張「畫 → 轉 PNG → 釋放」，不同時持有全部 canvas（手機 canvas 記憶體有上限）
+  async function downloadPngs(rows: RundownExportRow[], roles: RundownRoleListItem[], meta: ExportMeta, baseName: string) {
     try {
-      if (canvases.length === 1) {
-        triggerDownload(await canvasPng(canvases[0]!), `${baseName}.png`)
+      const tiles = bigTiles(rows, roles)
+      const entries: { name: string, data: Uint8Array }[] = []
+      let single: Blob | null = null
+      for (const [i, tile] of tiles.entries()) {
+        const canvas = drawBigTile(tile, meta, i, tiles.length)
+        try {
+          const blob = await canvasPng(canvas)
+          if (tiles.length === 1)
+            single = blob
+          else
+            entries.push({ name: `${baseName}-${String(i + 1).padStart(2, '0')}.png`, data: new Uint8Array(await blob.arrayBuffer()) })
+        }
+        finally {
+          canvas.width = canvas.height = 0
+        }
+      }
+      if (single) {
+        triggerDownload(single, `${baseName}.png`)
         return
       }
-      const entries = await Promise.all(canvases.map(async (canvas, i) => ({
-        name: `${baseName}-${String(i + 1).padStart(2, '0')}.png`,
-        data: new Uint8Array(await (await canvasPng(canvas)).arrayBuffer()),
-      })))
       triggerDownload(createZip(entries), `${baseName}.zip`)
-      toast.add({ title: `流程表共 ${canvases.length} 張，已打包成一個 zip`, color: 'success' })
+      toast.add({ title: `流程表共 ${tiles.length} 張，已打包成一個 zip`, color: 'success' })
     }
     catch {
       toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
@@ -399,7 +420,9 @@ export function useRundownExport(deps: RundownExportDeps) {
     warnIfDirty()
     const stamp = exportStamp()
     await downloadPngs(
-      buildBigTableCanvases(toValue(deps.allRows), toValue(deps.allRoles), exportMeta(toValue(deps.wedding), '', stamp.label)),
+      toValue(deps.allRows),
+      toValue(deps.allRoles),
+      exportMeta(toValue(deps.wedding), '', stamp.label),
       exportBaseName(toValue(deps.wedding), '', stamp.file),
     )
   }
@@ -410,7 +433,9 @@ export function useRundownExport(deps: RundownExportDeps) {
     const stamp = exportStamp()
     const roleName = toValue(deps.filterName)
     await downloadPngs(
-      buildBigTableCanvases(toValue(deps.filteredRows), toValue(deps.filteredRoles), exportMeta(toValue(deps.wedding), roleName, stamp.label)),
+      toValue(deps.filteredRows),
+      toValue(deps.filteredRoles),
+      exportMeta(toValue(deps.wedding), roleName, stamp.label),
       exportBaseName(toValue(deps.wedding), roleName, stamp.file),
     )
   }
