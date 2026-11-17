@@ -8,6 +8,7 @@
 
 import type { Locator, Page } from '@playwright/test'
 
+import type { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import ExcelJS from 'exceljs'
@@ -25,8 +26,8 @@ const EXTRA_ROLES = Array.from({ length: ROLE_COUNT - 4 }, (_, i) => `工作人�
 const FIRST_ROLE = '接待'
 const LAST_ROLE = EXTRA_ROLES.at(-1)!
 const LAST_TITLE = `第${ROW_COUNT}段`
-// 長圖每列最矮 40px（useRundownExport BIG.minRowH）
-const EXPORT_MIN_ROW_H = 40
+// 長圖分張（issue #219）：每張長邊上限 4096px（useRundownExport BIG.maxSide）
+const EXPORT_MAX_SIDE = 4096
 
 const VIEWPORTS = [
   { name: '桌機', size: { width: 1280, height: 720 } },
@@ -52,6 +53,38 @@ async function seedScale(page: Page) {
     roleTasks: roles.map(r => ({ roleId: r.roleId, task: '事項' })),
   }))
   expect((await page.request.put(`${API}/rundown-items`, { data: { items } })).ok()).toBe(true)
+}
+
+// 讀 zip（useRundownExport 用 utils/zip 打包，STORE 不壓縮）：逐筆讀本機檔頭取出檔名與內容
+function readZip(buf: Buffer) {
+  const entries: { name: string, data: Buffer }[] = []
+  let at = 0
+  while (buf.readUInt32LE(at) === 0x04034B50) {
+    const size = buf.readUInt32LE(at + 18)
+    const nameLen = buf.readUInt16LE(at + 26)
+    const extraLen = buf.readUInt16LE(at + 28)
+    const start = at + 30 + nameLen + extraLen
+    entries.push({ name: buf.subarray(at + 30, at + 30 + nameLen).toString('utf8'), data: buf.subarray(start, start + size) })
+    at = start + size
+  }
+  return entries
+}
+
+// 記下 canvas 每一次 fillText 的文字；要在頁面載入前掛上，所以掛完要重新載入
+async function recordCanvasText(page: Page) {
+  await page.addInitScript(() => {
+    const drawn: string[] = []
+    Object.assign(window, { __drawn: drawn })
+    const original = CanvasRenderingContext2D.prototype.fillText
+    CanvasRenderingContext2D.prototype.fillText = function (this: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth?: number) {
+      drawn.push(text)
+      if (maxWidth === undefined)
+        original.call(this, text, x, y)
+      else
+        original.call(this, text, x, y, maxWidth)
+    }
+  })
+  await page.reload({ waitUntil: 'networkidle' })
 }
 
 // 完整落在視窗內，而且元素中心點最上層就是它自己（或它裡面的元素）
@@ -306,14 +339,30 @@ for (const viewport of VIEWPORTS) {
         expect(sheet.getRow(1).getCell(7 + ROLE_COUNT).text).toBe(LAST_ROLE)
       })
 
-      test('完整大表長圖的高度容納得下 60 列', async ({ page }) => {
+      test('完整大表長圖切成多張：每張長邊不超過 4096px，都有表頭並標第幾張／共幾張', async ({ page }) => {
+        await recordCanvasText(page)
         await page.getByRole('button', { name: '匯出流程表' }).click()
         const download = page.waitForEvent('download')
         await page.getByRole('menuitem', { name: '完整大表 · 長圖 PNG' }).click()
-        const png = await readFile(await (await download).path())
-        // PNG 檔頭 IHDR：第 16–19 byte 是寬、20–23 byte 是高
-        const height = png.readUInt32BE(20)
-        expect(height).toBeGreaterThanOrEqual(ROW_COUNT * EXPORT_MIN_ROW_H)
+        const file = await download
+        expect(file.suggestedFilename()).toMatch(/\.zip$/)
+
+        const entries = readZip(await readFile(await file.path()))
+        const total = entries.length
+        expect(total).toBeGreaterThan(1)
+        for (const [i, entry] of entries.entries()) {
+          expect(entry.name).toMatch(new RegExp(`-${String(i + 1).padStart(2, '0')}\\.png$`))
+          // PNG 檔頭 IHDR：第 16–19 byte 是寬、20–23 byte 是高
+          expect(Math.max(entry.data.readUInt32BE(16), entry.data.readUInt32BE(20))).toBeLessThanOrEqual(EXPORT_MAX_SIDE)
+        }
+
+        const drawn: string[] = await page.evaluate(() => (window as unknown as { __drawn: string[] }).__drawn)
+        for (let n = 1; n <= total; n++)
+          expect(drawn.some(text => text.endsWith(`第 ${n} 張／共 ${total} 張`)), `缺第 ${n} 張的張次`).toBe(true)
+        // 每張至少一次表頭的時間欄；最後一列與最後一個角色都有畫到
+        expect(drawn.filter(text => text === '時間').length).toBeGreaterThanOrEqual(total)
+        expect(drawn).toContain(LAST_TITLE)
+        expect(drawn).toContain(LAST_ROLE)
       })
     })
   })

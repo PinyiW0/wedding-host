@@ -94,6 +94,68 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   return w
 }
 
+// === 圈內桌名（issue #219）：單行放得下就單行；放不下改排兩行，同一張圖的兩行桌名共用一個字級 ===
+interface TableNameFit { lines: string[], size: number }
+const NAME_LINE_H = 1.15 // 兩行桌名的行高（倍數）
+const NAME_INSET = 0.88 // 字只排在圓內側 88%，不壓到框線
+// 英數字、點、連字號、斜線、& 都算單字的一部分（「A-1 貴賓桌」「R&D 同事」不在中間拆行）
+const ASCII_WORD_RE = /[\w.\-/&]/
+
+function nameBaseSize(t: PlacedTable) {
+  return Math.min(t.isMain ? 17 : 15, t.r * 0.62)
+}
+
+// 拆兩行：兩行寬度最接近者勝；不拆在英數字中間（「你懂 AI 嗎」→「你懂」「AI 嗎」）
+function splitTwoLines(ctx: CanvasRenderingContext2D, chars: string[]): string[] {
+  let best: string[] = [chars.join('')]
+  let bestW = Infinity
+  for (let i = 1; i < chars.length; i++) {
+    if (ASCII_WORD_RE.test(chars[i - 1]!) && ASCII_WORD_RE.test(chars[i]!))
+      continue
+    const lines = [chars.slice(0, i).join('').trim(), chars.slice(i).join('').trim()]
+    if (lines.includes(''))
+      continue
+    const w = Math.max(...lines.map(line => ctx.measureText(line).width))
+    if (w < bestW) {
+      bestW = w
+      best = lines
+    }
+  }
+  return best
+}
+
+// 每張桌的桌名排法：原字級單行放得下的短名照舊；其餘長名先算各自單行／兩行能用的最大字級，
+// 全圖取最小值當共用字級，再依共用字級決定排一行（優先）或兩行——同一張圖的長桌名字級一致
+function planTableNames(ctx: CanvasRenderingContext2D, tables: PlacedTable[], nameOf: (id: string) => string): Map<string, TableNameFit> {
+  const plans = new Map<string, TableNameFit>()
+  const long: { id: string, name: string, single: number, lines: string[], best: number }[] = []
+  for (const t of tables) {
+    const name = nameOf(t.id)
+    const base = nameBaseSize(t)
+    // 以 100px 量字再換算成每 1px 字級的寬度；單行留 3% 餘量，免得量字誤差把字擠出 maxW 被截斷
+    setFont(ctx, 100, 700)
+    const unitW = ctx.measureText(name).width / 100
+    const single = unitW > 0 ? (t.r * 1.56 * 0.97) / unitW : base
+    const chars = [...name]
+    if (single >= base || chars.length < 2) {
+      plans.set(t.id, { lines: [name], size: Math.min(base, single) })
+      continue
+    }
+    const lines = splitTwoLines(ctx, chars)
+    // 兩行字塊外緣離圓心 halfH；該高度的弦長要容得下最寬一行：s ≤ 2R / √(w² + (2·halfH)²)
+    const w = Math.max(...lines.map(line => ctx.measureText(line).width)) / 100
+    const halfH = NAME_LINE_H / 2 + 0.5
+    const two = (2 * t.r * NAME_INSET) / Math.hypot(w, 2 * halfH)
+    // 拆不開（單一英文字等）就沒有兩行可選，只看單行
+    const best = lines.length > 1 ? Math.min(base, Math.max(single, two)) : single
+    long.push({ id: t.id, name, single, lines, best })
+  }
+  const shared = Math.min(...long.map(p => p.best))
+  for (const p of long)
+    plans.set(p.id, { lines: p.single >= shared ? [p.name] : p.lines, size: shared })
+  return plans
+}
+
 function newPage(width: number, height: number): { page: ChartPage, ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(width * DPR)
@@ -225,7 +287,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
   interface TableLook { fill: string, stroke: string, nameColor: string, lines: LabelLine[] }
 
   // 桌：圓＋圈內桌名（字級隨圓縮）＋圈外標籤（左半場寫左側、右半場與中軸寫右側、擠時寫下方）
-  function drawTable(ctx: CanvasRenderingContext2D, t: PlacedTable, name: string, look: TableLook) {
+  function drawTable(ctx: CanvasRenderingContext2D, t: PlacedTable, name: TableNameFit, look: TableLook) {
     ctx.beginPath()
     ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2)
     ctx.fillStyle = look.fill
@@ -233,12 +295,16 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
     ctx.lineWidth = t.isMain ? 2.5 : 1.7
     ctx.strokeStyle = look.stroke
     ctx.stroke()
-    drawText(ctx, name, t.x, t.y, {
-      size: Math.min(t.isMain ? 17 : 15, t.r * 0.62),
-      weight: 700,
-      color: look.nameColor,
-      align: 'center',
-      maxW: t.r * 1.56,
+    // 字級已由 planTableNames 算好；maxW 只是極長桌名的最後防線（仍會截斷加「…」）
+    const nameLh = name.size * NAME_LINE_H
+    name.lines.forEach((line, i) => {
+      drawText(ctx, line, t.x, t.y + (i - (name.lines.length - 1) / 2) * nameLh, {
+        size: name.size,
+        weight: 700,
+        color: look.nameColor,
+        align: 'center',
+        maxW: name.lines.length > 1 ? t.r * 2 * NAME_INSET : t.r * 1.56,
+      })
     })
 
     const lh = 11.6
@@ -308,6 +374,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
       return [page]
 
     drawZones(ctx, layout)
+    const names = planTableNames(ctx, layout.tables, tableName)
     for (const t of layout.tables) {
       const meal = tableMeal(t.id)
       const cat = mealCategory(t.id)
@@ -316,7 +383,7 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
         lines.push({ text: `大人 ${meal.adults} 位`, size: 8.5, weight: 400, color: CHART.inkSoft })
       if (meal.child > 0)
         lines.push({ text: `兒童椅 ${meal.child}`, size: 8.5, weight: 600, color: CHART.child.text })
-      drawTable(ctx, t, tableName(t.id), {
+      drawTable(ctx, t, names.get(t.id)!, {
         fill: cat.fill,
         stroke: cat.stroke,
         nameColor: cat.key === 'empty' ? CHART.inkFaint : CHART.ink,
@@ -341,13 +408,14 @@ export function useSeatingChartExport(deps: ChartExportDeps) {
       return page
 
     drawZones(ctx, layout)
+    const names = planTableNames(ctx, layout.tables, tableName)
     for (const t of layout.tables) {
       const meal = tableMeal(t.id)
       const n = meal.adults + meal.child
       const lines: LabelLine[] = [{ text: n > 0 ? `${n} 位` : '尚無入座', size: 10, weight: 600, color: n > 0 ? CHART.ink : CHART.inkFaint }]
       if (meal.child > 0)
         lines.push({ text: `含兒童椅 ${meal.child}`, size: 8.5, weight: 400, color: CHART.child.text })
-      drawTable(ctx, t, tableName(t.id), {
+      drawTable(ctx, t, names.get(t.id)!, {
         fill: t.isMain ? CHART.mixed.fill : n === 0 ? CHART.empty.fill : CHART.paper,
         stroke: t.isMain ? CHART.mixed.stroke : n === 0 ? CHART.line : CHART.guestStroke,
         nameColor: n === 0 ? CHART.inkFaint : CHART.ink,
