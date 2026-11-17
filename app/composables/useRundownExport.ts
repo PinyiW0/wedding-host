@@ -3,12 +3,14 @@
 // - 完整大表長圖（PNG）、Excel：全部時段 × 全部角色欄（照角色順序），長文字換行、字級固定不縮
 // - 單一角色長圖（PNG）：篩選單一角色時多一項，版面同完整大表、只留該角色參與的列與該角色一欄
 //   （取代舊 A4 JPEG：50 列塞一頁時字會疊在一起）
-// - 抬頭與檔名帶婚禮名稱與匯出時間，分得出哪一場、哪一版；長圖每隔幾列／幾欄重複表頭與時間欄
+// - 抬頭與檔名帶婚禮名稱與匯出時間，分得出哪一場、哪一版
+// - 長圖分張（issue #219）：每張長邊 ≤ 4096px，都有表頭、時間與主要事項欄並標「第幾張／共幾張」；多張打包 zip
 // - Excel 另附「物品總表」工作表，並設好列印（橫式、每頁重複表頭與時間欄）
 import type { MaybeRefOrGetter } from 'vue'
 import type { RundownRoleListItem } from '~/types/api/rundown'
 
 import { addMinutes } from '~/utils/rundownTemplate'
+import { createZip } from '~/utils/zip'
 
 // 匯出只需要的草稿欄位（頁面的 DraftRow 結構相容）
 export interface RundownExportRow {
@@ -98,10 +100,10 @@ function splitSupplies(text: string): string[] {
   return text.split(SUPPLY_SPLIT_RE).map(part => part.trim()).filter(Boolean)
 }
 
-// 檔名：當天流程表-婚禮名稱[-角色]-MMDD-HHmm.副檔名。不同婚禮、不同角色同一分鐘匯出也分得出來
-function exportFilename(wedding: RundownExportWedding | null | undefined, roleName: string, stampFile: string, ext: string) {
+// 檔名：當天流程表-婚禮名稱[-角色]-MMDD-HHmm（不含副檔名）。不同婚禮、不同角色同一分鐘匯出也分得出來
+function exportBaseName(wedding: RundownExportWedding | null | undefined, roleName: string, stampFile: string) {
   const parts = ['當天流程表', wedding?.title, roleName, stampFile]
-  return `${parts.filter(Boolean).map(part => part!.replace(FILENAME_UNSAFE_RE, '_')).join('-')}.${ext}`
+  return parts.filter(Boolean).map(part => part!.replace(FILENAME_UNSAFE_RE, '_')).join('-')
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -132,21 +134,25 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, width: number): s
   return lines
 }
 
-// === 完整大表長圖 ===
+// === 完整大表長圖（issue #219 改為分張）===
+// 一整張長圖會被手機相簿、LINE 先縮小再顯示，放大後字糊掉；改切成多張，每張長邊不超過 4096px、
+// 原尺寸內文字高 26px（13px × 2 倍）。表太寬就分欄組、太長就分列段，每張都有表頭、時間與主要事項欄
 const BIG = {
   margin: 32,
-  titleH: 76,
+  titleH: 96,
   headH: 36,
-  // 長表放大看中段時看不到欄名與時間：每 10 列重複一次表頭、每 5 個角色欄重複一次時間欄
+  // 同一張裡放大看中段時看不到欄名：每 10 列重複一次表頭
   headEvery: 10,
-  timeEvery: 5,
   pad: 10,
   lineH: 20,
   fontSize: 13,
   minRowH: 40,
-  // 瀏覽器 canvas 單邊上限約 16384px，超過會整張空白：長表自動降解析度
-  maxCanvasSide: 16000,
+  dpr: 2,
+  // 每張長邊上限（px）：iPhone 相簿與 LINE 傳圖都不會再縮
+  maxSide: 4096,
 } as const
+// 每張的 CSS 尺寸上限（乘上 dpr 後等於 maxSide）
+const TILE_MAX = BIG.maxSide / BIG.dpr
 
 interface BigCellLine {
   text: string
@@ -162,19 +168,20 @@ interface BigColumn {
   cell: (row: RundownExportRow) => { text: string, color: string, weight: 400 | 600 }[]
 }
 
-function bigColumns(roles: RundownRoleListItem[]): BigColumn[] {
+// fixed：每張都重複的時間、主要事項欄；rest：依寬度分到各張
+function bigColumns(roles: RundownRoleListItem[]): { fixed: BigColumn[], rest: BigColumn[] } {
   const plain = (pick: (row: RundownExportRow) => string, color: string = CHART.inkSoft) =>
     (row: RundownExportRow) => (pick(row) ? [{ text: pick(row), color, weight: 400 as const }] : [])
-  const timeColumn: BigColumn = { label: '時間', width: 110, cell: row => [{ text: timeRange(row), color: CHART.goldDeep, weight: 600 }] }
-  const repeatTime = roles.length > BIG.timeEvery
-  return [
-    timeColumn,
-    { label: '主要事項', width: 200, cell: row => [{ text: row.title, color: CHART.ink, weight: 600 }] },
-    { label: '場地', width: 120, cell: plain(row => row.location) },
-    { label: '共用物品', width: 160, cell: plain(row => row.supplies) },
-    { label: '備註', width: 220, cell: plain(row => row.note) },
-    ...roles.flatMap((role, i): BigColumn[] => [
-      {
+  return {
+    fixed: [
+      { label: '時間', width: 110, cell: row => [{ text: timeRange(row), color: CHART.goldDeep, weight: 600 }] },
+      { label: '主要事項', width: 200, cell: row => [{ text: row.title, color: CHART.ink, weight: 600 }] },
+    ],
+    rest: [
+      { label: '場地', width: 120, cell: plain(row => row.location) },
+      { label: '共用物品', width: 160, cell: plain(row => row.supplies) },
+      { label: '備註', width: 220, cell: plain(row => row.note) },
+      ...roles.map((role): BigColumn => ({
         label: role.name,
         width: 200,
         isRole: true,
@@ -186,39 +193,95 @@ function bigColumns(roles: RundownRoleListItem[]): BigColumn[] {
             ...(supplies ? [{ text: `物品：${supplies}`, color: CHART.inkSoft, weight: 400 as const }] : []),
           ]
         },
-      },
-      ...(repeatTime && (i + 1) % BIG.timeEvery === 0 ? [timeColumn] : []),
-    ]),
-  ]
+      })),
+    ],
+  }
+}
+
+// 依序把欄位裝進寬度不超過 budget 的組；每組至少一欄
+function packColumns(columns: BigColumn[], budget: number): BigColumn[][] {
+  const groups: BigColumn[][] = []
+  let width = Infinity
+  for (const col of columns) {
+    if (width + col.width > budget) {
+      groups.push([])
+      width = 0
+    }
+    groups.at(-1)!.push(col)
+    width += col.width
+  }
+  return groups
+}
+
+// 組數不變的前提下把寬度平均分配（避免最後一張只剩一兩欄）
+function groupColumns(columns: BigColumn[], budget: number): BigColumn[][] {
+  const greedy = packColumns(columns, budget)
+  const total = columns.reduce((sum, col) => sum + col.width, 0)
+  for (let b = Math.ceil(total / greedy.length); b < budget; b += 10) {
+    const balanced = packColumns(columns, b)
+    if (balanced.length <= greedy.length)
+      return balanced
+  }
+  return greedy
 }
 
 type BigBand
   = | { kind: 'head', height: number }
     | { kind: 'row', height: number, row: RundownExportRow, cells: BigCellLine[][] }
 
-function buildBigTableCanvas(rows: RundownExportRow[], roles: RundownRoleListItem[], meta: ExportMeta): HTMLCanvasElement {
-  const columns = bigColumns(roles)
-  const innerW = columns.reduce((sum, col) => sum + col.width, 0)
+interface BigTile { columns: BigColumn[], bands: BigBand[] }
 
-  // 先量：每格斷行後的行數決定該列高度；表頭列每 headEvery 列插一次
-  const measure = document.createElement('canvas').getContext('2d')!
-  const bands: BigBand[] = []
-  rows.forEach((row, i) => {
-    if (i % BIG.headEvery === 0)
-      bands.push({ kind: 'head', height: BIG.headH })
+// 量每一列在這組欄位下的高度，再依高度上限切成數段；每段開頭與每 headEvery 列放表頭
+function sliceRows(rows: RundownExportRow[], columns: BigColumn[], measure: CanvasRenderingContext2D): BigBand[][] {
+  const rowBands = rows.map((row): BigBand => {
     const cells = columns.map(col => col.cell(row).flatMap((seg): BigCellLine[] => {
       measure.font = `${seg.weight} ${BIG.fontSize}px ${FONT}`
       return wrapText(measure, seg.text, col.width - BIG.pad * 2).map(text => ({ text, color: seg.color, weight: seg.weight }))
     }))
     const maxLines = Math.max(1, ...cells.map(lines => lines.length))
-    bands.push({ kind: 'row', row, cells, height: Math.max(BIG.minRowH, maxLines * BIG.lineH + BIG.pad * 2) })
+    return { kind: 'row', row, cells, height: Math.max(BIG.minRowH, maxLines * BIG.lineH + BIG.pad * 2) }
   })
-  if (bands.length === 0)
-    bands.push({ kind: 'head', height: BIG.headH })
+  const budget = TILE_MAX - BIG.margin * 2 - BIG.titleH
+  const head: BigBand = { kind: 'head', height: BIG.headH }
+  const slices: BigBand[][] = [[head]]
+  let used = BIG.headH
+  let count = 0
+  for (const band of rowBands) {
+    const needHead = count > 0 && count % BIG.headEvery === 0
+    const need = band.height + (needHead ? BIG.headH : 0)
+    // 放不下就換下一張（單列本身超過上限時照放，由 dpr 降解析度兜底）
+    if (count > 0 && used + need > budget) {
+      slices.push([head])
+      used = BIG.headH
+      count = 0
+    }
+    else if (needHead) {
+      slices.at(-1)!.push(head)
+      used += BIG.headH
+    }
+    slices.at(-1)!.push(band)
+    used += band.height
+    count++
+  }
+  return slices
+}
 
+function bigTiles(rows: RundownExportRow[], roles: RundownRoleListItem[]): BigTile[] {
+  const { fixed, rest } = bigColumns(roles)
+  const fixedW = fixed.reduce((sum, col) => sum + col.width, 0)
+  const measure = document.createElement('canvas').getContext('2d')!
+  return groupColumns(rest, TILE_MAX - BIG.margin * 2 - fixedW).flatMap((group) => {
+    const columns = [...fixed, ...group]
+    return sliceRows(rows, columns, measure).map(bands => ({ columns, bands }))
+  })
+}
+
+function drawBigTile(tile: BigTile, meta: ExportMeta, index: number, total: number): HTMLCanvasElement {
+  const { columns, bands } = tile
+  const innerW = columns.reduce((sum, col) => sum + col.width, 0)
   const width = innerW + BIG.margin * 2
   const height = BIG.margin + BIG.titleH + bands.reduce((sum, band) => sum + band.height, 0) + BIG.margin
-  const dpr = Math.min(2, BIG.maxCanvasSide / Math.max(width, height))
+  const dpr = Math.min(BIG.dpr, BIG.maxSide / Math.max(width, height))
 
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(width * dpr)
@@ -229,15 +292,18 @@ function buildBigTableCanvas(rows: RundownExportRow[], roles: RundownRoleListIte
   ctx.fillRect(0, 0, width, height)
   ctx.textBaseline = 'top'
 
-  // 抬頭：哪一場、哪一版
+  // 抬頭：哪一場、哪一版、第幾張；第三行列出這張有哪些欄（找自己的角色欄用）
+  const roleLabels = columns.filter(col => col.isRole).map(col => col.label)
+  const otherLabels = columns.filter(col => !col.isRole).map(col => col.label)
   ctx.fillStyle = CHART.ink
   ctx.font = `600 20px ${FONT}`
-  ctx.fillText(meta.heading, BIG.margin, BIG.margin)
+  ctx.fillText(total > 1 ? `${meta.heading}｜第 ${index + 1} 張／共 ${total} 張` : meta.heading, BIG.margin, BIG.margin, innerW)
   ctx.fillStyle = CHART.inkSoft
   ctx.font = `400 12px ${FONT}`
-  ctx.fillText(meta.subline, BIG.margin, BIG.margin + 32)
+  ctx.fillText(meta.subline, BIG.margin, BIG.margin + 32, innerW)
+  ctx.fillText(`本張欄位：${[...otherLabels, ...roleLabels].join('、')}`, BIG.margin, BIG.margin + 52, innerW)
   ctx.fillStyle = CHART.gold
-  ctx.fillRect(BIG.margin, BIG.margin + 56, 32, 1.5)
+  ctx.fillRect(BIG.margin, BIG.margin + 76, 32, 1.5)
 
   const tableX = BIG.margin
   const tableTop = BIG.margin + BIG.titleH
@@ -292,6 +358,11 @@ function buildBigTableCanvas(rows: RundownExportRow[], roles: RundownRoleListIte
   return canvas
 }
 
+function buildBigTableCanvases(rows: RundownExportRow[], roles: RundownRoleListItem[], meta: ExportMeta): HTMLCanvasElement[] {
+  const tiles = bigTiles(rows, roles)
+  return tiles.map((tile, i) => drawBigTile(tile, meta, i, tiles.length))
+}
+
 export function useRundownExport(deps: RundownExportDeps) {
   const toast = useToast()
 
@@ -301,32 +372,46 @@ export function useRundownExport(deps: RundownExportDeps) {
       toast.add({ title: '匯出內容包含尚未儲存的變更', color: 'warning' })
   }
 
-  function downloadPng(canvas: HTMLCanvasElement, filename: string) {
-    canvas.toBlob((blob) => {
-      if (blob)
-        triggerDownload(blob, filename)
-      else
-        toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
-    }, 'image/png')
+  function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
+    return new Promise((resolve, reject) => canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), 'image/png'))
   }
 
-  function downloadBigTablePng() {
+  // 一張直接下載 PNG；多張打包成 zip（瀏覽器常擋連續多個下載），檔名照張次編號
+  async function downloadPngs(canvases: HTMLCanvasElement[], baseName: string) {
+    try {
+      if (canvases.length === 1) {
+        triggerDownload(await canvasPng(canvases[0]!), `${baseName}.png`)
+        return
+      }
+      const entries = await Promise.all(canvases.map(async (canvas, i) => ({
+        name: `${baseName}-${String(i + 1).padStart(2, '0')}.png`,
+        data: new Uint8Array(await (await canvasPng(canvas)).arrayBuffer()),
+      })))
+      triggerDownload(createZip(entries), `${baseName}.zip`)
+      toast.add({ title: `流程表共 ${canvases.length} 張，已打包成一個 zip`, color: 'success' })
+    }
+    catch {
+      toast.add({ title: '產生圖片失敗，請稍後再試', color: 'error' })
+    }
+  }
+
+  async function downloadBigTablePng() {
     warnIfDirty()
     const stamp = exportStamp()
-    downloadPng(
-      buildBigTableCanvas(toValue(deps.allRows), toValue(deps.allRoles), exportMeta(toValue(deps.wedding), '', stamp.label)),
-      exportFilename(toValue(deps.wedding), '', stamp.file, 'png'),
+    await downloadPngs(
+      buildBigTableCanvases(toValue(deps.allRows), toValue(deps.allRoles), exportMeta(toValue(deps.wedding), '', stamp.label)),
+      exportBaseName(toValue(deps.wedding), '', stamp.file),
     )
   }
 
   // 單一角色長圖：只留該角色參與的列與該角色一欄
-  function downloadRolePng() {
+  async function downloadRolePng() {
     warnIfDirty()
     const stamp = exportStamp()
     const roleName = toValue(deps.filterName)
-    downloadPng(
-      buildBigTableCanvas(toValue(deps.filteredRows), toValue(deps.filteredRoles), exportMeta(toValue(deps.wedding), roleName, stamp.label)),
-      exportFilename(toValue(deps.wedding), roleName, stamp.file, 'png'),
+    await downloadPngs(
+      buildBigTableCanvases(toValue(deps.filteredRows), toValue(deps.filteredRoles), exportMeta(toValue(deps.wedding), roleName, stamp.label)),
+      exportBaseName(toValue(deps.wedding), roleName, stamp.file),
     )
   }
 
@@ -425,7 +510,7 @@ export function useRundownExport(deps: RundownExportDeps) {
       const buffer = await book.xlsx.writeBuffer()
       triggerDownload(
         new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-        exportFilename(toValue(deps.wedding), '', stamp.file, 'xlsx'),
+        `${exportBaseName(toValue(deps.wedding), '', stamp.file)}.xlsx`,
       )
     }
     catch {
@@ -438,11 +523,11 @@ export function useRundownExport(deps: RundownExportDeps) {
     const roleName = toValue(deps.filterName)
     return [
       [
-        { label: '完整大表 · 長圖 PNG', icon: 'i-heroicons-photo', onSelect: () => downloadBigTablePng() },
+        { label: '完整大表 · 長圖 PNG', icon: 'i-heroicons-photo', onSelect: () => void downloadBigTablePng() },
         { label: '完整大表 · Excel', icon: 'i-heroicons-table-cells', onSelect: () => void downloadXlsx() },
       ],
       ...(roleName
-        ? [[{ label: `只含「${roleName}」· 長圖 PNG`, icon: 'i-heroicons-user', onSelect: () => downloadRolePng() }]]
+        ? [[{ label: `只含「${roleName}」· 長圖 PNG`, icon: 'i-heroicons-user', onSelect: () => void downloadRolePng() }]]
         : []),
     ]
   })
