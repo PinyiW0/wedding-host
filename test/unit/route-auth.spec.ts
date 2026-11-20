@@ -52,8 +52,8 @@ describe('classifyRoute 的接待端備註白名單', () => {
   })
 })
 
-// 接待報到頁開頁與每 5 秒輪詢會讀的全部 API（app/pages/reception/index.vue）：
-// 漏一支，接待帳號就會一直跳「資料載入失敗」（issue #221 的場地佈局與標記）
+// 接待報到頁開頁與每 5 秒輪詢會讀的 API（app/pages/reception/index.vue，手動同步、不會自動跟著頁面更新）：
+// 漏一支，接待帳號就會一直跳「資料載入失敗」（issue #221 的場地佈局與標記）。頁面新增讀取時要一併加進這裡與 RECEPTION_GET
 describe('classifyRoute 的接待報到頁讀取白名單', () => {
   it.each([
     ['賓客名單', `${W}/guests`],
