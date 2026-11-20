@@ -38,6 +38,9 @@ const RECEPTION_GET = new Set([
   'cake-box-types/assignments',
   'cake-box-exclusions',
   'cake-box-extra-orders',
+  // 桌次圖的場地佈局與標記（舞台、門口）：原漏列導致接待員 403、每 5 秒輪詢都跳「資料載入失敗」（issue #221）
+  'venue-layout',
+  'venue-markers',
 ])
 
 // 公開三頁與出席回覆頁「自己就會打」的讀取：婚禮詳情、RSVP 表單設定、LINE 加好友、花田。

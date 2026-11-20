@@ -52,6 +52,33 @@ describe('classifyRoute 的接待端備註白名單', () => {
   })
 })
 
+// 接待報到頁開頁與每 5 秒輪詢會讀的全部 API（app/pages/reception/index.vue）：
+// 漏一支，接待帳號就會一直跳「資料載入失敗」（issue #221 的場地佈局與標記）
+describe('classifyRoute 的接待報到頁讀取白名單', () => {
+  it.each([
+    ['賓客名單', `${W}/guests`],
+    ['喜餅款式', `${W}/cake-box-types`],
+    ['喜餅指派', `${W}/cake-box-types/assignments`],
+    ['喜餅不發放', `${W}/cake-box-exclusions`],
+    ['報到狀態', `${W}/reception-status`],
+    ['桌次', `${W}/tables`],
+    ['座位', `${W}/seats`],
+    ['場地佈局', `${W}/venue-layout`],
+    ['場地標記', `${W}/venue-markers`],
+  ])('%s：接待帳號可讀', (_label, path) => {
+    expect(classifyRoute('GET', path)).toMatchObject({ kind: 'auth', weddingId: 'wedding-001', receptionist: true })
+  })
+
+  it.each([
+    ['改場地佈局', 'PUT', `${W}/venue-layout`],
+    ['新增場地標記', 'POST', `${W}/venue-markers`],
+    ['改場地標記', 'PATCH', `${W}/venue-markers/m1`],
+    ['刪除場地標記', 'DELETE', `${W}/venue-markers/m1`],
+  ])('%s：接待帳號不可用', (_label, method, path) => {
+    expect(classifyRoute(method, path)).toMatchObject({ kind: 'auth', receptionist: false })
+  })
+})
+
 // 中介層拿這個判斷決定「不驗簽章、也不因訪客身上帶的登入而擋」：
 // 範圍一放大（別的婚禮、沒標 open 的路由也回 true），別場的登入或過期的登入就能穿過婚禮範圍檢查
 describe('isLandingOpen：只認新人那場的 open 路由', () => {
