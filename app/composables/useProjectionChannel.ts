@@ -5,6 +5,7 @@ import type { MaybeRefOrGetter } from 'vue'
 export function useProjectionChannel(weddingId: MaybeRefOrGetter<string>) {
   let channel: BroadcastChannel | null = null
   let timer: ReturnType<typeof setInterval> | null = null
+  let onVisible: (() => void) | null = null
 
   onMounted(() => {
     if (typeof BroadcastChannel !== 'undefined')
@@ -16,6 +17,8 @@ export function useProjectionChannel(weddingId: MaybeRefOrGetter<string>) {
     channel = null
     if (timer)
       clearInterval(timer)
+    if (onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
   })
 
   // 推播一次更新訊號（審核頁用）
@@ -27,7 +30,16 @@ export function useProjectionChannel(weddingId: MaybeRefOrGetter<string>) {
   function subscribe(onUpdate: () => void, pollMs = 5000) {
     if (channel)
       channel.onmessage = () => onUpdate()
-    timer = setInterval(onUpdate, pollMs)
+    // 分頁在背景時不輪詢（issue #224）：沒人在看的投影頁不該持續向資料庫要資料；回到前景時立刻補一次
+    timer = setInterval(() => {
+      if (document.visibilityState === 'visible')
+        onUpdate()
+    }, pollMs)
+    onVisible = () => {
+      if (document.visibilityState === 'visible')
+        onUpdate()
+    }
+    document.addEventListener('visibilitychange', onVisible)
   }
 
   return { broadcast, subscribe }
