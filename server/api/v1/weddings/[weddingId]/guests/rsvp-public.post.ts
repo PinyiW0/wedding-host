@@ -22,6 +22,9 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
 
+  // 花圖先轉存、再做任何寫入（含建立分類）：轉存失敗就整筆不落地，賓客看到錯誤可以重送（issue #226）
+  const flowerDrawing = await storeFlowerDrawing(event, weddingId, body.flowerDrawing)
+
   // 分類 find-or-create（weddings 存在檢查已在前，不為不存在的婚禮建分類）；未填一律落「其他」
   const categoryName = body.relationCategory?.trim() || '其他'
   const resolvedCategory = await resolveCategory(db, weddingId, categoryName)
@@ -49,7 +52,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicRsvpSubm
     invitationPreference: body.invitation ?? null,
     mailingAddress: body.mailingAddress ?? null,
     blessing: body.blessing ?? null,
-    flowerDrawing: body.flowerDrawing ?? null,
+    flowerDrawing: flowerDrawing ?? null,
     needsShuttle: body.needsShuttle ?? null,
     shuttleCount: body.shuttleCount ?? null,
     customAnswers: body.customAnswers ?? null,
