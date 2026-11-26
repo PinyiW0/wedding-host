@@ -4,6 +4,7 @@ import type { PublicThankYouCard } from '../../../../../../../app/types/api/than
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
+import { guestSlimColumns } from '../../../../../../db/columns'
 import { guests, thankYouCustomizations, thankYouTemplates, weddings } from '../../../../../../db/schema'
 
 const GUEST_NAME_TOKEN_RE = /\{\{\s*guestName\s*\}\}/g
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PublicThankYou
     throw createError({ statusCode: 404, statusMessage: '婚禮不存在' })
   }
   // weddingId 一併過濾（issue #70 / M2）：防跨婚禮枚舉並讀出他人賓客姓名
-  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
+  const [guest] = await db.select(guestSlimColumns).from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

@@ -13,6 +13,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
   const body = await readBody<MergePendingGuestBody>(event)
 
   const db = useDb()
+  // 這支刻意整列撈：併入時要把待確認筆的祝福與手繪花圖搬到正式賓客（低頻的後台操作，不在輪詢路徑上）
   const [pending] = await db.select().from(guests).where(and(
     eq(guests.weddingId, weddingId),
     eq(guests.guestId, guestId),
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestMe
   if (!pending) {
     throw createError({ statusCode: 404, statusMessage: '待確認賓客不存在' })
   }
+  // 同上：目標賓客也要整列，才能在待確認筆沒填時保留原本的祝福與花圖
   const [target] = await db.select().from(guests).where(and(
     eq(guests.weddingId, weddingId),
     eq(guests.guestId, body.targetGuestId),

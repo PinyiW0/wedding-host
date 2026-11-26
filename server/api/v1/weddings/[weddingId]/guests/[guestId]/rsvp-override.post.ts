@@ -4,6 +4,7 @@ import type { OverrideRsvpBody, RsvpOverriddenEvent } from '../../../../../../..
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
+import { guestSlimColumns } from '../../../../../../db/columns'
 import { guests, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<RsvpOverriddenEvent> => {
@@ -12,7 +13,7 @@ export default defineEventHandler(async (event: H3Event): Promise<RsvpOverridden
   const body = await readBody<OverrideRsvpBody>(event)
 
   const db = useDb()
-  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
+  const [guest] = await db.select(guestSlimColumns).from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId), isNull(guests.deletedAt)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

@@ -4,6 +4,7 @@ import type { CakeBoxAssignmentConfiguredEvent, ConfigureCakeBoxAssignmentBody }
 import { and, eq } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
+import { guestSlimColumns } from '../../../../../../db/columns'
 import { cakeBoxAssignments, cakeBoxTypes, guests } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<CakeBoxAssignmentConfiguredEvent> => {
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event: H3Event): Promise<CakeBoxAssignm
   if (!existingType) {
     throw createError({ statusCode: 404, statusMessage: '喜餅款式不存在' })
   }
-  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
+  const [guest] = await db.select(guestSlimColumns).from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
   if (!guest) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm'
 import { fittingPartyMembers, remainingPartyMembers } from '../../../../../../../../app/utils/seatingRules'
 import { useDb } from '../../../../../../../db'
 
+import { guestSlimColumns } from '../../../../../../../db/columns'
 import { guests, seatingTables, seats } from '../../../../../../../db/schema'
 import { assertSeatingCapacity, seatingDietLookup } from '../../../../../../../utils/seating-capacity'
 
@@ -18,7 +19,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestSeatedEve
   if (!table) {
     throw createError({ statusCode: 404, statusMessage: '桌次不存在' })
   }
-  const [guest] = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
+  const [guest] = await db.select(guestSlimColumns).from(guests).where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, body.guestId)))
   if (!guest || guest.deletedAt) {
     throw createError({ statusCode: 404, statusMessage: '賓客不存在' })
   }

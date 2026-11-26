@@ -1,9 +1,10 @@
 import type { H3Event } from 'h3'
 import type { GuestUpdatedEvent, UpdateGuestBody } from '../../../../../../../app/types/api/guests'
 
-import { and, eq, getTableColumns, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
+import { guestSlimColumns } from '../../../../../../db/columns'
 import { guestCategories, guests, seatingTables, seats } from '../../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEvent> => {
@@ -14,7 +15,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
   const db = useDb()
   // leftJoin 取分類名稱：一次查詢同時解決回傳的 category（不用再查一次字典）
   const [existing] = await db
-    .select({ ...getTableColumns(guests), categoryName: guestCategories.name, categoryTier: guestCategories.tier })
+    .select({ ...guestSlimColumns, categoryName: guestCategories.name, categoryTier: guestCategories.tier })
     .from(guests)
     .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
     .where(and(eq(guests.weddingId, weddingId), eq(guests.guestId, guestId)))
@@ -78,7 +79,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestUpdatedEv
 
   // 空 patch 時不打 update（drizzle set({}) 會擲錯），直接回現值
   const [guest] = Object.keys(patch).length
-    ? await db.update(guests).set(patch).where(eq(guests.guestId, guestId)).returning()
+    ? await db.update(guests).set(patch).where(eq(guests.guestId, guestId)).returning(guestSlimColumns)
     : [existingGuest]
 
   // 同行人數／兒童椅數變動時同步席位：原桌容得下→就地補齊或釋出；容不下→整組退回待排

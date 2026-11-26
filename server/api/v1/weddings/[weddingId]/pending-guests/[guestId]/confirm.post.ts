@@ -4,6 +4,7 @@ import type { PendingGuestConfirmedEvent } from '../../../../../../../app/types/
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../../db'
+import { guestSlimColumns } from '../../../../../../db/columns'
 import { guests } from '../../../../../../db/schema'
 
 // 建為新賓客：將待確認賓客轉為正式名單
@@ -12,7 +13,7 @@ export default defineEventHandler(async (event: H3Event): Promise<PendingGuestCo
   const weddingId = getRouterParam(event, 'weddingId')!
 
   const db = useDb()
-  const [pending] = await db.select().from(guests).where(and(
+  const [pending] = await db.select(guestSlimColumns).from(guests).where(and(
     eq(guests.weddingId, weddingId),
     eq(guests.guestId, guestId),
     eq(guests.status, 'pending_review'),

@@ -3,6 +3,8 @@ import { neon } from '@neondatabase/serverless'
 import { drizzle as drizzleNeonHttp } from 'drizzle-orm/neon-http'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
+import pg from 'pg'
+import { recordDbRows } from '../utils/db-meter'
 import * as schema from './schema'
 import { seedMissingTables } from './seed'
 
@@ -22,7 +24,21 @@ function createDb(): NodePgDatabase<typeof schema> {
     // 兩個 driver 的查詢 API 相同，型別以 node-postgres 版為準收斂
     return drizzleNeonHttp(neon(url), { schema, casing: 'snake_case' }) as unknown as NodePgDatabase<typeof schema>
   }
-  return drizzle(url, { schema, casing: 'snake_case' })
+  const pool = new pg.Pool({ connectionString: url })
+  // 非 enforced（dev／e2e）才掛讀出量計數器（issue #224），正式環境走原路徑不包裝
+  if (useRuntimeConfig().authMode !== 'enforced')
+    meterPool(pool)
+  return drizzle(pool, { schema, casing: 'snake_case' })
+}
+
+// 包住 pool.query：查詢照常執行，回傳前把結果列的位元組數記進計數器
+function meterPool(pool: pg.Pool): void {
+  const query = pool.query.bind(pool) as (...args: unknown[]) => Promise<{ rows?: unknown }>
+  pool.query = (async (...args: unknown[]) => {
+    const result = await query(...args)
+    recordDbRows(result?.rows)
+    return result
+  }) as typeof pool.query
 }
 
 export function useDb() {
