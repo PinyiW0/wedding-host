@@ -35,6 +35,8 @@ const RECEPTION_ROUND_BUDGET = 50 * KB
 const PROJECTION_IDLE_ROUND_BUDGET = 20 * KB
 // 花圖總量約 1.8MB：任何一支整列撈賓客都會遠超這個數字
 const SINGLE_GUEST_BUDGET = 8 * KB
+// 花圖搬到 R2 之後（issue #226）：欄位只剩網址，整列讀取全部賓客也不該超過這個數字（實測約 60KB；base64 時是 1.8MB）
+const FULL_GUESTS_URL_BUDGET = 100 * KB
 
 // 計數器是整個伺服器共用的一個數字：量測期間若有別的分頁連著同一台伺服器輪詢，那些查詢也會被算進來。
 // 跑這支時不要開著同一台伺服器的預覽分頁
@@ -169,5 +171,24 @@ test.describe('輪詢端點的資料庫讀出量（正式站規模）', () => {
       await settled
       expect(polls.length).toBeGreaterThanOrEqual(1)
     })
+  })
+})
+
+test.describe('花圖改存網址之後的整列讀取（正式站規模）', () => {
+  test('整列讀取全部賓客（含花圖欄位），從資料庫讀出的資料不超過 100KB', async ({ page, request }) => {
+    await resetMockData(page)
+    expect((await request.post('/api/__test__/seed-scale?flowers=url')).ok()).toBe(true)
+
+    let withFlower = 0
+    const bytes = await meter(request, async () => {
+      const res = await request.get(`${API}/guests?fields=full`)
+      expect(res.ok()).toBe(true)
+      const items = await res.json() as { flowerDrawing: string | null }[]
+      withFlower = items.filter(g => g.flowerDrawing?.startsWith('https://')).length
+    })
+
+    expect(withFlower, '規模資料應有 60 位賓客帶網址形式的花圖').toBeGreaterThanOrEqual(60)
+    test.info().annotations.push({ type: '讀出量', description: `${bytes} bytes` })
+    expect(bytes).toBeLessThanOrEqual(FULL_GUESTS_URL_BUDGET)
   })
 })
