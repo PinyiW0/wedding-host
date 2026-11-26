@@ -1028,7 +1028,7 @@ deck 之後的區塊與首屏（分身處理）：
 - **程式沒動**：`StoryFlowers` 的三朵花按鈕、紙條、live region、`.has-flowers` 都還在，只把 `useStoryContent().flowerField.flowers` 的三個路徑放回去。尺寸維持 §25 定的四分之一（手機 20/24/20、桌機 28/32/28）。
 
 **§62 賓客畫的花長在故事頁花田上方、三朵花移到花田下方（2026-09-16）**：新人看預覽站時指出兩件事——找到肥肥時牠會頂到上方那三朵花；「到時候賓客畫花會出現在上面更多，該留空間」。第二句其實是誤會：§25 之後這一區沒有任何東西指向賓客的花，賓客的花只在選單的「祝福花田」頁看得到。問過新人後定案：**要，長在花田上方**。
-- **資料**：故事頁用 `listFlowers` 抓（`app/api/flowers.api.ts`，每朵是 `guests.flowerDrawing` 的 dataURL），`server: false`——幾十朵就上 MB，不塞進 SSR payload，那一區在很下面、client 晚一點長出來看不出來。`useHttp.get` 新增 `silent` 選項：正式站沒帶簽章會 403，這一區「沒資料也沒關係」，不該跳「資料載入失敗」嚇賓客；主要資料的讀取維持預設提示。故事頁從「不打任何 API」變成「只打這一支」。
+- **資料**：故事頁用 `listFlowers` 抓（`app/api/flowers.api.ts`，每朵是 `guests.flowerDrawing`：正式站是 R2 網址、本機是 dataURL，issue #226），`server: false`——幾十朵就上 MB，不塞進 SSR payload，那一區在很下面、client 晚一點長出來看不出來。`useHttp.get` 新增 `silent` 選項：正式站沒帶簽章會 403，這一區「沒資料也沒關係」，不該跳「資料載入失敗」嚇賓客；主要資料的讀取維持預設提示。故事頁從「不打任何 API」變成「只打這一支」。
 - **排法**：沿用花田頁的 `FlowerField` 散佈版，新增 `compact` prop（花縮到六成 43～72px、行距 `gap-y-2`、錯落一起縮）——原尺寸 72～120px 手機一排只放得下三朵，11 朵就撐了四排 600px。與花田之間留 `pb-12`（3rem）：找到肥肥時牠從花田頂端探出來，這段空讓牠有地方站；`.cat-field` 加 `position: relative; z-index: 1`，真的疊到也是貓在前。實測桌機 11 朵兩排、肥肥探出來剛好落在空隙裡。
 - **三朵花**：從花田上方移到下方（`mt-2`），`.has-flowers` 那條負 margin 拿掉。live region 搬到區塊最上層、外層 `relative`（sr-only 是絕對定位，沒有定位祖先會撐高文件）。
 - **沒做**：數量上限。賓客越多這一區越高（緊湊版手機一排約 5 朵，100 位賓客約 20 排），新人接受「越長越高」；要收就用 `FlowerField` 現成的 `max` 加一條「看整片花田」。
