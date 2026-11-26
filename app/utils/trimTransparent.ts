@@ -7,11 +7,22 @@
 const ALPHA_MIN = 8
 const PAD = 0.04
 
+// R2 網址的花圖（issue #226）：頁面上的 <img> 先以一般模式載過同一個網址時，瀏覽器快取的那份回應沒有跨來源標頭，
+// 之後再用 crossOrigin 載會直接拿快取、讀像素失敗。加一個查詢參數讓這次請求用另一份快取。
+// dataURL／blob 不是網路請求，原樣回傳
+const HTTP_URL_RE = /^https?:\/\//i
+
+export function corsSrc(src: string): string {
+  if (!HTTP_URL_RE.test(src))
+    return src
+  return `${src}${src.includes('?') ? '&' : '?'}cors=1`
+}
+
 export async function trimTransparent(src: string): Promise<string> {
   try {
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.src = src
+    img.src = corsSrc(src)
     await img.decode()
     const w = img.naturalWidth
     const h = img.naturalHeight

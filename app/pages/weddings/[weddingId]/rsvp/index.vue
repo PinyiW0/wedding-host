@@ -9,7 +9,7 @@ import type {
 } from '~/types/api/rsvp'
 import { deleteGuest, getRsvpFormConfig, getWedding, listGuests, markInvitationSent, overrideRsvp, updateGuest } from '~/api'
 import { rsvpAttendingMeta } from '~/utils/statusMeta'
-import { createZip, dataUrlExt, dataUrlToBytes } from '~/utils/zip'
+import { createZip, imageSrcExt, imageSrcToBytes } from '~/utils/zip'
 
 definePageMeta({ layout: 'default' })
 
@@ -137,13 +137,27 @@ function invitationShort(guest: GuestListItem) {
 
 // === 下載手繪小花（透明背景 PNG，供婚禮網站輸出） ===
 // canvas 匯出本身即為透明底（只含筆跡像素），直接存檔即為去背 PNG
-function downloadFlower(guest: GuestListItem) {
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// 花圖在正式站是 R2 網址（issue #226）：跨來源網址的 <a download> 會被瀏覽器忽略而改成開新頁，
+// 所以一律先把圖抓成位元組再存檔；本機的 dataURL 走同一條路
+async function downloadFlower(guest: GuestListItem) {
   if (!guest.flowerDrawing)
     return
-  const a = document.createElement('a')
-  a.href = guest.flowerDrawing
-  a.download = `flower-${guest.name}.${dataUrlExt(guest.flowerDrawing)}`
-  a.click()
+  try {
+    const bytes = await imageSrcToBytes(guest.flowerDrawing)
+    saveBlob(new Blob([bytes.buffer as ArrayBuffer]), `flower-${guest.name}.${imageSrcExt(guest.flowerDrawing)}`)
+  }
+  catch {
+    toast.add({ title: '花朵下載失敗，請重試', color: 'error' })
+  }
 }
 
 // 有上傳手繪小花的賓客
@@ -152,25 +166,24 @@ const guestsWithFlower = computed(() =>
 )
 
 // 一鍵下載全部花朵（打包成 zip；檔名同名時加 guestId 去重）
-function downloadAllFlowers() {
-  const seen = new Set<string>()
-  const entries = guestsWithFlower.value.map((g) => {
-    const ext = dataUrlExt(g.flowerDrawing!)
-    let name = `${g.name}.${ext}`
-    if (seen.has(name))
-      name = `${g.name}-${g.guestId}.${ext}`
-    seen.add(name)
-    return { name, data: dataUrlToBytes(g.flowerDrawing!) }
-  })
-  if (entries.length === 0)
+async function downloadAllFlowers() {
+  if (guestsWithFlower.value.length === 0)
     return
-  const blob = createZip(entries)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `flowers-${weddingId.value}.zip`
-  a.click()
-  URL.revokeObjectURL(url)
+  const seen = new Set<string>()
+  try {
+    const entries = await Promise.all(guestsWithFlower.value.map(async (g) => {
+      const ext = imageSrcExt(g.flowerDrawing!)
+      let name = `${g.name}.${ext}`
+      if (seen.has(name))
+        name = `${g.name}-${g.guestId}.${ext}`
+      seen.add(name)
+      return { name, data: await imageSrcToBytes(g.flowerDrawing!) }
+    }))
+    saveBlob(createZip(entries), `flowers-${weddingId.value}.zip`)
+  }
+  catch {
+    toast.add({ title: '花朵下載失敗，請重試', color: 'error' })
+  }
 }
 
 // === 匯出整份 RSVP（CSV，Excel 可直接開啟；含 UTF-8 BOM 處理中文） ===
