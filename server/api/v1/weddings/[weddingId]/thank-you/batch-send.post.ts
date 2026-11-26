@@ -4,6 +4,7 @@ import type { ThankYouBatchSentEvent } from '../../../../../../app/types/api/tha
 import { and, asc, eq, isNull, ne } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
+import { guestSlimColumns } from '../../../../../db/columns'
 import { guests, thankYouBatchSends, thankYouTemplates, weddings } from '../../../../../db/schema'
 
 export default defineEventHandler(async (event: H3Event): Promise<ThankYouBatchSentEvent> => {
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouBatchS
   }
 
   // 已綁定 LINE 的賓客：lineUserId <> '' 同時排除 NULL 與空字串（對齊原 truthy 篩選）
-  const boundGuests = await db.select().from(guests).where(and(eq(guests.weddingId, weddingId), ne(guests.lineUserId, ''), isNull(guests.deletedAt))).orderBy(asc(guests.seq))
+  const boundGuests = await db.select(guestSlimColumns).from(guests).where(and(eq(guests.weddingId, weddingId), ne(guests.lineUserId, ''), isNull(guests.deletedAt))).orderBy(asc(guests.seq))
   if (boundGuests.length === 0) {
     throw createError({ statusCode: 409, statusMessage: '沒有已綁定 LINE 的賓客' })
   }

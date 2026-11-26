@@ -4,6 +4,7 @@ import type { GuestListItem } from '../../../../../../app/types/api/guests'
 import { and, asc, eq, getTableColumns, isNull, ne, or } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
+import { guestSlimColumns } from '../../../../../db/columns'
 import { guestCategories, guests } from '../../../../../db/schema'
 
 // 合約回名稱；tier / isMainTable 供座位排序（名稱與語意脫鉤，issue #94），孤兒時以預設兜底
@@ -72,8 +73,7 @@ export default defineEventHandler(async (event: H3Event): Promise<GuestListItem[
       flowerDrawing: g.flowerDrawing ?? null,
     }))
   }
-  const { blessing: _blessing, flowerDrawing: _flowerDrawing, ...slimColumns } = getTableColumns(guests)
-  const rows = await db.select({ ...slimColumns, ...categoryCols })
+  const rows = await db.select({ ...guestSlimColumns, ...categoryCols })
     .from(guests)
     .leftJoin(guestCategories, eq(guests.categoryId, guestCategories.categoryId))
     .where(where)

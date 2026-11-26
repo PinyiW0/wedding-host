@@ -10,7 +10,7 @@ import { guests } from '../../../../db/schema'
 export default defineEventHandler(async (event: H3Event): Promise<FlowerWallItem[]> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const db = useDb()
-  const rows = await db.select().from(guests).where(and(
+  const rows = await db.select({ guestId: guests.guestId, name: guests.name, flowerDrawing: guests.flowerDrawing }).from(guests).where(and(
     eq(guests.weddingId, weddingId),
     eq(guests.flowerVisible, true),
     isNull(guests.deletedAt),

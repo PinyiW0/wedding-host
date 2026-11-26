@@ -4,6 +4,7 @@ import type { ResendThankYouBody, ThankYouResentEvent } from '../../../../../../
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { useDb } from '../../../../../db'
+import { guestSlimColumns } from '../../../../../db/columns'
 import { guests, thankYouTemplates, weddings } from '../../../../../db/schema'
 
 // 群發失敗後對單一賓客重發謝卡（issue #72）：內容與群發同一份範本訊息
@@ -21,7 +22,7 @@ export default defineEventHandler(async (event: H3Event): Promise<ThankYouResent
   }
 
   // 租戶隔離：guestId 一律以 weddingId 限定查詢
-  const [guest] = await db.select().from(guests).where(
+  const [guest] = await db.select(guestSlimColumns).from(guests).where(
     and(eq(guests.guestId, body.guestId), eq(guests.weddingId, weddingId), isNull(guests.deletedAt)),
   )
   if (!guest) {
