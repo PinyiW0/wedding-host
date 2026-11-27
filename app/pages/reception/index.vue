@@ -584,28 +584,42 @@ async function refreshSeating() {
 
 // 現場即時性：自助報到、其他接待機的操作、後台排座位的變動，
 // 都不會推播到本頁——以短輪詢靜默同步（背景分頁暫停；本地操作進行中跳過，避免舊資料蓋掉剛寫入的狀態）。
-// 刻意不做推播——維持 5 秒短輪詢是定案，決策依據見 docs/architecture.md §3.5「接待台即時性」（issue #77）。
+// 刻意不做推播——維持短輪詢是定案，決策依據見 docs/architecture.md §3.5「接待台即時性」（issue #77）。
+// 分兩種頻率（issue #228）：現場會變的（賓客／報到狀態／喜餅指派）每 5 秒；
+// 當天幾乎不變的（喜餅款式／不發放／桌次／座位／場地／標記）每 60 秒，回到前景時立刻全部補一次。
 const POLL_MS = 5000
+const SLOW_POLL_MS = 60_000
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let lastSlowPollAt = 0
+function pollOnce() {
+  if (document.visibilityState !== 'visible')
+    return
+  if (checkingInId.value || isBatchChecking.value || isGiftSubmitting.value || isCakeSubmitting.value || isNotesSubmitting.value || quickDistributingId.value)
+    return
+  const jobs: Promise<unknown>[] = [refreshGuests(), refreshStatus(), refreshCakeAssignments()]
+  // 慢的那組到期時若剛好被上面的「操作進行中」擋掉，時間戳沒更新，下一個 5 秒會補上
+  if (Date.now() - lastSlowPollAt >= SLOW_POLL_MS) {
+    lastSlowPollAt = Date.now()
+    jobs.push(refreshCakeTypes(), refreshCakeExclusions(), refreshSeating())
+  }
+  Promise.all(jobs).catch(() => {})
+}
+function onVisibilityChange() {
+  // 回到前景：把慢的那組標成到期再輪詢一次；若被「操作進行中」擋掉，下一個 5 秒會補上
+  if (document.visibilityState !== 'visible')
+    return
+  lastSlowPollAt = 0
+  pollOnce()
+}
 onMounted(() => {
-  pollTimer = setInterval(() => {
-    if (document.visibilityState !== 'visible')
-      return
-    if (checkingInId.value || isBatchChecking.value || isGiftSubmitting.value || isCakeSubmitting.value || isNotesSubmitting.value || quickDistributingId.value)
-      return
-    Promise.all([
-      refreshGuests(),
-      refreshStatus(),
-      refreshCakeTypes(),
-      refreshCakeAssignments(),
-      refreshCakeExclusions(),
-      refreshSeating(),
-    ]).catch(() => {})
-  }, POLL_MS)
+  lastSlowPollAt = Date.now()
+  pollTimer = setInterval(pollOnce, POLL_MS)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 onUnmounted(() => {
   if (pollTimer)
     clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   if (checkInBannerTimer)
     clearTimeout(checkInBannerTimer)
 })

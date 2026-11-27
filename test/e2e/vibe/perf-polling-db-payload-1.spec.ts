@@ -1,4 +1,4 @@
-// Source: app/pages/reception/index.vue（每 5 秒輪詢 9 個端點）、app/pages/projection/[weddingId].vue、app/composables/useProjectionChannel.ts（issue #224）
+// Source: app/pages/reception/index.vue（輪詢 9 個端點；#228 起分 5 秒／60 秒兩種頻率，這裡量的是 9 個全打的那一輪）、app/pages/projection/[weddingId].vue、app/composables/useProjectionChannel.ts（issue #224）
 // Pattern: 資料量預算（輪詢一輪「從資料庫讀出」多少位元組）
 //
 // 2026-11-22 正式站 Neon 傳輸量超過額度、資料庫被暫停：輪詢端點整列撈賓客，連 base64 花圖一起拖出資料庫，
@@ -17,7 +17,7 @@ const KB = 1024
 // 與 useProjectionChannel 的預設輪詢間隔一致
 const POLL_MS = 5000
 
-// 接待台一輪輪詢打的 9 個端點（順序同 reception/index.vue 的 Promise.all）
+// 接待台完整一輪輪詢打的 9 個端點
 const RECEPTION_POLL = [
   'guests',
   'reception-status',
