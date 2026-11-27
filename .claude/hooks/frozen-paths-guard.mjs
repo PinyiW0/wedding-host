@@ -122,7 +122,7 @@
 // 那會把 `/tmp/x/spec/e2e-flows` 這類與本專案無關的路徑也擋下。
 // /code-review 一輪回饋（同日）：初版「往上找最近的 `.git` 當 root」會被凍結目錄底下的 `.git`（submodule 或 AI
 // 自己新增的檔）蓋掉、改成放行，且會誤擋無關 repo 的同名路徑。修法：只收同 repo 的 worktree，專案目錄永遠是候選。
-// /ship L5 /code-review 回饋（同日）：①`cd ../wt && rm <凍結檔>`、`git -C ../wt rm <凍結檔>` 的相對路徑仍對 session 目錄
+// /wrapup L5 /code-review 回饋（同日）：①`cd ../wt && rm <凍結檔>`、`git -C ../wt rm <凍結檔>` 的相對路徑仍對 session 目錄
 // 解析而漏放 ②目標不存在（glob、新檔）時不解 symlink，經 symlink 寫入判成在專案外。修法：bashFrozenWrites 追蹤字面的
 // cd／git -C（已知極限第 33 條）；路徑改用 realpathLoose（解最近存在的祖先）。
 // 第 2 輪：①`git -C` 的目錄被套到整段，`git -C ../wt log > <主目錄凍結檔>` 的重導向改對 ../wt 解析而漏放（第 1 輪的迴歸）
@@ -142,7 +142,7 @@
 // 認不出它與 linked worktree 同 repo，兩邊互改都放行。修法：gitChdir 認 `-C<dir>`；路徑比對多加一份引號感知的
 // shellWords（與 tokenize 並用，照 shell 規則處理引號、`\ ` 跳脫與相鄰片段相接），重導向目標也由它補取（原 regex 保留）；
 // gitCommonDir 沒有 commondir 時以 gitdir 本身當共用目錄。
-// /ship L5 /code-review 回饋（同日，使用者裁決順帶修）：④`cd "/a b"`、`git -C '/a b'` 含空白的換目錄不追蹤 ⑤`dd of=/<其他 worktree>/…`
+// /wrapup L5 /code-review 回饋（同日，使用者裁決順帶修）：④`cd "/a b"`、`git -C '/a b'` 含空白的換目錄不追蹤 ⑤`dd of=/<其他 worktree>/…`
 // 這類 `=` 後接絕對路徑的 token 走子字串比對，root 猜成 session 目錄而漏放（#199 就有，與空白無關）。修法：cd／git -C 對
 // tokenize 與 shellWords 兩種拆法都判；frozenRelOf 在子字串比對前，先對每個 `=` 後面的值（相對或絕對路徑）精確定位
 //（第 2 輪補上相對路徑 `of=../wt/…` 與第二個 `=` 之後的 `--define=out=/wt/…`）。

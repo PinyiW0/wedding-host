@@ -122,9 +122,9 @@ fresh subagent 的 context ＝ CLAUDE.md ＋ **你寫的 prompt**。它乾淨，
 所以方向是你定的時候，即使 read-back 綠燈也要照實說「這關我驗不了，建議你另開一個 session、
 用你自己的話叫它照著跑一遍」——**不要附上你的設計理由**，那會把盲點一起遞過去。
 
-- 正例：`/ship` 的 `scripts/ledger.sh` 寫好了整套去重，但 `mark` 子命令在 SKILL.md 裡一次都沒被叫到，
+- 正例：`/wrapup` 的 `scripts/ledger.sh` 寫好了整套去重，但 `mark` 子命令在 SKILL.md 裡一次都沒被叫到，
   機制整個是死碼。兩輪對抗審查（第二輪 opus）都沒抓到，dogfood 實跑第一次就撞到——
-  審查 prompt 問的是「這份文件對不對」，它就審文字；沒有人問「這些子命令有人叫嗎」（此洞已於後續修復：`ship/SKILL.md` 現已呼叫 `mark`；事件留作教訓）
+  審查 prompt 問的是「這份文件對不對」，它就審文字；沒有人問「這些子命令有人叫嗎」（此洞已於後續修復：`wrapup/SKILL.md` 現已呼叫 `mark`；事件留作教訓）
 - 反例：為了「乾淨」把已排除的路線一起丟掉，開新 session 重做——第 7 節存得下結論，
   存不下「試過但沒寫下來的死路」，換 session 就真的丟了
 
@@ -137,8 +137,8 @@ fresh subagent 的 context ＝ CLAUDE.md ＋ **你寫的 prompt**。它乾淨，
 
 - 每完成一個交付物**立即存檔**，再做下一個。不要累積到最後一次寫出
 - 中間產物（調查結論、決策理由、待辦）也要落地：長產物寫檔案（見第 5 節），不靠對話往下傳
-- **使用者裁決過的決策，要留言記到 issue**——換 session 接手的人才查得到「為什麼」。觸發（二擇一，客觀可判）：命中 [judgment-rubrics.md](judgment-rubrics.md) 第 3 節必停清單並經使用者裁決；或偏離 skill 範本的取捨（只改 `/ship` 草案內容——commit 分群、PR 標題、label——不算偏離）
-  - 由主線（不是分身）執行 `gh issue comment <N>` 一則，固定三行「決策：／理由：／捨棄的替代：」，第一行以「決策：」開頭當標記，純文字、不加粗（`/ship` Phase 0 靠這個前綴過濾，`**決策：**` 會漏抓）；同一輪多筆決策可合併成一則留言，各筆維持三行、空行隔開。`<N>` 限 issue 編號，不對 PR 留言
+- **使用者裁決過的決策，要留言記到 issue**——換 session 接手的人才查得到「為什麼」。觸發（二擇一，客觀可判）：命中 [judgment-rubrics.md](judgment-rubrics.md) 第 3 節必停清單並經使用者裁決；或偏離 skill 範本的取捨（只改 `/wrapup` 草案內容——commit 分群、PR 標題、label——不算偏離）
+  - 由主線（不是分身）執行 `gh issue comment <N>` 一則，固定三行「決策：／理由：／捨棄的替代：」，第一行以「決策：」開頭當標記，純文字、不加粗（`/wrapup` Phase 0 靠這個前綴過濾，`**決策：**` 會漏抓）；同一輪多筆決策可合併成一則留言，各筆維持三行、空行隔開。`<N>` 限 issue 編號，不對 PR 留言
   - 沒有 issue 的決策不留言；要留痕依 [maintenance.md](maintenance.md) 第 2 節分流（ops 正反例或 memory）
   - repo 為 public 時，涉及私有專案細節只寫抽象結論
 - 交辦 subagent 時指定產物路徑，不要讓它把 30 行以上的結果塞回對話

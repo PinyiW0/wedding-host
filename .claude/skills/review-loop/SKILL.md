@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # review-loop
 
-職責是 **push → 請 review → 輪詢 → 修/回覆 → 再請 review → 共識 → 通知**，與 `/commit`、`/pr`、`/ship` 解耦。
+職責是 **push → 請 review → 輪詢 → 修/回覆 → 再請 review → 共識 → 通知**，與 `/commit`、`/pr`、`/wrapup` 解耦。
 
 ## 鐵律
 
@@ -17,11 +17,11 @@ disable-model-invocation: true
 4. **永不**：merge、`--force` push、動凍結區（`test/e2e/specs/`、`spec/gherkin-feature/`、`spec/e2e-flows/`）**含新增檔**、自寫 `.claude/tmp/frozen-allow.json` 繞過 hook。Copilot 對凍結區的意見一律歸「待使用者決定」。
 5. 改動範圍不得超出該則留言指名的檔案與段落。起手 0 與第 7b 步沒有留言可對照，範圍改成「本 PR diff 內的檔案」（起手 0）與「本輪已動的檔案」（7b）。
 
-`/pr-feedback` 的「永不 commit／push／發言」鐵律不適用於本 skill——使用者啟動本 skill 就是對這三件事的明確授權（同 `/ship` 的既有裁決：鐵律防的是自作主張，不是禁止明確授權）。但上面五條**沒有**被一併解除。
+`/pr-feedback` 的「永不 commit／push／發言」鐵律不適用於本 skill——使用者啟動本 skill 就是對這三件事的明確授權（同 `/wrapup` 的既有裁決：鐵律防的是自作主張，不是禁止明確授權）。但上面五條**沒有**被一併解除。
 
-## 與 `/ship feedback` 的分工：切在「有沒有人在旁邊」
+## 與 `/wrapup feedback` 的分工：切在「有沒有人在旁邊」
 
-| | `/ship feedback` | 本 skill |
+| | `/wrapup feedback` | 本 skill |
 |---|---|---|
 | 前提 | 使用者在旁邊 | 使用者不在 |
 | 停點 | B1 唯一停點，使用者拍板修哪幾條 | 不能有停點——有停點輪詢就沒意義 |
@@ -64,9 +64,9 @@ disable-model-invocation: true
 
 ## 2. 起手
 
-0. **本地先審**：先記下 `git rev-parse HEAD`（第 2 步取基準線要用），再跑 `sh .claude/skills/ship/scripts/ledger.sh plan`，看 L5 那行。
-   - 顯示「沿用」→ 跳過。`/ship` Phase 1 已審過同一份內容（ledger 指紋錨在 merge-base，commit／push 後仍有效），再審是重工
-   - 顯示「要跑」→ 先記下 `sh .claude/skills/ship/scripts/ledger.sh fp L5` 的輸出，再用 Skill tool 跑 `/code-review medium <當前分支>`（level 與 `/ship` L5 同一個：不帶會沿用使用者上次手打的 level，可能是 `max`／`ultra`；不帶 `--max-findings`：它會黏到使用者之後的手動呼叫。必修超過 5 條時依嚴重度只修前 5 條，其餘歸「待使用者決定」）；diff 含 `.md` 時接著照 [references/doc-impl-check.md](references/doc-impl-check.md) 派專項檢查。兩邊的必修**只修落在本 PR diff 內的檔案**，走第 3 節第 7 步驗證、commit，其餘歸「待使用者決定」。都處理完記帳：兩邊的必修全部修掉 → `sh .claude/skills/ship/scripts/ledger.sh mark L5 green "<剛才記下的 fp>"`；有必修沒修（超過 5 條被截、被鐵律 3 擋下、落在 diff 外）→ 改記 `mark L5 red "<剛才記下的 fp>"`，不記 green。ledger 只沿用 green／skipped，記成 green 的話，之後沒改檔就會被 `/ship` 或本 skill 當成已審過而跳過（綠燈定義見 `references/doc-impl-check.md`）
+0. **本地先審**：先記下 `git rev-parse HEAD`（第 2 步取基準線要用），再跑 `sh .claude/skills/wrapup/scripts/ledger.sh plan`，看 L5 那行。
+   - 顯示「沿用」→ 跳過。`/wrapup` Phase 1 已審過同一份內容（ledger 指紋錨在 merge-base，commit／push 後仍有效），再審是重工
+   - 顯示「要跑」→ 先記下 `sh .claude/skills/wrapup/scripts/ledger.sh fp L5` 的輸出，再用 Skill tool 跑 `/code-review medium <當前分支>`（level 與 `/wrapup` L5 同一個：不帶會沿用使用者上次手打的 level，可能是 `max`／`ultra`；不帶 `--max-findings`：它會黏到使用者之後的手動呼叫。必修超過 5 條時依嚴重度只修前 5 條，其餘歸「待使用者決定」）；diff 含 `.md` 時接著照 [references/doc-impl-check.md](references/doc-impl-check.md) 派專項檢查。兩邊的必修**只修落在本 PR diff 內的檔案**，走第 3 節第 7 步驗證、commit，其餘歸「待使用者決定」。都處理完記帳：兩邊的必修全部修掉 → `sh .claude/skills/wrapup/scripts/ledger.sh mark L5 green "<剛才記下的 fp>"`；有必修沒修（超過 5 條被截、被鐵律 3 擋下、落在 diff 外）→ 改記 `mark L5 red "<剛才記下的 fp>"`，不記 green。ledger 只沿用 green／skipped，記成 green 的話，之後沒改檔就會被 `/wrapup` 或本 skill 當成已審過而跳過（綠燈定義見 `references/doc-impl-check.md`）
    - 顯示「略過」→ 本 PR 不在 L5 範圍，直接往下
 
    這一步要在第一次 push 之前：Copilot 每請一次就扣一次額度，本地先擋掉的問題就不必由它來抓。#173 的 eval 顯示本地能先擋掉約四成（`/code-review`＋doc-impl-check，`evals/README.md` 2026-10-12 段）。

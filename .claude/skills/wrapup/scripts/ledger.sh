@@ -1,5 +1,5 @@
 #!/bin/sh
-# ship ledger — 記錄「這份改動已經跑過哪幾層綠燈」，讓同一輪收尾不重跑。
+# wrapup ledger — 記錄「這份改動已經跑過哪幾層綠燈」，讓同一輪收尾不重跑。
 #
 # 設計要點：指紋錨在 merge-base 而不是 HEAD。
 #   git diff <merge-base> 同時涵蓋「已 commit」與「未 commit」的內容，
@@ -14,7 +14,7 @@
 #                                            L2 green 必須帶第 4 個參數 full（dev 全量），定向綠改記 targeted
 #   ledger.sh round <key>                    累加該 key 的修正輪次；超過上限回 exit 2
 #   ledger.sh fresh                          作廢整份 ledger（環境有變、想強制重跑時用）
-#   ledger.sh close                          一趟 /ship 送出完成時歸零輪次帳（停下交還時由使用者決定）
+#   ledger.sh close                          一趟 /wrapup 送出完成時歸零輪次帳（停下交還時由使用者決定）
 #   ledger.sh l2                             印出 L2（dev 全量）該不該跑：yes／no
 set -eu
 
@@ -23,7 +23,7 @@ set -eu
 top=$(git rev-parse --show-toplevel) || { echo "ledger.sh：不在 git repo 內" >&2; exit 1; }
 cd "$top"
 
-DIR=".claude/tmp/ship"
+DIR=".claude/tmp/wrapup"
 LEDGER="$DIR/ledger.tsv"
 # 輪次帳分開存：它是「禁止第 3 輪重試」的安全閥，不是快取。
 # 跟 ledger 放同一個檔的話，切分支或 --fresh 這種純快取操作會順手把上限一起清掉，
@@ -231,12 +231,12 @@ cmd_mark() {
     exit 1
   fi
   # L2 的綠燈只認 dev 全量（/vibe-check --full）。定向綠（煙霧＋選集）只代表選集，
-  # 記成 green 會讓 plan 沿用、/ship 跳過必跑的全量——所以 green 要由呼叫端明說是 full，
+  # 記成 green 會讓 plan 沿用、/wrapup 跳過必跑的全量——所以 green 要由呼叫端明說是 full，
   # 定向跑完要留紀錄就記 targeted，plan 永遠不沿用它。
   if [ "$layer" = L2 ] && [ "$status" = green ] && [ "$reason" != full ]; then
     {
       echo "拒絕記錄：L2 green 必須標明是 dev 全量。"
-      echo "定向綠（煙霧＋選集）不算 gate 已驗，記成 green 會讓 plan 沿用、/ship 跳過必跑的 /vibe-check --full。"
+      echo "定向綠（煙霧＋選集）不算 gate 已驗，記成 green 會讓 plan 沿用、/wrapup 跳過必跑的 /vibe-check --full。"
       echo "正確用法：ledger.sh mark L2 green \"\$FP\" full     # /vibe-check --full 綠燈"
       echo "          ledger.sh mark L2 targeted \"\$FP\"      # 定向綠：只留紀錄，plan 不沿用"
     } >&2
@@ -249,8 +249,8 @@ cmd_mark() {
 # 輪次帳。上限規則靠對話記憶撐不住（session compact 後就沒了），存進 ledger 才算數。
 # 計數刻意不依分支過濾：上限是安全閥，切分支重開一個 key 就能繞過就失去意義。
 # 分支欄位只留著供診斷（見下方寫入行），不參與判定。
-# 計數單位是「一趟 /ship」：歸零只靠 close（送出完成時呼叫；停點停下時交給使用者決定），切分支、fresh、compact 都不歸零。
-# 沒有 close 的話 rounds.tsv 只增不減，同一個工作目錄累計滿 4 輪後 /ship 的自動修永久失效（issue #154）。
+# 計數單位是「一趟 /wrapup」：歸零只靠 close（送出完成時呼叫；停點停下時交給使用者決定），切分支、fresh、compact 都不歸零。
+# 沒有 close 的話 rounds.tsv 只增不減，同一個工作目錄累計滿 4 輪後 /wrapup 的自動修永久失效（issue #154）。
 cmd_round() {
   ensure_ledger
   mkdir -p "$DIR"; [ -f "$ROUNDS" ] || : > "$ROUNDS"

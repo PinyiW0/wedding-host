@@ -1,6 +1,6 @@
 # 被編排模式（orchestrated mode）
 
-`/ship` 帶動 `commit`／`pr`／`verify-ac`／`pr-feedback` 時，那幾隻 skill 改照本檔的合約走。
+`/wrapup` 帶動 `commit`／`pr`／`verify-ac`／`pr-feedback` 時，那幾隻 skill 改照本檔的合約走。
 單獨呼叫（使用者自己打 `/commit`）時本檔完全不適用，原本行為一字不變。
 
 ## 四條規則
@@ -19,7 +19,7 @@
 這四條防的是**skill 之間互相代勞**：A 在使用者沒預期的時候做了 B 的事。
 
 編排模式沒有推翻任何一條。commit 仍不 push、pr 仍不 commit、verify-ac 仍不碰 git。
-變的只是「誰在上面排順序」，而編排層的授權來自使用者主動打 `/ship` 這個動作本身。
+變的只是「誰在上面排順序」，而編排層的授權來自使用者主動打 `/wrapup` 這個動作本身。
 
 > **判準一句話**：一隻 skill 自作主張跨界 = 違規；一個被明確呼叫的編排層依序呼叫多隻 skill = 不違規。
 

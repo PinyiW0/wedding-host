@@ -23,7 +23,7 @@ bot node ID 由 `copilot.sh bot-id` 解出：掃 repo 近 50 個 PR 的 review �
 
 **白名單三個 login 都要列**，它隨端點而異（實測 2026-09-02）：GraphQL review author 是 `copilot-pull-request-reviewer`、REST `/pulls/N/reviews` 是 `copilot-pull-request-reviewer[bot]`、REST `/pulls/N/comments` 是 `Copilot`。不要改用 `contains("copilot")` 或 `test("copilot.*review")`——那會連 `copilot-swe-agent`（或 `copilot-swe-agent-review`）一起撈進來，請錯 bot 或污染輪詢的基準線。
 
-> **與 `/pr`、`/ship` 現有寫法的關係**：那兩個 skill 寫的 REST 版本是給**初次**請求用的，在「repo 沒開自動 Copilot review」的情況下有效；`/ship` 的「回 200 但空陣列不用排查」也只對初次成立。第一輪 review 結束後 ruleset 不會再自動觸發，REST 也請不動，此時只有 GraphQL 有效。
+> **與 `/pr`、`/wrapup` 現有寫法的關係**：那兩個 skill 寫的 REST 版本是給**初次**請求用的，在「repo 沒開自動 Copilot review」的情況下有效；`/wrapup` 的「回 200 但空陣列不用排查」也只對初次成立。第一輪 review 結束後 ruleset 不會再自動觸發，REST 也請不動，此時只有 GraphQL 有效。
 
 ## 2. review 常錨在舊 commit
 

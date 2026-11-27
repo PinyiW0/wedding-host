@@ -122,7 +122,7 @@ description 是唯一影響「要不要載入」的欄位，所有「什麼時�
 
 `scripts/` 的每個子命令、`references/` 的每份檔案，都要能在 SKILL.md 指出呼叫或載入的位置——指不出來就是死碼：寫了、看起來完整，但永遠不會被執行，而且不報錯，只會靜默不作用。
 
-（2026-08-20 開發 `/ship` skill 時踩過三次：`scripts/ledger.sh` 的 `mark`、`l2`、`fp` 三個子命令都沒被 SKILL.md 呼叫到，去重機制整個沒發生，ledger 永遠只有兩行 header；兩輪對抗式審查都沒抓到——審查者在讀文件，不是在用工具。）
+（2026-08-20 開發 `/wrapup` skill 時踩過三次：`scripts/ledger.sh` 的 `mark`、`l2`、`fp` 三個子命令都沒被 SKILL.md 呼叫到，去重機制整個沒發生，ledger 永遠只有兩行 header；兩輪對抗式審查都沒抓到——審查者在讀文件，不是在用工具。）
 
 ### 機械判準
 

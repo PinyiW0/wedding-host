@@ -23,7 +23,7 @@ disable-model-invocation: true
 
 本 skill **不 commit、不 push、不開 PR**。修完停在工作區，收尾提醒使用者跑 `/commit`——這條界線跟 `/pr` 的「不越界代勞」同源，別破。
 
-> 被 `/ship` 編排時再加兩條：**不修、不寫回**。只驗與回報三態＋證據，修由編排層派獨立的 fixer 做（同一件事兩邊各算 2 輪會變成 4 輪，且驗的人動手改就違反「驗證不自驗」），勾回 issue 延到使用者確認之後。**不修的是本 skill 這個角色，不是整條鏈**——Fail 的條目仍然會被 `/ship` 的自動修迴圈處理，授權邊界照本檔步驟 4 那張表，一字不放寬。合約與理由見 [../ship/references/orchestrated-mode.md](../ship/references/orchestrated-mode.md)。
+> 被 `/wrapup` 編排時再加兩條：**不修、不寫回**。只驗與回報三態＋證據，修由編排層派獨立的 fixer 做（同一件事兩邊各算 2 輪會變成 4 輪，且驗的人動手改就違反「驗證不自驗」），勾回 issue 延到使用者確認之後。**不修的是本 skill 這個角色，不是整條鏈**——Fail 的條目仍然會被 `/wrapup` 的自動修迴圈處理，授權邊界照本檔步驟 4 那張表，一字不放寬。合約與理由見 [../wrapup/references/orchestrated-mode.md](../wrapup/references/orchestrated-mode.md)。
 
 ## 流程
 
@@ -79,11 +79,11 @@ git ls-files -o --exclude-standard                                # 未追蹤的
 
 `<default>` 在本專案固定是 `main`（同 [../pr/SKILL.md](../pr/SKILL.md)「base 固定 `main`」）。實作在別的分支時（上節「確認實作在哪」），兩端都指定該分支：`git diff --no-renames "$(git merge-base origin/<default> '<branch>')" '<branch>' --name-only`（分支名含 `#`，兩處都用單引號包住，同上節 `git show` 的寫法）——只把 merge-base 裡的 `HEAD` 換掉不夠，`git diff <base>` 沒給第二個 tree 時比的是目前工作區，會把本分支的改動誤算進去、漏掉目標分支的檔；`git ls-files -o` 那行不要跑——未追蹤檔只存在於目前工作區，跟別條分支無關。
 
-盤點前**一律先 `git fetch origin <default>`**——步驟 1 沒有同步 default branch，本地 remote-tracking ref 可能過期，過期的 merge-base 會讓盤點漏報或誤報。fetch 失敗、或 `git merge-base` 仍算不出（淺 clone）→ 本節不給任何結論，範圍外改動記「未執行（原因：fetch 失敗／算不出 merge-base）」（與 `.claude/skills/ship/scripts/ledger.sh` 的 `NOBASE` 處理一致：算不出就不給結論），**AC 驗收照常往下做**——盤點沒跑只少了超編這一項，不可以連 AC 一起不驗。
+盤點前**一律先 `git fetch origin <default>`**——步驟 1 沒有同步 default branch，本地 remote-tracking ref 可能過期，過期的 merge-base 會讓盤點漏報或誤報。fetch 失敗、或 `git merge-base` 仍算不出（淺 clone）→ 本節不給任何結論，範圍外改動記「未執行（原因：fetch 失敗／算不出 merge-base）」（與 `.claude/skills/wrapup/scripts/ledger.sh` 的 `NOBASE` 處理一致：算不出就不給結論），**AC 驗收照常往下做**——盤點沒跑只少了超編這一項，不可以連 AC 一起不驗。
 
 逐檔標三態：**範圍內**（命中「範圍內」清單）／**範圍外**（命中「範圍外」清單）／**未提及**（兩邊都沒寫）。
 
-- 有檔命中「範圍外」→ **停**，列出清單讓使用者三選一：改 issue 範圍、拆新 issue、撤回改動。被 `/ship` 編排時不停，依 [../ship/references/orchestrated-mode.md](../ship/references/orchestrated-mode.md) 規則 4 結構化回傳
+- 有檔命中「範圍外」→ **停**，列出清單讓使用者三選一：改 issue 範圍、拆新 issue、撤回改動。被 `/wrapup` 編排時不停，依 [../wrapup/references/orchestrated-mode.md](../wrapup/references/orchestrated-mode.md) 規則 4 結構化回傳
 - 「未提及」只列進報告，不停
 - 這是**回溯盤點**（已經改了什麼）；步驟 4 的超編檢查是**前瞻判斷**（修 Fail 需不需要超編）。兩者都要，不互相取代
 
