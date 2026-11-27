@@ -16,14 +16,17 @@ test.describe('vibe：接待端款式清單納入輪詢', () => {
   test('開頁後仍會重抓喜餅款式（不再是開頁快照）', async ({ page }) => {
     await resetMockData(page)
     await login(page, TestUsers.admin.account, TestUsers.admin.password)
+    await page.clock.install()
     await page.goto(`/reception?weddingId=${WID}`, { waitUntil: 'networkidle' })
 
     // networkidle 之後才開始等 ⇒ 接下來這筆必然來自輪詢，而非首次載入。
-    // 一輪 5 秒，留足餘裕
-    const polled = await page.waitForRequest(
+    // 款式屬於「當天幾乎不變」的那組，每 60 秒一輪（issue #228），用假時鐘推進
+    const polling = page.waitForRequest(
       req => CAKE_TYPES_RE.test(req.url()) && req.method() === 'GET',
       { timeout: 15_000 },
     )
+    await page.clock.runFor(60_000)
+    const polled = await polling
     expect(polled.url()).toContain(WID)
   })
 })
