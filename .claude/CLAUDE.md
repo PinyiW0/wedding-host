@@ -80,7 +80,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 ## 收尾與審查
 
 - 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md、任何位置的 osv-scanner.toml 或任何 .sh／.mjs（與 `ledger.sh` L5 同一份 scope）、有實質改動（非純格式）且尚未跑過 `/code-review` 時，在 `/verify-ac` 或發 PR 前**主動**執行（diff 含 `.md` 時另跑 `skills/review-loop/references/doc-impl-check.md` 的專項檢查），不必使用者提醒；放在驗收蓋章之前，避免事後改 code 讓已勾 AC 過期。完整分層見 `ops/judgment-rubrics.md` 第 5 節
-- 跑 `/ship` 時 eslint／typelint／`/vibe-check --full`／`/sdd-review`／`/code-review` 由它依 ledger 統一調度並記帳，不必手動逐一叫；手動路徑的義務不變
+- 跑 `/wrapup` 時 eslint／typelint／`/vibe-check --full`／`/sdd-review`／`/code-review` 由它依 ledger 統一調度並記帳，不必手動逐一叫；手動路徑的義務不變
 - PR 預設掛 Copilot 審查（2026-11-09 決定，#208）。`/review-loop` 會自行 commit／push／在 PR 上回覆留言並重新請 review——啟動它就是對這三件事的授權；但它**永不 merge、永不 `--force` push**，要不要 merge 一律由使用者決定
 
 ## 可用指令
@@ -91,7 +91,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | `/verify-ac` | 對照 issue AC 逐條驗收，未過自動修（上限 2 輪），結果勾回 issue | issue 有 `## 驗收標準`、編號可解析 |
 | `/commit` | 依 SDD 階段分群產生 Conventional Commits（列草案待確認） | 有工作區改動 |
 | `/pr` | push → PR 草案 → `gh pr create`（分支含 `#N` → 自動 Closes #N；預設掛 Copilot） | 已有 commit |
-| `/ship` | **收尾一條龍**：六層關卡（紅燈自動修）→ AC 驗收 → commit → PR，只停一次 | 有改動、不在 main |
+| `/wrapup` | **收尾一條龍**：六層關卡（紅燈自動修）→ AC 驗收 → commit → PR，只停一次。原名 `/ship`，與 Claude Code 內建指令撞名後叫不出來（issue #232）；**`/ship` 現在是內建指令，不跑本專案的關卡與 AC 驗收，別用** | 有改動、不在 main |
 | `/review-loop` | push 後自動請 Copilot review、輪詢、修「必修」、回覆，直到共識才通知（不 merge） | PR 已開、工作區乾淨 |
 | `/pr-feedback` | 爬 PR review 留言，分類報告後就地改（不 commit／push／發言） | PR 已開 |
 | `/code-review` | 審本地 diff 抓正確性／重用／簡化／效能 bug（Claude Code 內建） | 有未提交或未合併的改動 |

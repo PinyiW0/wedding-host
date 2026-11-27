@@ -21,7 +21,7 @@ argument-hint: "[reviewer / assignee / label / copilot / 補充說明(選填)]"
 
 `/pr` **不負責 commit**。偵測到有未 commit 改動時，停下來叫使用者先跑 `/commit`，不越界代勞。
 
-> 被 `/ship` 編排時，commit 與 PR 的先後由編排層統籌，`/pr` 自身仍不 commit。這條界線防的是 skill 互相代勞，不是禁止使用者授權的編排層排順序——判準見 [../ship/references/orchestrated-mode.md](../ship/references/orchestrated-mode.md)。
+> 被 `/wrapup` 編排時，commit 與 PR 的先後由編排層統籌，`/pr` 自身仍不 commit。這條界線防的是 skill 互相代勞，不是禁止使用者授權的編排層排順序——判準見 [../wrapup/references/orchestrated-mode.md](../wrapup/references/orchestrated-mode.md)。
 
 ## 流程
 
@@ -85,7 +85,7 @@ checkbox 跨 session、跨 worktree、換人執行都查得到，不必靠對話
 - **label**：從 repo 現有清單讓使用者複選（附「略過」）、不自動對應、不預選；**`/pr` 不自創 label、不 `gh label create`**（與 `/new-issue` 的差異見該檔）。
 - **assignee**：預設 `@me`，多人 repo 才用 AskUserQuestion 問、單人 repo 不問。
 
-> **編排模式下這兩項不發 AskUserQuestion**，改由 `/ship` 預選後標在唯一停點的草案上（標 `←預選`），使用者一句話就能改。預選規則見同一檔的「編排模式」一節。
+> **編排模式下這兩項不發 AskUserQuestion**，改由 `/wrapup` 預選後標在唯一停點的草案上（標 `←預選`），使用者一句話就能改。預選規則見同一檔的「編排模式」一節。
 
 選定結果放進步驟 5 草案的 `label：`／`assignee：` 欄。reviewer 規則見步驟 6。
 
@@ -183,7 +183,7 @@ gh pr view --web                   # 開瀏覽器
 ```
 
 - assignee／label 帶步驟 2.5 選定的；「不指派」／「略過」則拿掉對應旗標。多 label 重複 `--label`；指派他人失敗的補救見[共用政策](../new-issue/references/label-assignee.md)。
-- 使用者透過 `$ARGUMENTS` 指定了 reviewer 才加 `--reviewer <人>`。被 `/ship` 編排時 reviewer 也由編排層預選，規則見[共用政策](../new-issue/references/label-assignee.md)「編排模式」一節。
+- 使用者透過 `$ARGUMENTS` 指定了 reviewer 才加 `--reviewer <人>`。被 `/wrapup` 編排時 reviewer 也由編排層預選，規則見[共用政策](../new-issue/references/label-assignee.md)「編排模式」一節。
 - **預設掛 Copilot 做 code review**（2026-11-09 決定，issue #208；使用者明說不掛才略過）。Copilot reviewer 是 bot 帳號，`--reviewer` 對它解析常失敗，一律在 PR 建立後補 API call（`<N>` 取自 `gh pr create` 回傳 URL 結尾）：
 
   ```
@@ -193,7 +193,7 @@ gh pr view --web                   # 開瀏覽器
   先 `gh pr view <N> --json reviewRequests` 看一下：GitHub 帳號層級的「Automatic Copilot code review」已自動掛上就不必再補。
 
   使用者明說不掛時，同樣先看 `reviewRequests`：已被自動掛上 → 用 `gh api --method DELETE "repos/{owner}/{repo}/pulls/<N>/requested_reviewers" -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` 移除，再看一次 `reviewRequests` 確認已不含 Copilot。REST 對 bot reviewer 常靜默無效（見上方 POST 的同類問題），移不掉就在收尾回報，請使用者到 PR 網頁手動移除。只略過 POST 的話，自動掛上的 Copilot 仍會來審。
-  `reviewRequests` 沒有 Copilot 也不保證它不會來：`../ship/SKILL.md` Phase 5「成功但沒效果」那段記錄過，repo 的 ruleset 開了自動 Copilot review 時，`requested_reviewers` 是空的、Copilot 照樣來審（`reviewRequests` 查詢本身在這種情況下會不會列出它，未實測）。所以同 repo 舊 PR 的 `reviewRequests` 也都是空的、Copilot 卻有 review 時，收尾明講「本 repo 可能由 ruleset 自動請 Copilot，要不掛得到 repo 設定關掉」，不要回報成「已不掛」。
+  `reviewRequests` 沒有 Copilot 也不保證它不會來：`../wrapup/SKILL.md` Phase 5「成功但沒效果」那段記錄過，repo 的 ruleset 開了自動 Copilot review 時，`requested_reviewers` 是空的、Copilot 照樣來審（`reviewRequests` 查詢本身在這種情況下會不會列出它，未實測）。所以同 repo 舊 PR 的 `reviewRequests` 也都是空的、Copilot 卻有 review 時，收尾明講「本 repo 可能由 ruleset 自動請 Copilot，要不掛得到 repo 設定關掉」，不要回報成「已不掛」。
 
   **這行只涵蓋初次請求**：第一輪 review 結束後不會再自動觸發，這個 REST 端點也請不動（回 200、`requested_reviewers` 空、Copilot 不會來）。要 re-request 得走 GraphQL 的 `requestReviews(botIds:)`——見 `../review-loop/references/copilot-quirks.md` 第 1 節；後續輪次交給 `/review-loop`。
 

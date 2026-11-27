@@ -11,7 +11,7 @@
 #      Copilot reviewer——只掛著其他 bot 也算這種）。
 #
 # 為什麼不用 pipefail：非 POSIX，dash 會在 set 那行就 Illegal option，
-# 而本檔一律以 `sh` 呼叫（對齊 ship/scripts/ledger.sh）。沒有 pipefail 時管線的結束碼
+# 而本檔一律以 `sh` 呼叫（對齊 wrapup/scripts/ledger.sh）。沒有 pipefail 時管線的結束碼
 # 取自最後一段，所以**一律不把 gh 接進管線**：先捕進變數、明確檢查結束碼，再交給 jq。
 # 踩過：gh 失敗且 stdout 空時，jq -s 會回 [] 並 exit 0，迴圈誤判成「沒有新 review」而靜默空轉。
 set -eu

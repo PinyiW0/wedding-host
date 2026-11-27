@@ -60,14 +60,14 @@
 | 層 | 驗什麼 | 工具 | 不可省略的情況 |
 |----|--------|------|----------------|
 | 1 語法/型別 | 寫的東西合法 | `npm run eslint` + `npm run typelint` | 任何程式碼改動 |
-| 2 行為 | 做的事符合合約 | 修復輪：煙霧＋定向目標（`--reporter=line`）；`/ship` L2 與 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
+| 2 行為 | 做的事符合合約 | 修復輪：煙霧＋定向目標（`--reporter=line`）；`/wrapup` L2 與 `/vibe-check --full`：dev 全量；CI `e2e` job：production 全量 | 動到 app/、server/ |
 | 3 語意 | 框架慣例、邏輯安全 | `/sdd-review` | 動到 .vue/store/server 且改動非純格式 |
 | 4 制度 | 規範有消費點、路徑有效 | read-back（fresh subagent） | 動到 .claude/、spec/ui-config/ |
 | 5 通用邏輯 | 正確性、重用／簡化／效能（非框架特定）；文件與實作一致 | `/code-review`＋`.claude/skills/review-loop/references/doc-impl-check.md`（diff 含 `.md` 時） | 動到 app/、server/、.claude/、.github/、.husky/、scripts/、patches/、docs/、根目錄的 Dockerfile／package.json／README.md、任何位置的 osv-scanner.toml 或任何 .sh／.mjs（與 ledger.sh L5 同一份 scope）且改動非純格式，`/verify-ac` 或發 PR 前 |
 
 **通過的定義是綠燈，不是「應該會過」**。沒跑就是沒驗。
 
-**定向綠不得寫成 gate 已驗**——只有 dev 全量（`/vibe-check --full`）與 CI production 全量的綠燈算層 2 已驗；`/ship` 的 ledger 只認 dev 全量。分級判準的單一來源是 `.claude/skills/vibe-check/SKILL.md`，此處不重列。
+**定向綠不得寫成 gate 已驗**——只有 dev 全量（`/vibe-check --full`）與 CI production 全量的綠燈算層 2 已驗；`/wrapup` 的 ledger 只認 dev 全量。分級判準的單一來源是 `.claude/skills/vibe-check/SKILL.md`，此處不重列。
 
 - 正例：改了 3 個 .vue 檔 → 跑 eslint + typelint + `/vibe-check`（白名單內定向、白名單外 dev 全量），全綠後回報「已驗證」並附輸出摘要，且寫明是定向綠還是全量綠
 - 反例：「改動很小，照理不影響測試」→ 跳過 gate 直接 commit。「照理」不是驗證

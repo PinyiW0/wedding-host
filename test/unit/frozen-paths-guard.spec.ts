@@ -1470,7 +1470,7 @@ describe('frozen-paths-guard：跨 worktree 補洞（issue #206）', () => {
     ['cd 到含空白的 worktree 再用相對路徑 rm', () => `cd "${wtS}" && rm ${ONLY}`],
     ['git -C 含空白的 worktree（雙引號分開寫）', () => `git -C "${wtS}" rm ${ONLY}`],
     ['git -C 含空白的 worktree（單引號黏連）', () => `git -C'${wtS}' rm ${ONLY}`],
-  ])('換目錄到含空白的 worktree（/ship L5）：%s 寫只存在於該 worktree 的凍結檔 → 擋下', (_label, command) => {
+  ])('換目錄到含空白的 worktree（/wrapup L5）：%s 寫只存在於該 worktree 的凍結檔 → 擋下', (_label, command) => {
     // Act
     const result = bash(repoM, command())
 
@@ -1483,7 +1483,7 @@ describe('frozen-paths-guard：跨 worktree 補洞（issue #206）', () => {
     ['dd of="<含空白 worktree 的絕對路徑>"', () => `dd if=/dev/null of="${join(wtS, ONLY)}"`],
     ['dd of=<B 的相對路徑 ../b/…>', () => `dd if=/dev/null of=../b/${ONLY}`],
     ['第二個 = 之後才是路徑（--define=out=<B 的絕對路徑>）', () => `dd if=/dev/null --define=out=${join(wtB, ONLY)}`],
-  ])('`=` 後接其他 worktree 的絕對路徑（/ship L5）：%s → 擋下', (_label, command) => {
+  ])('`=` 後接其他 worktree 的絕對路徑（/wrapup L5）：%s → 擋下', (_label, command) => {
     // Act
     const result = bash(repoM, command())
 

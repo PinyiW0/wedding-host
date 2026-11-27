@@ -6,7 +6,7 @@
 
 | 呼叫端 | 時機 | 目標 diff |
 |---|---|---|
-| `/ship` Phase 1 L5 | `/code-review` 之後 | `<merge-base>`（到工作區：路線 A 這時還沒 commit；未追蹤新檔先照 ship L5 段 `git add -N`） |
+| `/wrapup` Phase 1 L5 | `/code-review` 之後 | `<merge-base>`（到工作區：路線 A 這時還沒 commit；未追蹤新檔先照 wrapup L5 段 `git add -N`） |
 | `/review-loop` 第 2 節第 0 步（本地先審） | `/code-review` 之後、第一次 push 之前 | `<merge-base>`（前置檢查已要求工作區乾淨，等於全部已 commit 的改動） |
 | `/review-loop` 每輪 7b | `/code-review` 之後、第 8 步 commit 之前 | 工作區 diff（本輪修正；本輪新增的檔先 `git add -N`，否則 `git diff` 看不到） |
 
