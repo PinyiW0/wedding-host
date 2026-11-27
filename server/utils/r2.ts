@@ -36,3 +36,10 @@ export async function presignUpload(key: string, contentType: string): Promise<s
     { expiresIn: 600 },
   )
 }
+
+// 伺服器端直接寫入 R2（issue #226）：賓客手繪花由回覆端點收下後轉存，
+// 公開回覆頁不帶簽章、拿不到 presigned URL，且伺服器轉存才能檢查格式與大小
+export async function putR2Object(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  const c = useRuntimeConfig()
+  await r2Client().send(new PutObjectCommand({ Bucket: c.r2Bucket, Key: key, Body: body, ContentType: contentType }))
+}

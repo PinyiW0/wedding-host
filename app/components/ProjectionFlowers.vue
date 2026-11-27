@@ -5,7 +5,7 @@ import type { FlowerWallItem } from '~/types/api/flowers'
 const props = withDefaults(
   defineProps<{
     flowers: FlowerWallItem[]
-    // 新人自行上傳的花朵圖（dataURL 陣列）
+    // 新人自行上傳的花朵圖（正式站是 R2 網址、本機是 dataURL）
     custom?: string[]
   }>(),
   { custom: () => [] },

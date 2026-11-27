@@ -1,3 +1,5 @@
+import { corsSrc } from './trimTransparent'
+
 // 最小化 ZIP 產生器（STORE 無壓縮）。
 // PNG 本身已壓縮，直接打包即可；零依賴，輸出標準 .zip Blob，供前端「下載全部花朵」使用。
 
@@ -130,4 +132,24 @@ export function dataUrlExt(dataUrl: string): string {
     return 'svg'
   const m = dataUrl.match(DATA_URL_MIME_RE)
   return m?.[1] ?? 'png'
+}
+
+// 圖片來源（dataURL 或網址）→ 副檔名與位元組（issue #226：花圖在正式站是 R2 網址，本機是 dataURL）。
+// 網址走 fetch，需要圖片主機允許本站跨來源讀取（R2 的 CORS 設定見 docs/r2-cors.json）
+const URL_EXT_RE = /\.([a-z0-9]{2,5})(?:\?.*)?$/i
+
+export function imageSrcExt(src: string): string {
+  if (src.startsWith('data:'))
+    return dataUrlExt(src)
+  return src.match(URL_EXT_RE)?.[1]?.toLowerCase() ?? 'png'
+}
+
+export async function imageSrcToBytes(src: string): Promise<Uint8Array> {
+  if (src.startsWith('data:'))
+    return dataUrlToBytes(src)
+  // corsSrc：詳情面板的 <img> 先載過同一個網址時，快取裡那份回應沒有跨來源標頭，直接 fetch 會被擋
+  const res = await fetch(corsSrc(src), { mode: 'cors' })
+  if (!res.ok)
+    throw new Error(`圖片下載失敗（${res.status}）`)
+  return new Uint8Array(await res.arrayBuffer())
 }

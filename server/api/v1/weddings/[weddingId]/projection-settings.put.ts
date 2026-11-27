@@ -6,9 +6,21 @@ import { eq } from 'drizzle-orm'
 import { useDb } from '../../../../db'
 import { projectionSettings, weddings } from '../../../../db/schema'
 
+const MAX_CUSTOM_FLOWERS = 50
+
 export default defineEventHandler(async (event: H3Event): Promise<ProjectionSettingsUpdatedEvent> => {
   const weddingId = getRouterParam(event, 'weddingId')!
   const body = await readBody<UpdateProjectionSettingsBody>(event)
+
+  // 投影照片與自訂花由前端先直傳 R2，這裡只收網址（issue #226）
+  assertImageRef(body?.photoDataUrl, '投影照片')
+  if (body?.customFlowers != null) {
+    if (!Array.isArray(body.customFlowers) || body.customFlowers.length > MAX_CUSTOM_FLOWERS) {
+      throw createError({ statusCode: 400, statusMessage: '自訂花圖數量不正確' })
+    }
+    for (const flower of body.customFlowers)
+      assertImageRef(flower, '自訂花圖')
+  }
 
   const db = useDb()
   const [wedding] = await db.select().from(weddings).where(eq(weddings.weddingId, weddingId))

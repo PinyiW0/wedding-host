@@ -105,7 +105,7 @@ Pinia store 只有一個：`app/stores/auth.ts`（`useAuthStore`，setup store�
 ### 3.5 即時與上傳
 
 - 投影即時推送：`useProjectionChannel()` = `BroadcastChannel` + 短輪詢 fallback（不換 WebSocket/SSE，決策見下節）
-- 圖片上傳：`useImageUpload()` — R2 已設定走 presigned 直傳，否則 fallback dataURL 存 DB（本機／e2e）
+- 圖片上傳：`useImageUpload()` — R2 已設定走 presigned 直傳，否則 fallback dataURL 存 DB（本機／e2e）。賓客手繪花例外：由回覆端點在伺服器轉存 R2（issue #226，見 `docs/ops.md`）
 
 #### 接待台即時性（維持 5 秒短輪詢，不做推播）
 
@@ -167,7 +167,8 @@ setResponseStatus(201) / 回傳 XxxEvent
 |------|------|
 | `jwt.ts` | `jose` HS256，payload `{ userId(sub), role, weddingId }`，預設 7d |
 | `password.ts` | Node 內建 scrypt，格式 `scrypt$<salt>$<hash>`，零外部依賴 |
-| `r2.ts` | R2 presigned PUT（10 分鐘），`isR2Configured()` 未設退 dataURL |
+| `r2.ts` | R2 presigned PUT（10 分鐘）與伺服器端寫入 `putR2Object`，`isR2Configured()` 未設退 dataURL |
+| `image-field.ts` | 圖片欄位落庫規則：手繪花轉存 R2、enforced 環境拒收 `data:`（issue #226） |
 | `line.ts` | LINE Messaging API：單推＋multicast 群發（≤500/批、去重、過濾非真實 userId 格式）＋當月推播額度查詢；未設 token 維持 mock 行為 |
 | `line-login.ts` | LINE Login OAuth（賓客綁定）：authorize URL、state HMAC 簽名（綁 weddingId＋guestId、10 分鐘時效防 CSRF）、code 換 token 取 userId；未設 channel ID/secret 時 bind 頁維持 mock 綁定 |
 | `auth.ts` | `getRequestUser()`、`assertWeddingAccess()`（handler 內二次確認） |

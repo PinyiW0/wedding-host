@@ -17,7 +17,14 @@ function dataUrl(bytes: number): string {
   return `data:image/png;base64,${'A'.repeat(bytes)}`
 }
 
-export default defineEventHandler(async (_event: H3Event) => {
+// 搬到 R2 之後的樣子（issue #226）：欄位裡只剩一個網址
+function r2Url(i: number): string {
+  return `https://r2.example.test/weddings/${WEDDING_ID}/flower/00000000-0000-4000-8000-${String(i).padStart(12, '0')}.png`
+}
+
+export default defineEventHandler(async (event: H3Event) => {
+  // ?flowers=url：花圖欄位改放 R2 網址（預設仍是 base64，供 #224 的預算測試重現事故規模）
+  const asUrl = getQuery(event).flowers === 'url'
   const db = useDb()
   await db.insert(guests).values(Array.from({ length: GUEST_COUNT }, (_, i) => ({
     guestId: `scale-guest-${String(i + 1).padStart(3, '0')}`,
@@ -29,7 +36,7 @@ export default defineEventHandler(async (_event: H3Event) => {
     childChairCount: 0,
     invitationSent: true,
     partySize: 1,
-    flowerDrawing: i < FLOWER_COUNT ? dataUrl(FLOWER_BYTES) : null,
+    flowerDrawing: i < FLOWER_COUNT ? (asUrl ? r2Url(i) : dataUrl(FLOWER_BYTES)) : null,
   }))).onConflictDoNothing()
 
   const settings = {

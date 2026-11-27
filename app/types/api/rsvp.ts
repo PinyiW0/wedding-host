@@ -32,7 +32,7 @@ export interface SubmitRsvpBody {
   invitation?: InvitationPreference // 喜帖需求
   mailingAddress?: string // 紙本喜帖寄送地址（3+2 郵遞區號 + 地址）
   blessing?: string // 給新人的祝福留言
-  flowerDrawing?: string // 手繪小花（image/png dataURL）
+  flowerDrawing?: string // 手繪小花：送出時是 image/png dataURL；伺服器在正式站轉存 R2，落庫與回應是網址（issue #226）
   // 接駁車（限男方親友／高雄地區）：是否搭乘、搭車人數
   needsShuttle?: boolean
   shuttleCount?: number

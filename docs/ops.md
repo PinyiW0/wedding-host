@@ -52,6 +52,49 @@ update users set password_hash = '貼上雜湊' where username = 'andrea' and de
 
 設定：Cloudflare → R2 → `wedding-host` → Settings → CORS Policy，貼上 [`r2-cors.json`](r2-cors.json)。**新增前端部署網址（如 Vercel preview）時，把該 origin 加進 `AllowedOrigins` 再重貼。**
 
+跨來源**讀取**也靠同一份設定（`AllowedMethods` 的 `GET`）：故事頁花圈要讀花圖的像素來裁掉空白、後台要把花圖打包下載。來源不在 `AllowedOrigins` 時，花圖仍會顯示，但不會裁切（花看起來偏小），後台下載會跳「花朵下載失敗」。
+
+## 賓客手繪花存 R2（issue #226）
+
+賓客在回覆表單畫的花由伺服器收下後轉存 R2（`weddings/<weddingId>/flower/<uuid>.png`），`guests.flower_drawing` 只存網址。瀏覽器照舊送 PNG dataURL，伺服器檢查格式與大小（上限 300KB）後才寫入。公開回覆頁不帶簽章、拿不到 presigned URL，所以這一種圖不走瀏覽器直傳。
+
+| 環境 | 行為 |
+|------|------|
+| R2 已設定（正式站） | 轉存 R2，資料庫存 `https://` 網址 |
+| R2 未設定、`authMode=open`（本機 dev／E2E） | dataURL 原樣存資料庫 |
+| R2 未設定、`authMode=enforced` | 回 503，不讓 base64 進資料庫 |
+
+投影照片與自訂花圖（管理端）在 enforced 環境只收網址，送 `data:` 內容回 400。
+
+賓客重新送出回覆並重畫時，舊的那張圖會留在 R2 沒人引用（不清理；一張約 25KB）。
+
+### 一次性搬移既有花圖
+
+issue #226 上線前落庫的花圖是 base64，要搬一次。**程式先部署、再搬**：新版程式兩種格式都能顯示，順序反過來的話舊版程式仍會把新回覆寫成 base64。
+
+1. 確認正式站已是 #226 之後的版本（Vercel → Deployments → Production 的 commit）。
+2. 準備六個環境變數：`NUXT_DATABASE_URL`（Neon 連線字串）與 R2 五項（`NUXT_R2_ENDPOINT`、`NUXT_R2_ACCESS_KEY_ID`、`NUXT_R2_SECRET_ACCESS_KEY`、`NUXT_R2_BUCKET`、`NUXT_PUBLIC_R2_PUBLIC_URL`），值與 Vercel Production 相同。
+3. 試跑（只讀資料庫、不寫入；試跑只需要 `NUXT_DATABASE_URL`）：
+
+   ```bash
+   NUXT_DATABASE_URL='postgresql://...' node scripts/migrate-flowers-to-r2.mjs
+   ```
+
+   確認印出的「資料庫主機」是 Neon（不是 `localhost`），「待搬移」筆數符合預期（2026-11-26 是 38 筆）。
+4. 真的搬（六個環境變數都要帶）：
+
+   ```bash
+   node scripts/migrate-flowers-to-r2.mjs --apply
+   ```
+
+5. 驗證：
+   - 腳本最後一行印「仍是 base64 的 0 筆」。
+   - 再執行一次 `--apply`，印「待搬移：0 筆」「已搬移：0 筆」。
+   - Neon SQL Editor 執行 `select pg_size_pretty(sum(pg_column_size(flower_drawing))) from guests;`，結果應從約 938 kB 降到幾 kB。
+   - 開故事頁，花圈的花有顯示、大小與搬移前相同；開後台 RSVP 頁，「下載全部花朵」能下載 zip。
+
+腳本可重複執行：只挑 `data:` 開頭的列，搬過的不會再動。中途中斷直接重跑即可。每一筆寫進 R2 後，腳本先確認公開網址讀得到才改資料庫；第一筆就失敗（金鑰或 `NUXT_PUBLIC_R2_PUBLIC_URL` 帶錯）會直接停下，資料庫不會被改。搬移會把花圖從 Neon 讀出一次（約 1MB 傳輸量）。
+
 ## 部署自動 migrate（issue #116、#134）
 
 `vercel.json` 的 `buildCommand` 在 build 前執行 `scripts/deploy-migrate.mjs`，依環境分流：
@@ -85,6 +128,7 @@ Vercel 需設定環境變數 `NUXT_DATABASE_URL_MIGRATE`（**限 Production 環�
 | DB 連線錯誤 | pooled / direct 用途混用 | runtime 用 Neon pooled URL；migration 與腳本（db:migrate、db:create-admin）用 direct URL |
 | 某頁一進去就跳「資料載入失敗」toast | 該頁某支 GET 撞不存在的表或欄位而 500，多半是新 migration 沒套用（如 #134 的 `gift_categories`） | 比對 `ls server/db/migrations/*.sql` 與正式庫 `drizzle.__drizzle_migrations` 筆數，差幾筆就補跑 migrate |
 | 部署後名單／清單變空、桌次圖只剩 ID | schema 落後程式碼（自動 migrate 上線前的舊部署，或 build log 中 migrate 失敗） | 查 Vercel build log 的 `[deploy-migrate]` 段；必要時從 origin/main 的 worktree 手動 `NUXT_DATABASE_URL='<direct>' npm run db:migrate`，跑完查 `drizzle.__drizzle_migrations` 筆數複驗 |
+| 花圈的花偏小、後台「花朵下載失敗」 | 目前網址不在 R2 CORS 的 `AllowedOrigins` | 見「R2 圖片直傳 CORS」，把來源加進 [`r2-cors.json`](r2-cors.json) 再重貼 |
 | 圖片上傳失敗 | R2 四項環境變數不全 | `NUXT_R2_*` 四項 + `NUXT_PUBLIC_R2_PUBLIC_URL` 全填才啟用 presigned 直傳，否則退回 dataURL |
 | 圖片上傳失敗、Console 報 CORS（`No 'Access-Control-Allow-Origin'`、`net::ERR_FAILED`） | R2 bucket 未設 CORS policy，跨來源 PUT 被 preflight 擋 | 見上節「R2 圖片直傳 CORS」，套用 [`r2-cors.json`](r2-cors.json) |
 | 本機 push 卡 6 分鐘後失敗 | issue #178 前 pre-push 跑 Docker gate 全量，期間 SSH 閒置被 GitHub 斷線（現在只跑煙霧，較少發生） | `~/.ssh/config` 的 `Host github.com` 加 `ServerAliveInterval 60`；push 後以 `git ls-remote` 驗證 |
