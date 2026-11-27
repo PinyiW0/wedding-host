@@ -113,7 +113,8 @@ Pinia store 只有一個：`app/stores/auth.ts`（`useAuthStore`，setup store�
 
 - Vercel serverless 長連線 = function 持續計費＋時長上限強制斷線，SSE 變成偽輪詢；WebSocket 不支援
 - neon-http driver 無常駐連線，聽不了 Postgres LISTEN/NOTIFY，推播需外掛 pub/sub 服務（新依賴＋費用）
-- 實際負載：一場婚禮 1-3 台接待機，輪詢每 5 秒 7 個小請求（賓客／狀態／喜餅款式／指派／不發放／桌次／座位；座位已批次化），成本趨近零；體感上 5 秒內同步已足夠
+- 實際負載：一場婚禮 1-3 台接待機。輪詢共 9 個端點，分兩種頻率（issue #228）：賓客／報到狀態／喜餅指派每 5 秒；喜餅款式／不發放／桌次／座位／場地佈局／標記每 60 秒，分頁回到前景時立刻全部補一次。60 秒內 42 個請求（原本 108 個）；體感上現場資料 5 秒內同步已足夠
+- 成本要看「從資料庫讀出多少位元組」，不能只數請求數：2026-11-22 正式站曾因輪詢端點整列讀出賓客花圖，超過 Neon 傳輸量額度而被暫停（issue #224、#226）。現在每一輪的讀出量由 `test/e2e/vibe/perf-polling-db-payload-1.spec.ts` 的預算測試守住
 - 未來若成真多場次、數十台裝置同時在線：優先評估 Supabase Realtime / Pusher 免費層，而非自建 SSE
 
 ---
