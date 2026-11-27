@@ -1,7 +1,7 @@
 # 營運手冊（issue #26）
 
 正式站：<https://everafter-iota.vercel.app>（Vercel Hobby，region hnd1）
-資料庫：Neon Free（Singapore，autoscaling 鎖 0.25CU）｜圖片：Cloudflare R2 bucket `wedding-host`
+資料庫：Neon Launch（Singapore，autoscaling 鎖 0.25CU；2026-11-22 事故當天由 Free 升級）｜圖片：Cloudflare R2 bucket `wedding-host`
 
 ---
 
@@ -24,6 +24,73 @@ DSN 未設定時 Sentry 完全停用（本機 dev / e2e 零影響），設定後
 - 公開端點：`GET /api/v1/health` → 正常 `200 { status: 'ok', db: true }`；DB 連不上 `503 { status: 'degraded', db: false }`
 - 建議用 [UptimeRobot](https://uptimerobot.com)（免費 50 個 monitor、5 分鐘間隔）監測 `https://everafter-iota.vercel.app/api/v1/health`，關鍵字告警設 `"status":"ok"`
 - 婚禮當天前一晚手動打一次確認綠燈
+
+## 外部服務硬上限（issue #230）
+
+做設計決策、估成本時先對這張表（規則見 [`.claude/rules/design-decisions.md`](../.claude/rules/design-decisions.md)）。數字查證日期 2026-11-27；方案或定價變動時連同日期一起更新。
+
+| 服務（方案） | 項目 | 每月上限 | 超過後 | 查用量的位置 |
+|---|---|---|---|---|
+| Neon（Launch，現用） | 傳輸量（資料庫往外送的位元組） | 每個專案含 500GB | **照用量計費**（每 GB 0.10 美元），不暫停 | Neon Console → Billing／專案 Monitoring |
+| Neon（Free，2026-11-22 前） | 傳輸量 | 每個專案 5GB | **資料庫暫停**，到下個計費週期或升級才恢復 | 同上 |
+| Neon（Free） | 運算時數 | 100 CU-hours（選型當時查到的數字，本次未重新查證） | 資料庫暫停 | 同上 |
+| Vercel（Hobby，現用） | 流量（Fast Data Transfer） | 100GB | **不計費，帳號可能被暫停**，所有部署一起停；多數情況要等 30 天 | Vercel → Usage |
+| Vercel（Hobby） | 函式呼叫次數 | 100 萬次 | 同上 | 同上 |
+| Cloudflare R2（免費額度） | 儲存（Standard） | 10GB | **照用量計費**（每 GB 0.015 美元） | Cloudflare → R2 → 用量 |
+| Cloudflare R2 | 寫入類請求（Class A） | 100 萬次 | 照用量計費（每百萬次 4.50 美元） | 同上 |
+| Cloudflare R2 | 讀取類請求（Class B） | 1,000 萬次 | 照用量計費（每百萬次 0.36 美元） | 同上 |
+| Cloudflare R2 | 往外傳輸 | 不計費 | — | — |
+| LINE 官方帳號（輕用量） | 主動推播則數（push／multicast，則數 = 次數 × 收件人數） | 200 則 | **推播發不出去**，不可加購，要升級方案 | LINE Official Account Manager；程式面 `server/utils/line.ts` 會查 `message/quota` |
+
+- 「超過後」分兩種：**照用量計費**（服務不中斷，帳單變大）與**直接停**（服務中斷）。直接停的那幾項要優先設告警。
+- Neon 的傳輸量算的是「資料庫 → 伺服器」這一段，瀏覽器收到的回應大小看不出來；每一輪輪詢的讀出量由 `test/e2e/vibe/perf-polling-db-payload-1.spec.ts` 的預算測試守住。
+- 已設告警：Neon 用量通知 5 美元（2026-11-26）。Vercel Hobby 沒有可設金額的告警，婚禮前一週手動看一次 Usage。
+- 資料來源：[Neon 方案](https://neon.com/docs/introduction/plans)、[Neon 傳輸量](https://neon.com/docs/introduction/network-transfer)、[Vercel Hobby](https://vercel.com/docs/plans/hobby)、[R2 定價](https://developers.cloudflare.com/r2/pricing/)、[LINE Messaging API 計費](https://developers.line.biz/en/docs/messaging-api/pricing/)。LINE 台灣方案的 200 則來自非官方整理，官方開發者頁面沒有列台灣的數字，以 LINE Official Account Manager 顯示的額度為準。Vercel 的運算時間（Active CPU）上限本次沒有查到官方數字，未列入。
+
+## 婚禮當天處置手冊（issue #230）
+
+先判斷是哪一種狀況，再照對應的步驟做。兩種狀況的第一步相同：開 `https://everafter-iota.vercel.app/api/v1/health`。
+
+| 健康檢查結果 | 狀況 |
+|---|---|
+| `503`、`db: false` | A：資料庫連不上 |
+| `200`、`db: true`，但接待頁跳「資料載入失敗」 | B：接待頁載入失敗 |
+| 打不開、逾時，或 Vercel 的錯誤頁 | C：Vercel 端的問題 |
+
+### 狀況 A：資料庫被暫停或連不上
+
+2026-11-22 實際發生過：Neon Free 傳輸量超過 5GB，資料庫被暫停，全站無法登入。
+
+1. 開 Neon Console，看專案狀態與 Billing 的用量。
+2. 專案顯示被暫停、用量超過額度 → 在 Billing 升級方案（Free → Launch）。11/22 當天就是這樣恢復的。
+3. 再開一次健康檢查，確認回 `200`、`db: true`。
+4. 請接待員重新整理接待頁，確認名單出現。
+5. 用量不是原因（方案已是 Launch、專案狀態正常）→ 看 Neon 的狀態頁 <https://neonstatus.com>；是服務商故障就改用紙本名單，不要一直重試。
+6. 事後查是哪一支端點讀出大量資料：本機跑 `perf-polling-db-payload-1.spec.ts`，並看 Neon Monitoring 的傳輸量曲線從哪一天開始上升。
+
+### 狀況 B：接待頁跳「資料載入失敗」
+
+1. 換一台裝置或無痕視窗開接待頁。只有一台壞 → 那台重新登入；全部都壞 → 往下做。
+2. 開瀏覽器開發者工具的 Network，找出回 `500` 或 `403` 的那支請求。
+3. `403` → 帳號權限問題。確認登入的是接待帳號、網址的 `weddingId` 是這一場（案例：issue #222）。
+4. `500` → 多半是新 migration 沒套用。照下方「常見故障排查」的「某頁一進去就跳『資料載入失敗』」那一列處理。
+5. 十分鐘內修不好 → 在 Vercel → Deployments 找上一個正常的 Production 部署，按 Promote to Production（回滾）。回滾不會還原資料庫結構，帶 migration 的版本要先確認舊程式碼能配新結構。
+
+### 狀況 C：Vercel 端的問題
+
+1. 開 Vercel → 專案 → Deployments，看最新的 Production 部署是不是 Ready。
+2. 部署失敗 → 對上一個 Ready 的部署按 Promote to Production。
+3. 帳號顯示被暫停（超過 Hobby 上限）→ 只能升級 Pro 或聯絡 Vercel；等待期間改用紙本名單。
+4. 部署正常但全站打不開 → 看 <https://www.vercel-status.com>。
+
+### 事前準備（婚禮前一天）
+
+1. 打一次健康檢查，確認 `200`。
+2. 看 Neon 與 Vercel 的當月用量，用量超過上限的七成就先處理（升級方案，或查是哪裡在耗用）。
+3. 在後台 RSVP 頁匯出 CSV、在桌次頁下載桌次圖，印成紙本交給接待組長。
+4. 確認接待帳號能登入，接待頁能載入名單。
+
+目前沒有離線備援：資料庫斷線時接待頁不能報到，只能靠紙本名單，事後補登。
 
 ## 管理員密碼救援
 

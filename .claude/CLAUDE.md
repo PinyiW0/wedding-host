@@ -120,6 +120,7 @@ Spec-Driven Development：從 Feature 規格驅動開發。
 | 主 spec 凍結 | [rules/frozen-paths.md](rules/frozen-paths.md) | 修改 test/e2e/specs/、spec/gherkin-feature/、spec/e2e-flows/ 時（hook 強制） |
 | Server 安全慣例 | [rules/server-security.md](rules/server-security.md) | 修改 server/**/*.ts 時（hook 強制） |
 | 前端安全慣例 | [rules/frontend-security.md](rules/frontend-security.md) | 修改 app/ 頁面、stores、composables、middleware、plugins、nuxt.config.ts 時 |
+| 設計決策要帶數字 | [rules/design-decisions.md](rules/design-decisions.md) | 每次（無 `paths`）；做選型、資料放哪、輪詢或快取、資料表結構等決策時照做 |
 | 創意方向 | `spec/ui-config/creative-direction.md` | vibe 要求質感/風格/動畫、實作賓客公開頁時讀取 |
 | UI 設定 | `spec/ui-config/ui-config.yaml` | UI 實作時讀取 |
 | Business Invariants | `spec/e2e-flows/*.flow.md` 開頭段 | Vibe UI 前必讀 |
